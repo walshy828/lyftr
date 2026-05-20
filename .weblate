@@ -1,0 +1,14 @@
+# wlc (Weblate command-line client) configuration.
+# https://docs.weblate.org/en/latest/wlc.html
+#
+# This only points the CLI at the server and the default component. The actual
+# component configuration (file mask, monolingual base language, file format)
+# lives in the Weblate project UI — see TRANSLATING.md.
+#
+# NEVER commit an API token here. Store it in ~/.config/weblate under [keys].
+
+[weblate]
+url = https://hosted.weblate.org/api/
+
+# Default project/component the CLI operates on. Adjust to your project slug.
+[component "lyftr/web"]
