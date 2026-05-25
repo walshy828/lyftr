@@ -99,45 +99,42 @@ Configure one component in the Weblate project UI:
 
 The `github` VCS backend ("GitHub pull request") makes Weblate push
 translations back as pull requests instead of committing to `main` directly.
-For that to work the instance needs GitHub credentials.
 
-### Self-hosting the instance
+### Recommended: free Hosted Weblate (the wger approach)
 
-Weblate runs as a Docker stack. Use the official compose — don't fork it:
+Lyftr is MIT-licensed and developed in the open, so it qualifies for
+[Hosted Weblate's free plan for libre projects](https://hosted.weblate.org/hosting/) —
+the same setup [wger](https://hosted.weblate.org/engage/wger/) and most
+open-source apps use. No server, no Docker.
+
+1. Sign in at [hosted.weblate.org](https://hosted.weblate.org/) and **add a
+   project**, pointing it at `github.com/Cawlumm/lyftr`.
+2. Add a component with the values in the table above and `github` as the VCS
+   backend; authorize Weblate's GitHub App when prompted so it can open PRs.
+3. Request libre hosting — a Weblate maintainer approves it (one-time).
+
+Translators then work at `hosted.weblate.org/projects/lyftr/` and their changes
+land as pull requests against `main`.
+
+### Alternative: self-host
+
+To run your own instance (e.g. to keep the repo private), use the official
+Docker stack plus [`scripts/weblate-provision.sh`](scripts/weblate-provision.sh),
+which creates the project + component via the API:
 
 ```bash
 git clone https://github.com/WeblateOrg/docker.git weblate-docker
-cd weblate-docker
-# edit ./environment — at minimum set:
-#   WEBLATE_SITE_DOMAIN, WEBLATE_ADMIN_EMAIL, WEBLATE_ADMIN_PASSWORD
-#   WEBLATE_SERVER_EMAIL, WEBLATE_DEFAULT_FROM_EMAIL
-#   WEBLATE_GITHUB_USERNAME + WEBLATE_GITHUB_TOKEN   ← enables the PR backend
+# in ./environment set WEBLATE_SITE_DOMAIN, *_ADMIN_*, WEBLATE_GITHUB_USERNAME+TOKEN, then:
 docker compose up -d
+WEBLATE_URL=https://weblate.example.com WEBLATE_TOKEN=<token> scripts/weblate-provision.sh
 ```
-
-It must run on a **persistent host** with a real domain (not in CI / ephemeral
-containers). See the [official self-hosting docs](https://docs.weblate.org/en/latest/admin/install/docker.html)
-for the full env reference.
-
-Once it's up, create the project + component without clicking through the UI:
-
-```bash
-WEBLATE_URL=https://weblate.example.com \
-WEBLATE_TOKEN=<your admin API token> \
-scripts/weblate-provision.sh
-```
-
-The script creates the project and component with the exact values from the
-table above. If it rejects `file_format` or `vcs`, confirm the slugs against
-your version (`GET <url>/api/file-formats/`) and pass overrides, e.g.
-`FILE_FORMAT=… VCS=… scripts/weblate-provision.sh`.
 
 ### The `.weblate` CLI config
 
 The repo-root `.weblate` file points the
 [`wlc`](https://docs.weblate.org/en/latest/wlc.html) CLI at the server and
-default component — update the `url` to your instance. **Never commit an API
-token**; `wlc` reads it from `~/.config/weblate`.
+default component. It defaults to Hosted Weblate; change the `url` only if you
+self-host. **Never commit an API token**; `wlc` reads it from `~/.config/weblate`.
 
 ---
 
