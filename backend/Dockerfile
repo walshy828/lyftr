@@ -3,6 +3,8 @@ FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
+# Version baked into the binary. CI passes the git tag; defaults to "dev" locally.
+ARG VERSION=dev
 
 WORKDIR /build
 
@@ -10,9 +12,10 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source and build a statically linked binary
+# Copy source and build the static binary via the shared build script
+# (single source of the version ldflags — see backend/build.sh)
 COPY . .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o lyftr-api .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION sh build.sh
 
 # Stage 2: Runtime
 FROM alpine:3.19

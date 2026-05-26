@@ -20,12 +20,15 @@ RUN npm run build
 # CGO_ENABLED=0 produces a fully static binary — no libc dependency in runtime.
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS backend
 ARG TARGETOS TARGETARCH
+# Version baked into the binary. The deploy workflow passes the git tag/describe.
+ARG VERSION=dev
 WORKDIR /build
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -ldflags="-s -w" -o lyftr-api .
+# Build via backend/build.sh (copied above) — shared with backend/Dockerfile so the
+# version ldflags live in one place and can't drift between the two images.
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION sh build.sh
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
 FROM nginx:alpine
