@@ -36,7 +36,7 @@ func scanFoodLog(row interface{ Scan(...any) error }, f *models.FoodLog) error {
 
 const foodLogSelect = `SELECT id, user_id, name, meal, calories, protein, carbs, fat, fiber, servings, serving_size, barcode, image_url, logged_at, created_at FROM food_logs`
 
-func ListFoodLogs(c *gin.Context) {
+func (h *Handler) ListFoodLogs(c *gin.Context) {
 	uid := middleware.UserID(c)
 
 	date := c.Query("date")
@@ -66,7 +66,7 @@ func ListFoodLogs(c *gin.Context) {
 	utils.OK(c, logs)
 }
 
-func GetFoodLog(c *gin.Context) {
+func (h *Handler) GetFoodLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -83,7 +83,7 @@ func GetFoodLog(c *gin.Context) {
 	utils.OK(c, f)
 }
 
-func LogFood(c *gin.Context) {
+func (h *Handler) LogFood(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var req models.LogFoodRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -141,7 +141,7 @@ func LogFood(c *gin.Context) {
 	utils.Created(c, f)
 }
 
-func UpdateFoodLog(c *gin.Context) {
+func (h *Handler) UpdateFoodLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -203,7 +203,7 @@ func UpdateFoodLog(c *gin.Context) {
 	utils.OK(c, f)
 }
 
-func DeleteFoodLog(c *gin.Context) {
+func (h *Handler) DeleteFoodLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -225,7 +225,7 @@ func DeleteFoodLog(c *gin.Context) {
 	utils.OK(c, gin.H{"deleted": true})
 }
 
-func GetDailyStats(c *gin.Context) {
+func (h *Handler) GetDailyStats(c *gin.Context) {
 	uid := middleware.UserID(c)
 	date := c.Query("date")
 	if date == "" {
@@ -258,7 +258,7 @@ func GetDailyStats(c *gin.Context) {
 	utils.OK(c, stats)
 }
 
-func GetFoodHistory(c *gin.Context) {
+func (h *Handler) GetFoodHistory(c *gin.Context) {
 	uid := middleware.UserID(c)
 
 	days := 30
@@ -408,7 +408,7 @@ func doOFFRequest(ctx context.Context, rawURL string) ([]byte, int, error) {
 	return body, resp.StatusCode, err
 }
 
-func SearchFood(c *gin.Context) {
+func (h *Handler) SearchFood(c *gin.Context) {
 	q := c.Query("q")
 	if q == "" {
 		utils.BadRequest(c, "q is required")
@@ -488,7 +488,7 @@ type offBarcodeResponse struct {
 	Product offProduct `json:"product"`
 }
 
-func LookupBarcode(c *gin.Context) {
+func (h *Handler) LookupBarcode(c *gin.Context) {
 	code := c.Param("code")
 	if code == "" {
 		utils.BadRequest(c, "barcode is required")
@@ -552,7 +552,7 @@ func LookupBarcode(c *gin.Context) {
 
 // ─── Saved Foods ──────────────────────────────────────────────────────────────
 
-func ListSavedFoods(c *gin.Context) {
+func (h *Handler) ListSavedFoods(c *gin.Context) {
 	uid := middleware.UserID(c)
 
 	rows, err := db.DB.Query(
@@ -580,7 +580,7 @@ func ListSavedFoods(c *gin.Context) {
 	utils.OK(c, foods)
 }
 
-func CreateSavedFood(c *gin.Context) {
+func (h *Handler) CreateSavedFood(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var req models.SaveFoodRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -634,7 +634,7 @@ func CreateSavedFood(c *gin.Context) {
 	utils.Created(c, f)
 }
 
-func DeleteSavedFood(c *gin.Context) {
+func (h *Handler) DeleteSavedFood(c *gin.Context) {
 	uid := middleware.UserID(c)
 	fid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

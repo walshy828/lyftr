@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ListWeightLogs(c *gin.Context) {
+func (h *Handler) ListWeightLogs(c *gin.Context) {
 	uid := middleware.UserID(c)
 	limit := 90
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 1000 {
@@ -71,7 +71,7 @@ func ListWeightLogs(c *gin.Context) {
 	utils.OK(c, logs)
 }
 
-func LogWeight(c *gin.Context) {
+func (h *Handler) LogWeight(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var req models.LogWeightRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -135,7 +135,7 @@ func LogWeight(c *gin.Context) {
 	utils.Created(c, log)
 }
 
-func GetWeightLog(c *gin.Context) {
+func (h *Handler) GetWeightLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -154,7 +154,7 @@ func GetWeightLog(c *gin.Context) {
 	utils.OK(c, log)
 }
 
-func UpdateWeightLog(c *gin.Context) {
+func (h *Handler) UpdateWeightLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -218,7 +218,7 @@ func UpdateWeightLog(c *gin.Context) {
 	utils.OK(c, log)
 }
 
-func DeleteWeightLog(c *gin.Context) {
+func (h *Handler) DeleteWeightLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -239,7 +239,7 @@ func DeleteWeightLog(c *gin.Context) {
 	utils.OK(c, gin.H{"deleted": true})
 }
 
-func GetWeightStats(c *gin.Context) {
+func (h *Handler) GetWeightStats(c *gin.Context) {
 	uid := middleware.UserID(c)
 
 	var (

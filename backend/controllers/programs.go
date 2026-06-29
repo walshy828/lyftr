@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ListPrograms(c *gin.Context) {
+func (h *Handler) ListPrograms(c *gin.Context) {
 	uid := middleware.UserID(c)
 
 	limit := 20
@@ -54,7 +54,7 @@ func ListPrograms(c *gin.Context) {
 	utils.OK(c, programs)
 }
 
-func GetProgram(c *gin.Context) {
+func (h *Handler) GetProgram(c *gin.Context) {
 	uid := middleware.UserID(c)
 	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -79,7 +79,7 @@ func GetProgram(c *gin.Context) {
 	utils.OK(c, p)
 }
 
-func CreateProgram(c *gin.Context) {
+func (h *Handler) CreateProgram(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var req models.CreateProgramRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -155,7 +155,7 @@ func CreateProgram(c *gin.Context) {
 	utils.Created(c, p)
 }
 
-func UpdateProgram(c *gin.Context) {
+func (h *Handler) UpdateProgram(c *gin.Context) {
 	uid := middleware.UserID(c)
 	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -248,7 +248,7 @@ func UpdateProgram(c *gin.Context) {
 	utils.OK(c, p)
 }
 
-func DeleteProgram(c *gin.Context) {
+func (h *Handler) DeleteProgram(c *gin.Context) {
 	uid := middleware.UserID(c)
 	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

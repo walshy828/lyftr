@@ -35,7 +35,7 @@ type freeExerciseItem struct {
 
 // SeedStatus returns current exercise count and whether a seed is running.
 type SeedStatus struct {
-	Count     int  `json:"count"`
+	Count      int  `json:"count"`
 	InProgress bool `json:"in_progress"`
 }
 

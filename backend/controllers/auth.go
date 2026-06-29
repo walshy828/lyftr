@@ -12,7 +12,7 @@ import (
 
 var validate = validator.New()
 
-func Register(c *gin.Context) {
+func (h *Handler) Register(c *gin.Context) {
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, err.Error())
@@ -53,7 +53,7 @@ func Register(c *gin.Context) {
 	utils.Created(c, models.AuthResponse{Token: access, RefreshToken: refresh, User: user})
 }
 
-func Login(c *gin.Context) {
+func (h *Handler) Login(c *gin.Context) {
 	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, err.Error())
@@ -89,7 +89,7 @@ func Login(c *gin.Context) {
 	utils.OK(c, models.AuthResponse{Token: access, RefreshToken: refresh, User: user})
 }
 
-func RefreshToken(c *gin.Context) {
+func (h *Handler) RefreshToken(c *gin.Context) {
 	var req models.RefreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, err.Error())

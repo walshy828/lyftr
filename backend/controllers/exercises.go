@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ListExercises(c *gin.Context) {
+func (h *Handler) ListExercises(c *gin.Context) {
 	query := `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url
 	          FROM exercises WHERE 1=1`
 	args := []any{}
@@ -55,7 +55,7 @@ func ListExercises(c *gin.Context) {
 	utils.OK(c, exercises)
 }
 
-func GetExercise(c *gin.Context) {
+func (h *Handler) GetExercise(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		utils.BadRequest(c, "invalid exercise id")
@@ -74,7 +74,7 @@ func GetExercise(c *gin.Context) {
 	utils.OK(c, e)
 }
 
-func GetExercisePRs(c *gin.Context) {
+func (h *Handler) GetExercisePRs(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 	exerciseID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -111,7 +111,7 @@ func GetExercisePRs(c *gin.Context) {
 	})
 }
 
-func GetExerciseHistory(c *gin.Context) {
+func (h *Handler) GetExerciseHistory(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 	exerciseID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -156,7 +156,7 @@ func GetExerciseHistory(c *gin.Context) {
 }
 
 // SyncExercises is an admin-only endpoint to re-pull from ExerciseDB.
-func SyncExercises(c *gin.Context) {
+func (h *Handler) SyncExercises(c *gin.Context) {
 	if err := seed.SyncExercises(db.DB); err != nil {
 		utils.BadRequest(c, err.Error())
 		return
@@ -167,12 +167,12 @@ func SyncExercises(c *gin.Context) {
 }
 
 // ExerciseSeedStatus returns exercise count and whether seeding is running.
-func ExerciseSeedStatus(c *gin.Context) {
+func (h *Handler) ExerciseSeedStatus(c *gin.Context) {
 	utils.OK(c, seed.GetSeedStatus(db.DB))
 }
 
 // ResetExercises wipes the exercises table and triggers a fresh seed in background.
-func ResetExercises(c *gin.Context) {
+func (h *Handler) ResetExercises(c *gin.Context) {
 	if err := seed.WipeAndReseed(db.DB); err != nil {
 		utils.BadRequest(c, err.Error())
 		return

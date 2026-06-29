@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func GetActiveSession(c *gin.Context) {
+func (h *Handler) GetActiveSession(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var data string
 	var updatedAt time.Time
@@ -28,7 +28,7 @@ func GetActiveSession(c *gin.Context) {
 	c.JSON(200, gin.H{"data": gin.H{"data": data, "updated_at": updatedAt}})
 }
 
-func UpsertActiveSession(c *gin.Context) {
+func (h *Handler) UpsertActiveSession(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var body struct {
 		Data string `json:"data" binding:"required"`
@@ -50,7 +50,7 @@ func UpsertActiveSession(c *gin.Context) {
 	utils.OK(c, gin.H{"saved": true})
 }
 
-func DeleteActiveSession(c *gin.Context) {
+func (h *Handler) DeleteActiveSession(c *gin.Context) {
 	uid := middleware.UserID(c)
 	db.DB.Exec(`DELETE FROM active_sessions WHERE user_id = ?`, uid)
 	utils.OK(c, gin.H{"deleted": true})

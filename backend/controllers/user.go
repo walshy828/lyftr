@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func GetMe(c *gin.Context) {
+func (h *Handler) GetMe(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var u models.User
 	err := db.DB.QueryRow(
@@ -21,7 +21,7 @@ func GetMe(c *gin.Context) {
 	utils.OK(c, u)
 }
 
-func GetSettings(c *gin.Context) {
+func (h *Handler) GetSettings(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var s models.UserSettings
 	err := db.DB.QueryRow(
@@ -39,7 +39,7 @@ func GetSettings(c *gin.Context) {
 	utils.OK(c, s)
 }
 
-func UpdateSettings(c *gin.Context) {
+func (h *Handler) UpdateSettings(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var req models.UpdateSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -59,10 +59,10 @@ func UpdateSettings(c *gin.Context) {
 		uid, req.WeightUnit, req.CalorieTarget, req.ProteinTarget, req.CarbTarget, req.FatTarget,
 	)
 
-	GetSettings(c)
+	h.GetSettings(c)
 }
 
-func DeleteAccount(c *gin.Context) {
+func (h *Handler) DeleteAccount(c *gin.Context) {
 	uid := middleware.UserID(c)
 	_, err := db.DB.Exec(`DELETE FROM users WHERE id = ?`, uid)
 	if err != nil {

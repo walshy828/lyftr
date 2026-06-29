@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ListWorkouts(c *gin.Context) {
+func (h *Handler) ListWorkouts(c *gin.Context) {
 	uid := middleware.UserID(c)
 	limit := 20
 	offset := 0
@@ -56,7 +56,7 @@ func ListWorkouts(c *gin.Context) {
 	utils.OK(c, workouts)
 }
 
-func GetWorkout(c *gin.Context) {
+func (h *Handler) GetWorkout(c *gin.Context) {
 	uid := middleware.UserID(c)
 	wid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -82,7 +82,7 @@ func GetWorkout(c *gin.Context) {
 	utils.OK(c, w)
 }
 
-func CreateWorkout(c *gin.Context) {
+func (h *Handler) CreateWorkout(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var req models.CreateWorkoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -159,7 +159,7 @@ func CreateWorkout(c *gin.Context) {
 	utils.Created(c, w)
 }
 
-func UpdateWorkout(c *gin.Context) {
+func (h *Handler) UpdateWorkout(c *gin.Context) {
 	uid := middleware.UserID(c)
 	wid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -252,7 +252,7 @@ func UpdateWorkout(c *gin.Context) {
 	utils.OK(c, w)
 }
 
-func DeleteWorkout(c *gin.Context) {
+func (h *Handler) DeleteWorkout(c *gin.Context) {
 	uid := middleware.UserID(c)
 	wid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
