@@ -343,11 +343,11 @@ func (h *Handler) SearchFood(c *gin.Context) {
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			log.Printf("[food/search] OFF timeout after %dms", elapsed.Milliseconds())
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "food search timed out — try again"})
+			utils.ServiceUnavailable(c, "food search timed out — try again")
 			return
 		}
 		log.Printf("[food/search] OFF network error: %v", err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "could not reach food database"})
+		utils.ServiceUnavailable(c, "could not reach food database")
 		return
 	}
 
@@ -359,11 +359,11 @@ func (h *Handler) SearchFood(c *gin.Context) {
 		return
 	case status >= 500:
 		log.Printf("[food/search] OFF upstream error: %d", status)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "food search temporarily unavailable"})
+		utils.ServiceUnavailable(c, "food search temporarily unavailable")
 		return
 	case status != 200:
 		log.Printf("[food/search] OFF unexpected status: %d", status)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "food search temporarily unavailable"})
+		utils.ServiceUnavailable(c, "food search temporarily unavailable")
 		return
 	}
 
@@ -421,11 +421,11 @@ func (h *Handler) LookupBarcode(c *gin.Context) {
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			log.Printf("[food/barcode] OFF timeout after %dms", elapsed.Milliseconds())
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "barcode lookup timed out — try again"})
+			utils.ServiceUnavailable(c, "barcode lookup timed out — try again")
 			return
 		}
 		log.Printf("[food/barcode] OFF network error: %v", err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "could not reach food database"})
+		utils.ServiceUnavailable(c, "could not reach food database")
 		return
 	}
 
@@ -437,7 +437,7 @@ func (h *Handler) LookupBarcode(c *gin.Context) {
 		return
 	case status >= 500:
 		log.Printf("[food/barcode] OFF upstream error: %d", status)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "barcode lookup temporarily unavailable"})
+		utils.ServiceUnavailable(c, "barcode lookup temporarily unavailable")
 		return
 	}
 

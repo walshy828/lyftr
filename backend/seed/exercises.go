@@ -77,7 +77,12 @@ func WipeAndReseed(db *sql.DB) error {
 	if !seeding.CompareAndSwap(false, true) {
 		return fmt.Errorf("seed already in progress")
 	}
-	if _, err := db.Exec(`DELETE FROM exercises`); err != nil {
+	// Prune only unreferenced exercises: with foreign_keys enforced, deleting an
+	// exercise that a saved workout/program references is (correctly) rejected.
+	// Referenced rows are refreshed in place by the ON CONFLICT(name) upsert below.
+	if _, err := db.Exec(`DELETE FROM exercises
+		WHERE id NOT IN (SELECT exercise_id FROM workout_exercises)
+		  AND id NOT IN (SELECT exercise_id FROM program_exercises)`); err != nil {
 		seeding.Store(false)
 		return fmt.Errorf("wipe failed: %w", err)
 	}

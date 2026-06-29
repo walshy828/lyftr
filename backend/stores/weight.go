@@ -86,21 +86,30 @@ func dayBounds(t time.Time) (time.Time, time.Time) {
 // entry if present, else insert. req.LoggedAt must already be normalized to UTC.
 func (s *WeightStore) UpsertForDay(uid int64, req models.LogWeightRequest) (models.WeightLog, error) {
 	dayStart, dayEnd := dayBounds(req.LoggedAt)
+	// One transaction so the existence check + insert/update is atomic: otherwise
+	// the connection is released between the SELECT and the write, and two same-day
+	// logs can both miss the row and both insert (duplicate day).
+	tx, err := s.db.Begin()
+	if err != nil {
+		return models.WeightLog{}, err
+	}
+	defer tx.Rollback()
+
 	var id int64
-	err := s.db.QueryRow(
+	err = tx.QueryRow(
 		`SELECT id FROM weight_logs WHERE user_id = ? AND logged_at >= ? AND logged_at < ? ORDER BY id DESC LIMIT 1`,
 		uid, dayStart, dayEnd,
 	).Scan(&id)
 	switch err {
 	case nil:
-		if _, e := s.db.Exec(
+		if _, e := tx.Exec(
 			`UPDATE weight_logs SET weight = ?, notes = ?, logged_at = ? WHERE id = ?`,
 			req.Weight, req.Notes, req.LoggedAt, id,
 		); e != nil {
 			return models.WeightLog{}, e
 		}
 	case sql.ErrNoRows:
-		res, e := s.db.Exec(
+		res, e := tx.Exec(
 			`INSERT INTO weight_logs (user_id, weight, notes, logged_at) VALUES (?, ?, ?, ?)`,
 			uid, req.Weight, req.Notes, req.LoggedAt,
 		)
@@ -109,6 +118,9 @@ func (s *WeightStore) UpsertForDay(uid int64, req models.LogWeightRequest) (mode
 		}
 		id, _ = res.LastInsertId()
 	default:
+		return models.WeightLog{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return models.WeightLog{}, err
 	}
 	return s.get(id)
@@ -160,28 +172,35 @@ func (s *WeightStore) Stats(uid int64) (WeightStats, error) {
 	if err != nil {
 		return WeightStats{}, err
 	}
-	return WeightStats{
+	stats := WeightStats{
 		Latest: latest.Float64, Starting: oldest.Float64,
 		Min: minW.Float64, Max: maxW.Float64, Avg: avgW.Float64,
 		TotalEntries: count,
-		Change7d:     s.changeOver(uid, 7),
-		Change30d:    s.changeOver(uid, 30),
-	}, nil
+	}
+	if stats.Change7d, err = s.changeOver(uid, 7); err != nil {
+		return WeightStats{}, err
+	}
+	if stats.Change30d, err = s.changeOver(uid, 30); err != nil {
+		return WeightStats{}, err
+	}
+	return stats, nil
 }
 
 // changeOver returns latest minus earliest weight within the last `days` days,
 // or 0 with fewer than two entries in the window.
-func (s *WeightStore) changeOver(uid int64, days int) float64 {
+func (s *WeightStore) changeOver(uid int64, days int) (float64, error) {
 	cutoff := time.Now().UTC().AddDate(0, 0, -days)
 	var latest, earliest sql.NullFloat64
-	s.db.QueryRow(
+	if err := s.db.QueryRow(
 		`SELECT
 		  (SELECT weight FROM weight_logs WHERE user_id = ? AND logged_at >= ? ORDER BY logged_at DESC, id DESC LIMIT 1),
 		  (SELECT weight FROM weight_logs WHERE user_id = ? AND logged_at >= ? ORDER BY logged_at ASC, id ASC LIMIT 1)`,
 		uid, cutoff, uid, cutoff,
-	).Scan(&latest, &earliest)
-	if !latest.Valid || !earliest.Valid {
-		return 0
+	).Scan(&latest, &earliest); err != nil {
+		return 0, err
 	}
-	return latest.Float64 - earliest.Float64
+	if !latest.Valid || !earliest.Valid {
+		return 0, nil
+	}
+	return latest.Float64 - earliest.Float64, nil
 }

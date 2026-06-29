@@ -57,6 +57,10 @@ func (h *Handler) CreateProgram(c *gin.Context) {
 		return
 	}
 	p, err := h.s.Program.Create(uid, req)
+	if utils.IsForeignKeyViolation(err) {
+		utils.BadRequest(c, "one or more exercises do not exist")
+		return
+	}
 	if utils.DBError(c, err) {
 		return
 	}
@@ -82,6 +86,10 @@ func (h *Handler) UpdateProgram(c *gin.Context) {
 	p, err := h.s.Program.Update(uid, pid, req)
 	if err == sql.ErrNoRows {
 		utils.NotFound(c, "program not found")
+		return
+	}
+	if utils.IsForeignKeyViolation(err) {
+		utils.BadRequest(c, "one or more exercises do not exist")
 		return
 	}
 	if utils.DBError(c, err) {

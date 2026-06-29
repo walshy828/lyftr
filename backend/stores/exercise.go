@@ -24,15 +24,16 @@ const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, catego
 
 type scanner interface{ Scan(dest ...any) error }
 
-func scanExercise(row scanner) models.Exercise {
-	var e models.Exercise
+func scanExercise(row scanner, e *models.Exercise) error {
 	var secondaryRaw string
-	row.Scan(&e.ID, &e.Name, &e.MuscleGroup, &secondaryRaw, &e.Category, &e.Equipment, &e.Description, &e.ImageURL)
+	if err := row.Scan(&e.ID, &e.Name, &e.MuscleGroup, &secondaryRaw, &e.Category, &e.Equipment, &e.Description, &e.ImageURL); err != nil {
+		return err
+	}
 	json.Unmarshal([]byte(secondaryRaw), &e.SecondaryMuscles)
 	if e.SecondaryMuscles == nil {
 		e.SecondaryMuscles = []string{}
 	}
-	return e
+	return nil
 }
 
 func (s *ExerciseStore) List(f ExerciseFilter) ([]models.Exercise, error) {
@@ -64,16 +65,20 @@ func (s *ExerciseStore) List(f ExerciseFilter) ([]models.Exercise, error) {
 	defer rows.Close()
 	exercises := []models.Exercise{}
 	for rows.Next() {
-		exercises = append(exercises, scanExercise(rows))
+		var e models.Exercise
+		if err := scanExercise(rows, &e); err != nil {
+			return nil, err
+		}
+		exercises = append(exercises, e)
 	}
 	return exercises, rows.Err()
 }
 
 // Get returns one exercise, or sql.ErrNoRows if not found.
 func (s *ExerciseStore) Get(id int64) (models.Exercise, error) {
-	e := scanExercise(s.db.QueryRow(exerciseSelect+` WHERE id = ?`, id))
-	if e.ID == 0 {
-		return models.Exercise{}, sql.ErrNoRows
+	var e models.Exercise
+	if err := scanExercise(s.db.QueryRow(exerciseSelect+` WHERE id = ?`, id), &e); err != nil {
+		return models.Exercise{}, err
 	}
 	return e, nil
 }

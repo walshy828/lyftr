@@ -61,6 +61,10 @@ func (h *Handler) CreateWorkout(c *gin.Context) {
 		req.StartedAt = time.Now()
 	}
 	w, err := h.s.Workout.Create(uid, req)
+	if utils.IsForeignKeyViolation(err) {
+		utils.BadRequest(c, "one or more exercises do not exist")
+		return
+	}
 	if utils.DBError(c, err) {
 		return
 	}
@@ -86,6 +90,10 @@ func (h *Handler) UpdateWorkout(c *gin.Context) {
 	w, err := h.s.Workout.Update(uid, wid, req)
 	if err == sql.ErrNoRows {
 		utils.NotFound(c, "workout not found")
+		return
+	}
+	if utils.IsForeignKeyViolation(err) {
+		utils.BadRequest(c, "one or more exercises do not exist")
 		return
 	}
 	if utils.DBError(c, err) {

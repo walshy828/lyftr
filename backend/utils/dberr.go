@@ -44,6 +44,13 @@ func IsUniqueViolation(err error) bool {
 	}
 }
 
+// IsForeignKeyViolation reports whether err is a FOREIGN KEY constraint failure,
+// i.e. a write referencing a row that doesn't exist — a client error, not an
+// internal one.
+func IsForeignKeyViolation(err error) bool {
+	return sqliteCode(err) == sqlitelib.SQLITE_CONSTRAINT_FOREIGNKEY
+}
+
 // DBError maps a database error to an HTTP response and reports whether it wrote
 // one. It deliberately ignores nil and sql.ErrNoRows: "no rows" means something
 // different per endpoint (401, 404, an empty 200), so each caller handles that
