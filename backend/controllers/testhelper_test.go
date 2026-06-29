@@ -23,7 +23,9 @@ var th *Handler
 func setupTestDB(t *testing.T) {
 	t.Helper()
 	var err error
-	dbName := fmt.Sprintf("file:testdb_%d?mode=memory&cache=shared&_foreign_keys=on", rand.Int63())
+	// modernc ignores the mattn-style _foreign_keys=on; use the _pragma form so the
+	// harness actually enforces foreign keys, matching the production DSN.
+	dbName := fmt.Sprintf("file:testdb_%d?mode=memory&cache=shared&_pragma=foreign_keys(on)", rand.Int63())
 	db.DB, err = sql.Open("sqlite", dbName)
 	if err != nil {
 		t.Fatalf("open test db: %v", err)

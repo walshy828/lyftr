@@ -34,8 +34,14 @@ func Connect() {
 		log.Fatalf("failed to open database: %v", err)
 	}
 
-	DB.SetMaxOpenConns(10)
-	DB.SetMaxIdleConns(5)
+	// SQLite is a single writer — it does not do concurrent writes. Rather than
+	// fight that with a larger pool (which only turns contention into lock errors
+	// to retry), serialize all DB access through ONE connection. With the
+	// nested-cursor fix (no request needs a second connection mid-query), one
+	// connection is sufficient and leaves no in-process lock contention to fail on.
+	// The busy_timeout/WAL pragmas above remain only as cheap cross-process defense.
+	DB.SetMaxOpenConns(1)
+	DB.SetMaxIdleConns(1)
 
 	if err = DB.Ping(); err != nil {
 		log.Fatalf("failed to ping database: %v", err)
