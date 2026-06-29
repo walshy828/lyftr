@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Scale, AlertCircle, Save } from 'lucide-react'
 import { weightAPI } from '../services/api'
-import { useSettingsStore, weightShort, lbsToDisplay, displayToLbs } from '../stores/settings'
+import { useSettingsStore, weightShort, displayToLbs, displayWeight } from '../stores/settings'
+import WeightInput from './WeightInput'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isPositiveNumber } from '../utils/numberUtils'
@@ -28,7 +29,7 @@ export default function EditWeightModal({ isOpen, onClose, onSuccess, log }: Pro
 
   useEffect(() => {
     if (!isOpen || !log) return
-    setWeight(String(Math.round(lbsToDisplay(log.weight, settings.weight_unit))))
+    setWeight(String(displayWeight(log.weight, settings.weight_unit)))
     setLoggedAt(isoToDayInput(log.logged_at))
     setNotes(log.notes ?? '')
     setError('')
@@ -98,17 +99,8 @@ export default function EditWeightModal({ isOpen, onClose, onSuccess, log }: Pro
 
           <div>
             <label className="label">Weight</label>
-            <div className="relative mt-1">
-              <input
-                type="number"
-                value={weight}
-                onChange={e => setWeight(e.target.value)}
-                step="0.1"
-                min="0"
-                className="input pr-10"
-                autoFocus
-              />
-              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-tx-muted">{wUnit}</span>
+            <div className="mt-1">
+              <WeightInput value={weight} onChange={setWeight} unit={wUnit} autoFocus />
             </div>
           </div>
 
