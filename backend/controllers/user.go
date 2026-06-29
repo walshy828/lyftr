@@ -1,7 +1,8 @@
 package controllers
 
 import (
-	"github.com/Cawlumm/lyftr-backend/db"
+	"database/sql"
+
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
 	"github.com/Cawlumm/lyftr-backend/utils"
@@ -10,12 +11,8 @@ import (
 
 func (h *Handler) GetMe(c *gin.Context) {
 	uid := middleware.UserID(c)
-	var u models.User
-	err := db.DB.QueryRow(
-		`SELECT id, email, created_at, updated_at FROM users WHERE id = ?`, uid,
-	).Scan(&u.ID, &u.Email, &u.CreatedAt, &u.UpdatedAt)
-	if err != nil {
-		utils.InternalError(c)
+	u, err := h.s.User.GetMe(uid)
+	if utils.DBError(c, err) {
 		return
 	}
 	utils.OK(c, u)
@@ -23,17 +20,16 @@ func (h *Handler) GetMe(c *gin.Context) {
 
 func (h *Handler) GetSettings(c *gin.Context) {
 	uid := middleware.UserID(c)
-	var s models.UserSettings
-	err := db.DB.QueryRow(
-		`SELECT user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target
-		 FROM user_settings WHERE user_id = ?`, uid,
-	).Scan(&s.UserID, &s.WeightUnit, &s.CalorieTarget, &s.ProteinTarget, &s.CarbTarget, &s.FatTarget)
-	if err != nil {
-		// Return defaults if not found
+	s, err := h.s.User.GetSettings(uid)
+	if err == sql.ErrNoRows {
+		// No row yet — return the defaults.
 		utils.OK(c, models.UserSettings{
 			UserID: uid, WeightUnit: "lbs",
 			CalorieTarget: 2000, ProteinTarget: 150, CarbTarget: 250, FatTarget: 65,
 		})
+		return
+	}
+	if utils.DBError(c, err) {
 		return
 	}
 	utils.OK(c, s)
@@ -46,27 +42,16 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		utils.BadRequest(c, err.Error())
 		return
 	}
-
-	db.DB.Exec(
-		`INSERT INTO user_settings (user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target)
-		 VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(user_id) DO UPDATE SET
-		   weight_unit    = excluded.weight_unit,
-		   calorie_target = excluded.calorie_target,
-		   protein_target = excluded.protein_target,
-		   carb_target    = excluded.carb_target,
-		   fat_target     = excluded.fat_target`,
-		uid, req.WeightUnit, req.CalorieTarget, req.ProteinTarget, req.CarbTarget, req.FatTarget,
-	)
-
-	h.GetSettings(c)
+	s, err := h.s.User.UpsertSettings(uid, req)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, s)
 }
 
 func (h *Handler) DeleteAccount(c *gin.Context) {
 	uid := middleware.UserID(c)
-	_, err := db.DB.Exec(`DELETE FROM users WHERE id = ?`, uid)
-	if err != nil {
-		utils.InternalError(c)
+	if utils.DBError(c, h.s.User.Delete(uid)) {
 		return
 	}
 	utils.OK(c, gin.H{"deleted": true})
