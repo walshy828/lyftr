@@ -45,12 +45,21 @@ type Workout struct {
 	Progression *ProgressionResult `json:"progression,omitempty"`
 }
 
-// ProgressionResult summarizes an auto-progression for the finish toast: which
-// routine and how many of its per-set targets were bumped. Transient (issue #40).
+// ProgressionResult summarizes staged auto-progression for the finish toast: which
+// routine, how many per-set targets got a pending suggestion, and whether any was an
+// all-time PR (drives the 🏆 toast). Transient (issue #40).
 type ProgressionResult struct {
 	ProgramID   int64  `json:"program_id"`
 	ProgramName string `json:"program_name"`
 	Count       int    `json:"count"`
+	IsPR        bool   `json:"is_pr"`
+}
+
+// ResolveSuggestionsReq accepts or dismisses staged routine suggestions (#40) by
+// program_set id. Accepted ids copy suggested_* → target_*; both clear the suggestion.
+type ResolveSuggestionsReq struct {
+	Accept  []int64 `json:"accept"`
+	Dismiss []int64 `json:"dismiss"`
 }
 
 type WorkoutExercise struct {
@@ -262,6 +271,12 @@ type ProgramSet struct {
 	SetNumber         int     `json:"set_number"`
 	TargetReps        int     `json:"target_reps"`
 	TargetWeight      float64 `json:"target_weight"`
+	// Pending auto-progression suggestion (#40) — nil when none. The user approves
+	// it on the routine, which copies suggested_* into target_*. SuggestedIsPR marks
+	// the set as also an all-time best (drives the 🏆 flair).
+	SuggestedWeight *float64 `json:"suggested_weight,omitempty"`
+	SuggestedReps   *int     `json:"suggested_reps,omitempty"`
+	SuggestedIsPR   bool     `json:"suggested_is_pr,omitempty"`
 }
 
 type CreateProgramRequest struct {

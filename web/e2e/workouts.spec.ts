@@ -179,9 +179,9 @@ test.describe('Workouts', () => {
     await page.getByRole('button', { name: 'lbs' }).click()
   })
 
-  // Issue #40: finishing a workout that beat a routine's per-set target bumps that
-  // target and toasts it. Drives the real finish flow; asserts the routine via API.
-  test('finishing a workout that beats a routine target auto-progresses it', async ({ page, request }) => {
+  // Issue #40: finishing a workout that beat a routine's per-set target STAGES a
+  // suggestion (target unchanged) + toasts it; approving on the routine applies it.
+  test('finishing a workout that beats a routine target stages a suggestion to approve', async ({ page, request }) => {
     const headers = { Authorization: `Bearer ${authToken}` }
     const exId = (await (await request.get(`${API}/exercises?limit=1`, { headers })).json()).data[0].id
 
@@ -215,11 +215,23 @@ test.describe('Workouts', () => {
     await page.getByRole('button', { name: 'Finish' }).last().click()
 
     await page.waitForURL('**/workouts')
-    await expect(page.getByText(/Progressed 1 target/)).toBeVisible({ timeout: 5000 })
+    // Toast invites a review (PR wording when it's also an all-time best; either is fine).
+    await expect(page.getByText(/Tap to review 1 update/)).toBeVisible({ timeout: 5000 })
 
-    // The routine's target was bumped 100 → 105.
+    // Staged, NOT applied — the routine target is still 100 until approved.
+    const staged = await (await request.get(`${API}/programs/${progId}`, { headers })).json()
+    expect(staged.data.exercises[0].sets[0].target_weight).toBe(100)
+    expect(staged.data.exercises[0].sets[0].suggested_weight).toBe(105)
+
+    // Approve on the routine → target becomes 105, suggestion cleared.
+    await page.goto(`/programs/${progId}`)
+    await expect(page.getByText('New targets from your last workout')).toBeVisible({ timeout: 5000 })
+    await page.getByRole('button', { name: /Apply all/ }).click()
+    await expect(page.getByText('New targets from your last workout')).toHaveCount(0, { timeout: 5000 })
+
     const after = await (await request.get(`${API}/programs/${progId}`, { headers })).json()
     expect(after.data.exercises[0].sets[0].target_weight).toBe(105)
+    expect(after.data.exercises[0].sets[0].suggested_weight ?? null).toBeNull()
 
     // Cleanup: the workout we just logged + the routine.
     const wl = await (await request.get(`${API}/workouts?limit=20`, { headers })).json()

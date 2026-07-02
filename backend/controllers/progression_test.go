@@ -50,6 +50,26 @@ func getTarget(t *testing.T, setID int64) (int, float64) {
 	return r, w
 }
 
+// getSuggestion returns the staged suggestion for a set: (reps, weight, isPR, present).
+// present is false when no suggestion is staged (suggested_reps IS NULL).
+func getSuggestion(t *testing.T, setID int64) (int, float64, bool, bool) {
+	t.Helper()
+	var nr *int64
+	var nw *float64
+	var npr int
+	if err := db.DB.QueryRow(`SELECT suggested_reps, suggested_weight, suggested_is_pr FROM program_sets WHERE id = ?`, setID).Scan(&nr, &nw, &npr); err != nil {
+		t.Fatalf("read suggestion %d: %v", setID, err)
+	}
+	if nr == nil {
+		return 0, 0, false, false
+	}
+	weight := 0.0
+	if nw != nil {
+		weight = *nw
+	}
+	return int(*nr), weight, npr == 1, true
+}
+
 func insertUser(t *testing.T, email string) int64 {
 	t.Helper()
 	res, err := db.DB.Exec(`INSERT INTO users (email, password_hash) VALUES (?, 'h')`, email)
@@ -60,68 +80,67 @@ func insertUser(t *testing.T, email string) int64 {
 	return id
 }
 
-// Heavier weight raises weight (adopting the reps done at it); same weight with
-// more reps raises reps; an equalled target is untouched. Count reflects only
-// real updates.
-func TestProgressTargets_UpwardRule(t *testing.T) {
+// SuggestTargets STAGES suggestions (never mutates target_*): heavier weight suggests
+// weight+reps; same weight + more reps suggests reps; equalled → nothing. The is-PR flag
+// and count/anyPR are surfaced. Targets stay put until approved.
+func TestSuggestTargets_StagesUpwardOnly(t *testing.T) {
 	setupTestDB(t)
 	ps := stores.NewProgramStore(db.DB)
 	uid := createTestUser(t)
 	exID := createTestExercise(t)
 	pid, ids := seedProgram(t, uid, exID, []ptTarget{{5, 100}, {5, 100}, {5, 100}})
 
-	name, count, err := ps.ProgressTargets(uid, pid, []stores.ProgressInput{
-		{ProgramSetID: ids[0], Weight: 105, Reps: 5}, // heavier → weight+reps
-		{ProgramSetID: ids[1], Weight: 100, Reps: 6}, // same weight, more reps → reps
-		{ProgramSetID: ids[2], Weight: 100, Reps: 5}, // equalled → unchanged
+	name, count, anyPR, err := ps.SuggestTargets(uid, pid, []stores.ProgressInput{
+		{ProgramSetID: ids[0], Weight: 105, Reps: 5, IsPR: true},  // heavier → weight+reps, PR
+		{ProgramSetID: ids[1], Weight: 100, Reps: 6, IsPR: false}, // more reps → reps
+		{ProgramSetID: ids[2], Weight: 100, Reps: 5, IsPR: false}, // equalled → nothing
 	})
 	if err != nil {
-		t.Fatalf("ProgressTargets: %v", err)
+		t.Fatalf("SuggestTargets: %v", err)
 	}
-	if name != "Push A" {
-		t.Errorf("name = %q, want Push A", name)
+	if name != "Push A" || count != 2 || !anyPR {
+		t.Errorf("got (name=%q count=%d anyPR=%v), want (Push A, 2, true)", name, count, anyPR)
 	}
-	if count != 2 {
-		t.Errorf("count = %d, want 2", count)
+	// Targets unchanged (nothing applied yet).
+	for _, id := range ids {
+		if r, w := getTarget(t, id); r != 5 || w != 100 {
+			t.Errorf("target %d changed to %d×%.1f — should stay 5×100 until approved", id, r, w)
+		}
 	}
-	if r, w := getTarget(t, ids[0]); r != 5 || w != 105 {
-		t.Errorf("set0 = %d×%.1f, want 5×105", r, w)
+	// Suggestions staged on the two beaten sets.
+	if r, w, pr, ok := getSuggestion(t, ids[0]); !ok || r != 5 || w != 105 || !pr {
+		t.Errorf("set0 suggestion = (%d×%.1f pr=%v ok=%v), want 5×105 pr=true", r, w, pr, ok)
 	}
-	if r, w := getTarget(t, ids[1]); r != 6 || w != 100 {
-		t.Errorf("set1 = %d×%.1f, want 6×100", r, w)
+	if r, _, pr, ok := getSuggestion(t, ids[1]); !ok || r != 6 || pr {
+		t.Errorf("set1 suggestion = (%d reps pr=%v ok=%v), want 6 reps pr=false", r, pr, ok)
 	}
-	if r, w := getTarget(t, ids[2]); r != 5 || w != 100 {
-		t.Errorf("set2 = %d×%.1f, want 5×100 (unchanged)", r, w)
+	if _, _, _, ok := getSuggestion(t, ids[2]); ok {
+		t.Errorf("set2 should have no suggestion (equalled target)")
 	}
 }
 
-// A lighter weight never lowers the target, even with more reps (the rule is
-// weight-first) — a deload must not rewrite the routine.
-func TestProgressTargets_NeverLowers(t *testing.T) {
+// A lighter set never stages a suggestion, even with more reps (weight-first rule).
+func TestSuggestTargets_NeverLowers(t *testing.T) {
 	setupTestDB(t)
 	ps := stores.NewProgramStore(db.DB)
 	uid := createTestUser(t)
 	exID := createTestExercise(t)
 	pid, ids := seedProgram(t, uid, exID, []ptTarget{{8, 100}})
 
-	_, count, err := ps.ProgressTargets(uid, pid, []stores.ProgressInput{
-		{ProgramSetID: ids[0], Weight: 95, Reps: 12},
-	})
+	_, count, _, err := ps.SuggestTargets(uid, pid, []stores.ProgressInput{{ProgramSetID: ids[0], Weight: 95, Reps: 12}})
 	if err != nil {
-		t.Fatalf("ProgressTargets: %v", err)
+		t.Fatalf("SuggestTargets: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("count = %d, want 0 (lighter never progresses)", count)
+		t.Errorf("count = %d, want 0", count)
 	}
-	if r, w := getTarget(t, ids[0]); r != 8 || w != 100 {
-		t.Errorf("target = %d×%.1f, want 8×100 (unchanged)", r, w)
+	if _, _, _, ok := getSuggestion(t, ids[0]); ok {
+		t.Errorf("no suggestion expected for a lighter set")
 	}
 }
 
-// Ownership + program-join guard (IDOR): a user cannot bump another user's routine
-// targets — neither by passing the victim's program id (ownership gate) nor by
-// passing the victim's set id under their own program id (the pe.program_id join).
-func TestProgressTargets_OwnershipGuard(t *testing.T) {
+// Ownership + program-join guard (IDOR): a user cannot stage onto another user's routine.
+func TestSuggestTargets_OwnershipGuard(t *testing.T) {
 	setupTestDB(t)
 	ps := stores.NewProgramStore(db.DB)
 	owner := createTestUser(t)
@@ -129,43 +148,82 @@ func TestProgressTargets_OwnershipGuard(t *testing.T) {
 	exID := createTestExercise(t)
 	pid, ids := seedProgram(t, owner, exID, []ptTarget{{5, 100}})
 
-	// (a) attacker passes the owner's program id → ownership gate → no-op.
-	name, count, err := ps.ProgressTargets(attacker, pid, []stores.ProgressInput{
-		{ProgramSetID: ids[0], Weight: 999, Reps: 99},
-	})
+	// attacker uses the owner's program id → ownership gate → no-op.
+	name, count, _, err := ps.SuggestTargets(attacker, pid, []stores.ProgressInput{{ProgramSetID: ids[0], Weight: 999, Reps: 99}})
 	if err != nil || name != "" || count != 0 {
 		t.Errorf("victim-program call = (%q, %d, %v), want (\"\", 0, nil)", name, count, err)
 	}
-
-	// (b) attacker passes the owner's set id under their OWN program id → join fails → skip.
+	// attacker's own program + owner's set id → join fails → no-op.
 	p2, _ := seedProgram(t, attacker, exID, []ptTarget{{5, 50}})
-	_, count2, err := ps.ProgressTargets(attacker, p2, []stores.ProgressInput{
-		{ProgramSetID: ids[0], Weight: 999, Reps: 99},
-	})
-	if err != nil || count2 != 0 {
-		t.Errorf("cross-program call = (%d, %v), want (0, nil)", count2, err)
+	_, count2, _, _ := ps.SuggestTargets(attacker, p2, []stores.ProgressInput{{ProgramSetID: ids[0], Weight: 999, Reps: 99}})
+	if count2 != 0 {
+		t.Errorf("cross-program count = %d, want 0", count2)
 	}
-
-	if r, w := getTarget(t, ids[0]); r != 5 || w != 100 {
-		t.Fatalf("owner's target mutated to %d×%.1f — IDOR!", r, w)
+	if _, _, _, ok := getSuggestion(t, ids[0]); ok {
+		t.Fatalf("owner's set got a suggestion — IDOR!")
 	}
 }
 
-// An unknown/deleted set id is a harmless no-op, not an error.
-func TestProgressTargets_UnknownSet(t *testing.T) {
+// ResolveSuggestions: accept copies suggestion→target + clears; dismiss clears only.
+func TestResolveSuggestions_AcceptAndDismiss(t *testing.T) {
 	setupTestDB(t)
 	ps := stores.NewProgramStore(db.DB)
 	uid := createTestUser(t)
 	exID := createTestExercise(t)
-	pid, _ := seedProgram(t, uid, exID, []ptTarget{{5, 100}})
+	pid, ids := seedProgram(t, uid, exID, []ptTarget{{5, 100}, {5, 100}})
 
-	_, count, err := ps.ProgressTargets(uid, pid, []stores.ProgressInput{
-		{ProgramSetID: 999999, Weight: 200, Reps: 10},
-	})
-	if err != nil {
-		t.Fatalf("ProgressTargets: %v", err)
+	if _, count, _, err := ps.SuggestTargets(uid, pid, []stores.ProgressInput{
+		{ProgramSetID: ids[0], Weight: 105, Reps: 5},
+		{ProgramSetID: ids[1], Weight: 110, Reps: 5},
+	}); err != nil || count != 2 {
+		t.Fatalf("stage: count=%d err=%v", count, err)
 	}
-	if count != 0 {
-		t.Errorf("count = %d, want 0", count)
+
+	// Accept set0, dismiss set1.
+	prog, err := ps.ResolveSuggestions(uid, pid, []int64{ids[0]}, []int64{ids[1]})
+	if err != nil {
+		t.Fatalf("ResolveSuggestions: %v", err)
+	}
+	if len(prog.Exercises) != 1 {
+		t.Fatalf("expected 1 exercise, got %d", len(prog.Exercises))
+	}
+	// set0: target applied to 105, suggestion cleared.
+	if r, w := getTarget(t, ids[0]); r != 5 || w != 105 {
+		t.Errorf("accepted target = %d×%.1f, want 5×105", r, w)
+	}
+	if _, _, _, ok := getSuggestion(t, ids[0]); ok {
+		t.Errorf("accepted suggestion should be cleared")
+	}
+	// set1: target unchanged, suggestion cleared.
+	if r, w := getTarget(t, ids[1]); r != 5 || w != 100 {
+		t.Errorf("dismissed target = %d×%.1f, want 5×100 (unchanged)", r, w)
+	}
+	if _, _, _, ok := getSuggestion(t, ids[1]); ok {
+		t.Errorf("dismissed suggestion should be cleared")
+	}
+}
+
+// ResolveSuggestions ignores ids that aren't in the caller's program (ownership/IDOR).
+func TestResolveSuggestions_OwnershipGuard(t *testing.T) {
+	setupTestDB(t)
+	ps := stores.NewProgramStore(db.DB)
+	owner := createTestUser(t)
+	attacker := insertUser(t, "attacker@example.com")
+	exID := createTestExercise(t)
+	pid, ids := seedProgram(t, owner, exID, []ptTarget{{5, 100}})
+	if _, count, _, _ := ps.SuggestTargets(owner, pid, []stores.ProgressInput{{ProgramSetID: ids[0], Weight: 105, Reps: 5}}); count != 1 {
+		t.Fatalf("stage failed")
+	}
+
+	// attacker's own program, tries to accept the owner's staged set id → join fails → no-op.
+	p2, _ := seedProgram(t, attacker, exID, []ptTarget{{5, 50}})
+	if _, err := ps.ResolveSuggestions(attacker, p2, []int64{ids[0]}, nil); err != nil {
+		t.Fatalf("ResolveSuggestions(attacker): %v", err)
+	}
+	if r, w := getTarget(t, ids[0]); r != 5 || w != 100 {
+		t.Fatalf("owner's target mutated to %d×%.1f — IDOR!", r, w)
+	}
+	if _, _, _, ok := getSuggestion(t, ids[0]); !ok {
+		t.Errorf("owner's staged suggestion should be untouched by the attacker")
 	}
 }

@@ -115,3 +115,28 @@ func (h *Handler) DeleteProgram(c *gin.Context) {
 	}
 	utils.OK(c, gin.H{"deleted": true})
 }
+
+// ResolveSuggestions accepts/dismisses staged auto-progression suggestions (#40) and
+// returns the refreshed program. Ownership is enforced in the store.
+func (h *Handler) ResolveSuggestions(c *gin.Context) {
+	uid := middleware.UserID(c)
+	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid program id")
+		return
+	}
+	var req models.ResolveSuggestionsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	p, err := h.s.Program.ResolveSuggestions(uid, pid, req.Accept, req.Dismiss)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "program not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, p)
+}

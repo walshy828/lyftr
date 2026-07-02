@@ -61,6 +61,9 @@ func (h *Handler) CreateWorkout(c *gin.Context) {
 	if req.StartedAt.IsZero() {
 		req.StartedAt = time.Now()
 	}
+	// Snapshot each exercise's all-time best BEFORE saving — so the is-PR flag reflects
+	// the prior best, not one poisoned by the set we're about to log (issue #40).
+	priors := snapshotPRs(h, uid, req)
 	w, err := h.s.Workout.Create(uid, req)
 	if utils.IsForeignKeyViolation(err) {
 		utils.BadRequest(c, "one or more exercises do not exist")
@@ -69,39 +72,68 @@ func (h *Handler) CreateWorkout(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
-	// Auto-progress the routine's per-set targets (issue #40). Best-effort: a
-	// failure here must never fail the already-saved workout — log and move on.
-	if p := progressRoutine(h, uid, req); p != nil {
+	// Stage routine target suggestions (issue #40). Best-effort: a failure here must
+	// never fail the already-saved workout — log and move on.
+	if p := progressRoutine(h, uid, req, priors); p != nil {
 		w.Progression = p
 	}
 	utils.Created(c, w)
 }
 
-// progressRoutine bumps the source routine's targets for the sets the user beat
-// this workout, returning a summary for the finish toast (nil if nothing changed
-// or the workout wasn't from a routine). Only sets carrying a program_set_id are
-// considered; the store enforces ownership.
-func progressRoutine(h *Handler, uid int64, req models.CreateWorkoutRequest) *models.ProgressionResult {
+// snapshotPRs records each routine exercise's current best (weight desc, then reps)
+// before the workout is saved, so is-PR can be judged against the prior best. Empty
+// for freestyle workouts. A missing PR (no rows) is recorded as absent.
+func snapshotPRs(h *Handler, uid int64, req models.CreateWorkoutRequest) map[int64]*stores.ExercisePR {
 	if req.ProgramID == nil {
 		return nil
 	}
+	priors := make(map[int64]*stores.ExercisePR)
+	for _, ex := range req.Exercises {
+		if _, seen := priors[ex.ExerciseID]; seen {
+			continue
+		}
+		pr, err := h.s.Workout.PRForExercise(uid, ex.ExerciseID)
+		if err != nil {
+			priors[ex.ExerciseID] = nil // no prior best (first time) or lookup failed
+			continue
+		}
+		p := pr
+		priors[ex.ExerciseID] = &p
+	}
+	return priors
+}
+
+// progressRoutine stages a target suggestion for each set the user beat, flagging
+// all-time PRs, and returns a summary for the finish toast (nil if nothing staged or
+// the workout wasn't from a routine). Only sets carrying a program_set_id count; the
+// store enforces ownership.
+func progressRoutine(h *Handler, uid int64, req models.CreateWorkoutRequest, priors map[int64]*stores.ExercisePR) *models.ProgressionResult {
+	if req.ProgramID == nil {
+		return nil
+	}
+	const eps = 1e-6
 	var inputs []stores.ProgressInput
 	for _, ex := range req.Exercises {
 		for _, s := range ex.Sets {
 			if s.ProgramSetID == nil || s.IsWarmup {
 				continue
 			}
+			prior := priors[ex.ExerciseID]
+			isPR := prior == nil ||
+				s.Weight > prior.Weight+eps ||
+				(s.Weight >= prior.Weight-eps && s.Reps > prior.Reps)
 			inputs = append(inputs, stores.ProgressInput{
 				ProgramSetID: *s.ProgramSetID,
 				Weight:       s.Weight,
 				Reps:         s.Reps,
+				IsPR:         isPR,
 			})
 		}
 	}
 	if len(inputs) == 0 {
 		return nil
 	}
-	name, count, err := h.s.Program.ProgressTargets(uid, *req.ProgramID, inputs)
+	name, count, anyPR, err := h.s.Program.SuggestTargets(uid, *req.ProgramID, inputs)
 	if err != nil {
 		log.Printf("[workouts/progress] uid=%d program=%d: %v", uid, *req.ProgramID, err)
 		return nil
@@ -109,7 +141,7 @@ func progressRoutine(h *Handler, uid int64, req models.CreateWorkoutRequest) *mo
 	if count == 0 {
 		return nil
 	}
-	return &models.ProgressionResult{ProgramID: *req.ProgramID, ProgramName: name, Count: count}
+	return &models.ProgressionResult{ProgramID: *req.ProgramID, ProgramName: name, Count: count, IsPR: anyPR}
 }
 
 func (h *Handler) UpdateWorkout(c *gin.Context) {

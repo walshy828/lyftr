@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { format } from 'date-fns'
-import { Dumbbell, Plus, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, ChevronRight, MoreVertical } from 'lucide-react'
+import { Dumbbell, Plus, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, Award, ChevronRight, MoreVertical } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Loading from '../components/Loading'
 import EmptyState from '../components/ui/EmptyState'
@@ -308,10 +308,10 @@ export default function Workouts() {
 
       {progression && (
         <Toast
-          variant="success"
-          icon={TrendingUp}
-          title={`Progressed ${progression.count} ${progression.count === 1 ? 'target' : 'targets'}`}
-          description={`Tap to view ${progression.program_name}`}
+          variant={progression.is_pr ? 'warning' : 'success'}
+          icon={progression.is_pr ? Award : TrendingUp}
+          title={progression.is_pr ? `New PR in ${progression.program_name}` : `New targets in ${progression.program_name}`}
+          description={`Tap to review ${progression.count} ${progression.count === 1 ? 'update' : 'updates'}`}
           onClick={() => { setProgression(null); navigate(`/programs/${progression.program_id}`) }}
           onDismiss={() => setProgression(null)}
         />

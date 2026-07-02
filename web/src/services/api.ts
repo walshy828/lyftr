@@ -160,6 +160,9 @@ export const programAPI = {
   create: (data: any) => api.post<{ data: types.Program }>('/programs', data).then(res => unwrap(res)),
   update: (id: number, data: any) => api.put<{ data: types.Program }>(`/programs/${id}`, data).then(res => unwrap(res)),
   delete: (id: number) => api.delete(`/programs/${id}`),
+  // Accept/dismiss staged auto-progression suggestions (#40); returns the updated program.
+  resolveSuggestions: (id: number, data: { accept: number[]; dismiss: number[] }) =>
+    api.post<{ data: types.Program }>(`/programs/${id}/suggestions/resolve`, data).then(res => unwrap(res)),
 }
 
 export const weightAPI = {

@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import {
   ArrowLeft, BookOpen, Dumbbell, Edit2, Trash2, Play, AlertCircle, Loader, ChevronRight, Pause, TimerOff,
+  Award, TrendingUp, Check, X,
 } from 'lucide-react'
 import { programAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
@@ -24,6 +25,22 @@ export default function ProgramDetail() {
   const [error, setError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [resolving, setResolving] = useState(false)
+
+  // Accept (apply → target) or dismiss staged auto-progression suggestions (#40),
+  // then refresh from the returned program.
+  const resolveSuggestions = async (accept: number[], dismiss: number[]) => {
+    if (!program || resolving) return
+    setResolving(true)
+    try {
+      const updated = await programAPI.resolveSuggestions(program.id, { accept, dismiss })
+      setProgram(updated)
+    } catch {
+      /* leave the banner in place so the user can retry */
+    } finally {
+      setResolving(false)
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -98,6 +115,27 @@ export default function ProgramDetail() {
   const exs = program.exercises ?? []
   const totalSets = exs.reduce((s, ex) => s + (ex.sets ?? []).length, 0)
 
+  // Pending auto-progression suggestions (#40), flattened for the review banner. A
+  // suggestion exists when suggested_reps is set; weight-vs-reps change decides the label.
+  const suggestions = exs.flatMap(ex =>
+    (ex.sets ?? [])
+      .filter(s => s.id != null && s.suggested_reps != null)
+      .map(s => {
+        const weightChanged = s.suggested_weight != null && Math.abs(s.suggested_weight - s.target_weight) > 1e-6
+        return {
+          setId: s.id as number,
+          exName: ex.exercise?.name ?? 'Exercise',
+          setNumber: s.set_number,
+          isPR: !!s.suggested_is_pr,
+          oldLabel: weightChanged ? `${displayWeight(s.target_weight, wUnit)}` : `${s.target_reps}`,
+          newLabel: weightChanged
+            ? `${displayWeight(s.suggested_weight as number, wUnit)} ${wUnit}`
+            : `${s.suggested_reps} reps`,
+        }
+      })
+  )
+  const suggestedSetIds = suggestions.map(s => s.setId)
+
   return (
     <div className="space-y-5 animate-slide-up max-w-2xl">
       {/* Back nav */}
@@ -146,6 +184,66 @@ export default function ProgramDetail() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Auto-progression review banner (#40) — approve the targets you beat last workout */}
+      {suggestions.length > 0 && (
+        <div className="bg-surface-raised border border-warning-500/30 rounded-xl overflow-hidden animate-slide-up">
+          <div className="flex items-center gap-2 px-4 py-3">
+            {suggestions.some(s => s.isPR)
+              ? <Award className="w-4 h-4 text-warning-400 flex-shrink-0" />
+              : <TrendingUp className="w-4 h-4 text-warning-400 flex-shrink-0" />}
+            <span className="text-sm font-semibold text-tx-primary flex-1">New targets from your last workout</span>
+            <span className="text-xs font-bold text-warning-400 bg-warning-500/15 px-2 py-0.5 rounded-full tabular-nums">{suggestions.length}</span>
+          </div>
+          {suggestions.map(sg => (
+            <div key={sg.setId} className="flex items-center gap-3 px-4 py-2.5 border-t border-surface-border/60">
+              <span className="text-sm text-tx-secondary min-w-0 flex-1 truncate flex items-center gap-1.5">
+                {sg.isPR && <Award className="w-3.5 h-3.5 text-warning-400 flex-shrink-0" />}
+                <span className="truncate"><span className="font-semibold text-tx-primary">{sg.exName}</span> · Set {sg.setNumber}</span>
+              </span>
+              <span className="text-sm tabular-nums whitespace-nowrap flex-shrink-0">
+                <span className="text-tx-muted line-through">{sg.oldLabel}</span>
+                <span className="text-warning-400 mx-1.5">→</span>
+                <span className="text-tx-primary font-bold">{sg.newLabel}</span>
+              </span>
+              <span className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => resolveSuggestions([sg.setId], [])}
+                  disabled={resolving}
+                  aria-label={`Accept ${sg.exName} set ${sg.setNumber}`}
+                  className="w-7 h-7 rounded-lg bg-success-500/15 text-success-400 hover:bg-success-500/25 disabled:opacity-50 flex items-center justify-center transition-colors"
+                >
+                  <Check className="w-4 h-4" strokeWidth={3} />
+                </button>
+                <button
+                  onClick={() => resolveSuggestions([], [sg.setId])}
+                  disabled={resolving}
+                  aria-label={`Dismiss ${sg.exName} set ${sg.setNumber}`}
+                  className="w-7 h-7 rounded-lg bg-surface-muted text-tx-muted hover:text-tx-primary disabled:opacity-50 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" strokeWidth={3} />
+                </button>
+              </span>
+            </div>
+          ))}
+          <div className="flex gap-2 px-4 py-3 border-t border-surface-border/60">
+            <button
+              onClick={() => resolveSuggestions([], suggestedSetIds)}
+              disabled={resolving}
+              className="flex-1 py-2 rounded-lg bg-surface-muted border border-surface-border text-tx-secondary hover:text-tx-primary disabled:opacity-50 text-sm font-medium transition-colors"
+            >
+              Dismiss all
+            </button>
+            <button
+              onClick={() => resolveSuggestions(suggestedSetIds, [])}
+              disabled={resolving}
+              className="flex-1 py-2 rounded-lg bg-warning-500 hover:bg-warning-400 disabled:opacity-50 text-[#1a1400] text-sm font-semibold transition-colors"
+            >
+              Apply all ({suggestions.length})
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Header */}
@@ -243,9 +341,11 @@ export default function ProgramDetail() {
                   <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
                     {sets.map((set, i) => {
                       const isBest = set.target_weight === maxTargetLbs && maxTargetLbs > 0
+                      const hasSuggestion = set.suggested_reps != null
                       return (
                         <div key={i} className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold tabular-nums leading-none ${
-                          isBest ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/25' : 'bg-surface-raised text-tx-secondary'
+                          hasSuggestion ? 'bg-warning-500/10 text-tx-secondary ring-1 ring-warning-500/40'
+                            : isBest ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/25' : 'bg-surface-raised text-tx-secondary'
                         }`}>
                           {set.target_reps > 0 ? set.target_reps : '—'} × {set.target_weight > 0 ? `${displayWeight(set.target_weight, wUnit)} ${wUnit}` : 'BW'}
                         </div>

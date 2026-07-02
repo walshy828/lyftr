@@ -87,6 +87,7 @@ func Setup(r *gin.Engine, h *controllers.Handler) {
 		protected.GET("programs/:id", h.GetProgram)
 		protected.PUT("programs/:id", h.UpdateProgram)
 		protected.DELETE("programs/:id", h.DeleteProgram)
+		protected.POST("programs/:id/suggestions/resolve", h.ResolveSuggestions)
 
 		// Admin
 		protected.POST("admin/sync-exercises", h.SyncExercises)

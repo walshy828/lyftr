@@ -48,6 +48,13 @@ func alterMigrations() {
 	// Per-exercise rest timer (#33). Existing rows seed to 90s (on); 0 = off.
 	ensureColumn("program_exercises", "rest_seconds", `ALTER TABLE program_exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 90`)
 	ensureColumn("workout_exercises", "rest_seconds", `ALTER TABLE workout_exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 90`)
+
+	// Progressive-overload suggestions (#40). Nullable = "no pending suggestion";
+	// a suggestion exists when suggested_reps IS NOT NULL (weight+reps staged together).
+	// The user reviews + approves these on the routine; approving copies them into target_*.
+	ensureColumn("program_sets", "suggested_weight", `ALTER TABLE program_sets ADD COLUMN suggested_weight REAL`)
+	ensureColumn("program_sets", "suggested_reps", `ALTER TABLE program_sets ADD COLUMN suggested_reps INTEGER`)
+	ensureColumn("program_sets", "suggested_is_pr", `ALTER TABLE program_sets ADD COLUMN suggested_is_pr INTEGER NOT NULL DEFAULT 0`)
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

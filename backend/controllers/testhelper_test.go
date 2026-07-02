@@ -117,7 +117,10 @@ CREATE TABLE IF NOT EXISTS program_sets (
   program_exercise_id INTEGER NOT NULL REFERENCES program_exercises(id) ON DELETE CASCADE,
   set_number INTEGER NOT NULL DEFAULT 1,
   target_reps INTEGER NOT NULL DEFAULT 0,
-  target_weight REAL NOT NULL DEFAULT 0
+  target_weight REAL NOT NULL DEFAULT 0,
+  suggested_weight REAL,
+  suggested_reps INTEGER,
+  suggested_is_pr INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS weight_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
