@@ -15,10 +15,10 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ]
-// Resolve ALL modules (incl. react from @lyftr/shared and from react-native itself)
-// only through the paths above, never a package's own nested node_modules. This
-// forces a SINGLE react instance across the app + shared + react-native — without it,
-// duplicate react copies crash RN 0.81's Fabric renderer ("ReactSharedInternals.S").
-config.resolver.disableHierarchicalLookup = true
+// Keep hierarchical lookup ON (default) so packages resolve their own transitive deps
+// (e.g. react-native-reanimated -> semver/functions/satisfies). A SINGLE react instance
+// — required or RN 0.81's Fabric renderer crashes ("ReactSharedInternals.S") — is instead
+// guaranteed by the root package.json `overrides.react` pin + a hoisted single copy.
+config.resolver.disableHierarchicalLookup = false
 
 module.exports = withNativeWind(config, { input: './global.css' })
