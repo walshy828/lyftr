@@ -6,7 +6,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import Loading from '../components/Loading'
 import EmptyState from '../components/ui/EmptyState'
 import PageHeader from '../components/ui/PageHeader'
-import ProgressionToast from '../components/ProgressionToast'
+import { Toast } from '../components/ui'
 import { useServerInfiniteList } from '../hooks/useServerInfiniteList'
 import { workoutAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayVolume } from '../stores/settings'
@@ -307,10 +307,12 @@ export default function Workouts() {
       </div>
 
       {progression && (
-        <ProgressionToast
-          count={progression.count}
-          programId={progression.program_id}
-          routineName={progression.program_name}
+        <Toast
+          variant="success"
+          icon={TrendingUp}
+          title={`Progressed ${progression.count} ${progression.count === 1 ? 'target' : 'targets'}`}
+          description={`Tap to view ${progression.program_name}`}
+          onClick={() => { setProgression(null); navigate(`/programs/${progression.program_id}`) }}
           onDismiss={() => setProgression(null)}
         />
       )}
