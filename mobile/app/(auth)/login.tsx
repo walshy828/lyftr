@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { View, Text } from 'react-native'
 import { Link } from 'expo-router'
 import { Screen, H1, Field, Button, Muted } from '../../src/components/ui'
+import { ServerConfig } from '../../src/components/ServerConfig'
 import { useAuthStore } from '../../src/lib/lyftr'
 
 export default function Login() {
@@ -54,6 +55,8 @@ export default function Login() {
           <Muted>No account?</Muted>
           <Link href="/register" className="text-brand-400 font-semibold">Sign up</Link>
         </View>
+
+        <ServerConfig />
       </View>
     </Screen>
   )
