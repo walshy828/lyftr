@@ -1,19 +1,17 @@
 import { useState } from 'react'
-import { Text, View } from 'react-native'
+import { Text, View, Linking } from 'react-native'
 import { Link } from 'expo-router'
 import { AuthScaffold } from '../../src/components/AuthScaffold'
 import { IconInput, GradientButton, SecondaryButton, AuthDivider, ServerRow, Footer } from '../../src/components/authui'
-import { useAuthStore, useServerStore } from '../../src/lib/lyftr'
+import { useAuthStore } from '../../src/lib/lyftr'
 
-// Public hosted demo (Fly). "Try demo account" points here so App Store reviewers and
-// curious users get a working account with zero setup.
-const DEMO_SERVER = 'https://lyftr-demo.fly.dev'
+// Public hosted demo (Fly) — the "Try demo account" button opens it in the browser.
+const DEMO_URL = 'https://lyftr-demo.fly.dev'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const login = useAuthStore((s) => s.login)
-  const setServerUrl = useServerStore((s) => s.setServerUrl)
   const loading = useAuthStore((s) => s.isLoading)
   const error = useAuthStore((s) => s.error)
   const clearError = useAuthStore((s) => s.clearError)
@@ -21,11 +19,8 @@ export default function Login() {
   const submit = async () => {
     try { await login(email.trim(), password) } catch {}
   }
-  const demo = async () => {
-    try {
-      await setServerUrl(DEMO_SERVER) // point at the hosted demo, then sign in
-      await login('demo@lyftr.local', 'password123')
-    } catch {}
+  const demo = () => {
+    Linking.openURL(DEMO_URL).catch(() => {})
   }
 
   return (
