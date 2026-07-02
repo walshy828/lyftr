@@ -8,7 +8,10 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "backgroundColor": "#070d1a",
-    "assetBundlePatterns": ["**/*"],
+    "icon": "./assets/icon.png",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "local.lyftr.app",
@@ -17,19 +20,36 @@
       }
     },
     "android": {
-      "package": "local.lyftr.app"
+      "package": "local.lyftr.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0d1629"
+      }
     },
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
       [
         "expo-camera",
-        { "cameraPermission": "Lyftr uses the camera to scan food barcodes so you can log nutrition quickly." }
-      ]
+        {
+          "cameraPermission": "Lyftr uses the camera to scan food barcodes so you can log nutrition quickly."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#070d1a"
+        }
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

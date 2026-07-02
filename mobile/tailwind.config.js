@@ -2,6 +2,9 @@
  *  index.css. MVP ships the app's DARK palette as the fixed theme (the web app's
  *  .dark values); light-mode + CSS-variable theming can follow later. */
 module.exports = {
+  // Fixed dark palette (no dark: variants yet); 'class' avoids NativeWind's
+  // media-based color-scheme management + its "dark mode is type 'media'" warning.
+  darkMode: 'class',
   content: ['./app/**/*.{js,ts,jsx,tsx}', './src/**/*.{js,ts,jsx,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {

@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { View, Text } from 'react-native'
+import { Text, View } from 'react-native'
 import { Link } from 'expo-router'
-import { Screen, H1, Field, Button, Muted } from '../../src/components/ui'
-import { ServerConfig } from '../../src/components/ServerConfig'
+import { AuthScaffold } from '../../src/components/AuthScaffold'
+import { IconInput, GradientButton, SecondaryButton, AuthDivider, ServerRow, Footer } from '../../src/components/authui'
 import { useAuthStore } from '../../src/lib/lyftr'
 
 export default function Login() {
-  const [email, setEmail] = useState('demo@lyftr.local')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const login = useAuthStore((s) => s.login)
   const loading = useAuthStore((s) => s.isLoading)
@@ -14,50 +14,47 @@ export default function Login() {
   const clearError = useAuthStore((s) => s.clearError)
 
   const submit = async () => {
-    try {
-      await login(email.trim(), password)
-      // On success the root auth gate redirects to the tabs.
-    } catch {
-      // error is surfaced via the store
-    }
+    try { await login(email.trim(), password) } catch {}
+  }
+  const demo = async () => {
+    try { await login('demo@lyftr.local', 'password123') } catch {}
   }
 
   return (
-    <Screen className="justify-center">
-      <View className="gap-8">
-        <View className="gap-2">
-          <H1>Welcome back</H1>
-          <Muted>Log in to your Lyftr account.</Muted>
+    <AuthScaffold heading="Welcome back" subtitle="Sign in to continue training.">
+      <ServerRow />
+      <IconInput
+        label="Email"
+        icon="mail"
+        value={email}
+        onChangeText={(t) => { clearError(); setEmail(t) }}
+        keyboardType="email-address"
+        placeholder="you@example.com"
+      />
+      <IconInput
+        label="Password"
+        icon="lock"
+        password
+        value={password}
+        onChangeText={(t) => { clearError(); setPassword(t) }}
+        placeholder="••••••••"
+      />
+      {error ? (
+        <Text style={{ marginTop: 12, color: '#f87171', fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 13 }}>
+          {error}
+        </Text>
+      ) : null}
+      <GradientButton title="Sign in" onPress={submit} loading={loading} />
+      <AuthDivider />
+      <SecondaryButton title="Try demo account" onPress={demo} />
+      <Footer>
+        <View style={{ flexDirection: 'row', gap: 5 }}>
+          <Text style={{ color: '#94a3b8', fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 14 }}>New here?</Text>
+          <Link href="/register" style={{ color: '#38d8fb', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14 }}>
+            Create account
+          </Link>
         </View>
-
-        <View className="gap-4">
-          <Field
-            label="Email"
-            value={email}
-            onChangeText={(t) => { clearError(); setEmail(t) }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            placeholder="you@example.com"
-          />
-          <Field
-            label="Password"
-            value={password}
-            onChangeText={(t) => { clearError(); setPassword(t) }}
-            secureTextEntry
-            placeholder="••••••••"
-          />
-          {error ? <Text className="text-error-400 text-sm">{error}</Text> : null}
-          <Button title="Log in" onPress={submit} loading={loading} />
-        </View>
-
-        <View className="flex-row justify-center gap-1.5">
-          <Muted>No account?</Muted>
-          <Link href="/register" className="text-brand-400 font-semibold">Sign up</Link>
-        </View>
-
-        <ServerConfig />
-      </View>
-    </Screen>
+      </Footer>
+    </AuthScaffold>
   )
 }
