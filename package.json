@@ -1,0 +1,14 @@
+{
+  "name": "lyftr-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "//": "npm workspaces root. `web` is deliberately NOT a workspace member yet — it keeps its own independent install + CI (cd web && npm ci). It migrates to @lyftr/shared in a later PR. See .claude/plans mobile-app plan.",
+  "workspaces": [
+    "packages/*",
+    "mobile"
+  ],
+  "scripts": {
+    "shared:type-check": "npm run type-check -w @lyftr/shared",
+    "shared:test": "npm run test -w @lyftr/shared"
+  }
+}
