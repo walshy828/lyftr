@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, View } from 'react-native'
-import { router, useFocusEffect, type Href } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { Dumbbell, Plus } from 'lucide-react-native'
 import { weightShort, type Workout } from '@lyftr/shared'
 import { AppText, Card, EmptyState, Field, IconButton, Label, PageHeader, Screen } from '../../../src/components/ui'
@@ -8,11 +8,6 @@ import { WorkoutCard } from '../../../src/components/workouts/WorkoutCard'
 import { useServerInfiniteList } from '../../../src/hooks/useServerInfiniteList'
 import { client, useSettingsStore } from '../../../src/lib/lyftr'
 import { useTheme } from '../../../src/theme/useTheme'
-
-// TODO(phase-1b): AddWorkout screen lands next chunk. Typed routes can't see a route
-// with no file yet, hence the cast — remove it when the screen exists. Until then
-// this opens expo-router's built-in Unmatched Route screen (back recovers).
-const NEW_WORKOUT_HREF = '/workouts/new' as unknown as Href
 
 export default function Workouts() {
   const settings = useSettingsStore((s) => s.settings)
@@ -111,7 +106,7 @@ export default function Workouts() {
                   label="Log Workout"
                   variant="solid"
                   size="md"
-                  onPress={() => router.push(NEW_WORKOUT_HREF)}
+                  onPress={() => router.push('/workouts/new')}
                 />
               }
             />

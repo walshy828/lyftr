@@ -15,8 +15,6 @@ import { client, useSettingsStore } from '../../../src/lib/lyftr'
 import { useTheme } from '../../../src/theme/useTheme'
 import { muscleColor } from '../../../src/utils/exerciseUtils'
 
-// TODO(phase-1b): EditWorkout screen lands next chunk — cast until the route exists.
-const editHref = (id: number) => `/workouts/${id}/edit` as unknown as Href
 // TODO(phase-2.5): exercise-detail screen. Until it lands this opens expo-router's
 // built-in Unmatched Route screen (deliberate — the nav is wired, back recovers).
 const exerciseHref = (exerciseId: number) => `/workouts/exercise/${exerciseId}` as unknown as Href
@@ -168,7 +166,7 @@ export default function WorkoutDetail() {
                 label="Edit workout"
                 variant="brand"
                 size="md"
-                onPress={() => router.push(editHref(workout.id))}
+                onPress={() => router.push(`/workouts/${workout.id}/edit`)}
               />
               <IconButton
                 icon={Trash2}

@@ -25,6 +25,7 @@ export { OptionPill } from './OptionPill'
 export { Field } from './Field'
 export { NumberField } from './NumberField'
 export { StepperTile } from './StepperTile'
+export { DateInput } from './DateInput'
 
 // Data display
 export { Stat } from './Stat'

@@ -144,7 +144,7 @@ spinners for partial data.
 | `StepperTile` | `StepperTile` | built |
 | `EmptyState` | `EmptyState` | built |
 | `Toast` | `Toast` | built |
-| `DateInput` | — | **to-build** (needs `@react-native-community/datetimepicker`; add the dep only when a screen needs it) |
+| `DateInput` | `DateInput` | built (wraps `@react-native-community/datetimepicker`; value stays `YYYY-MM-DD`) |
 | `.card` CSS class | `Card` | built |
 | `.btn` CSS classes | `Button` | built |
 | `.input` / `.label` CSS classes | `Field` | built (focus-glow, Fabric-safe) |

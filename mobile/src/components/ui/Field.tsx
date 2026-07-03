@@ -23,7 +23,10 @@ interface Props extends TextInputProps {
 // IconInput — any focus-reactive input must follow it. The animated border lives on a
 // wrapper (inline styles: animation-driven values are a documented className
 // exception), so `className` applies to the outer container for layout tweaks.
-export function Field({ label, error, className = '', onFocus, onBlur, ...rest }: Props) {
+//
+// `multiline` is the web `textarea min-h-20 resize-none` analog: taller floor,
+// top-aligned input, same UI-thread focus glow.
+export function Field({ label, error, className = '', onFocus, onBlur, multiline, ...rest }: Props) {
   const { colors, brand } = useTheme()
   const focus = useSharedValue(0)
   const boxStyle = useAnimatedStyle(() => ({
@@ -37,19 +40,22 @@ export function Field({ label, error, className = '', onFocus, onBlur, ...rest }
       <Reanimated.View
         style={[
           {
-            height: 48,
+            minHeight: multiline ? 80 : 48,
             borderRadius: 8,
             borderWidth: 1,
             paddingHorizontal: 14,
+            paddingVertical: multiline ? 10 : 0,
             backgroundColor: colors.overlay,
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: multiline ? 'flex-start' : 'center',
           },
           boxStyle,
         ]}
       >
         <TextInput
           className="flex-1 font-sans text-base text-tx-primary"
+          style={multiline ? { minHeight: 60, textAlignVertical: 'top' } : undefined}
+          multiline={multiline}
           placeholderTextColor={colors.txMuted}
           onFocus={(e) => {
             focus.value = withTiming(1, { duration: 150 })
