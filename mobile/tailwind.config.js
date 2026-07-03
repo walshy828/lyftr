@@ -10,6 +10,19 @@ module.exports = {
   presets: [require('nativewind/preset')],
   theme: {
     extend: {
+      // Brand fonts (loaded in app/_layout.tsx via @expo-google-fonts). Each WEIGHT is
+      // its own family name in Expo, so Tailwind's `font-bold` (fontWeight) does
+      // nothing useful with them — weight is picked by choosing the family. These
+      // classes exist for the Typography primitives in src/components/ui/Typography.tsx;
+      // screens should use those primitives rather than these classes directly.
+      fontFamily: {
+        display: 'Outfit_700Bold',
+        'display-heavy': 'Outfit_800ExtraBold',
+        sans: 'PlusJakartaSans_500Medium',
+        'sans-semibold': 'PlusJakartaSans_600SemiBold',
+        'sans-bold': 'PlusJakartaSans_700Bold',
+        'sans-heavy': 'PlusJakartaSans_800ExtraBold',
+      },
       colors: {
         // Surfaces + text resolve from CSS vars (global.css) → theme-aware.
         surface: {
