@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -6,9 +6,11 @@ import {
   TextInputProps,
   Pressable,
   ActivityIndicator,
+  Animated,
+  Platform,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
-import { Mail, Lock, Eye, EyeOff, Server, ChevronDown, LogIn, Play } from 'lucide-react-native'
+import { AlertCircle, Mail, Lock, Eye, EyeOff, Server, ChevronDown, LogIn, Play } from 'lucide-react-native'
 import { useServerStore } from '../lib/lyftr'
 import { useTheme } from '../theme/useTheme'
 import { testServerConnection, normalizeServerUrl } from '@lyftr/shared'
@@ -71,6 +73,45 @@ export function IconInput({
         ) : null}
       </View>
     </View>
+  )
+}
+
+// Boxed error alert — mirror of the web's `.alert-error` (soft error-tinted bg, error
+// border, AlertCircle icon). Text is errorSoft on dark but the stronger error red on
+// light, where errorSoft doesn't have enough contrast. Fades/slides in on appearance.
+export function AuthError({ message }: { message: string }) {
+  const { isDark, brand } = useTheme()
+  const anim = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    anim.setValue(0)
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start()
+  }, [message, anim])
+  const tint = isDark ? brand.errorSoft : brand.error
+  return (
+    <Animated.View
+      style={{
+        marginTop: 16,
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+        padding: 14,
+        borderRadius: 12,
+        backgroundColor: 'rgba(239,68,68,0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(239,68,68,0.2)',
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-4, 0] }) }],
+      }}
+    >
+      <AlertCircle size={16} color={tint} strokeWidth={2.2} style={{ marginTop: 1.5 }} />
+      <Text style={{ flex: 1, fontFamily: FONT.body, fontSize: 13, lineHeight: 19, color: tint }}>
+        {message}
+      </Text>
+    </Animated.View>
   )
 }
 

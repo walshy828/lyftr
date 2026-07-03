@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import * as types from '../types'
 import { StorageAdapter, STORAGE_KEYS } from '../storage'
-import { LyftrClient } from '../client'
+import { LyftrClient, apiErrorMessage } from '../client'
 
 export interface AuthStore {
   user: types.User | null
@@ -45,7 +45,9 @@ export function createAuthStore(client: LyftrClient, storage: StorageAdapter) {
         await storage.set(STORAGE_KEYS.user, JSON.stringify(data.user))
         set({ user: data.user, isAuthenticated: true, isLoading: false })
       } catch (err: any) {
-        set({ error: err.response?.data?.error || 'Login failed', isLoading: false })
+        // Same message logic as the web login page: server-provided error if present,
+        // else a status-aware hint (network/CORS, 5xx, misconfigured URL) via apiErrorMessage.
+        set({ error: apiErrorMessage(err, 'Invalid email or password.'), isLoading: false })
         throw err
       }
     },
@@ -59,7 +61,7 @@ export function createAuthStore(client: LyftrClient, storage: StorageAdapter) {
         await storage.set(STORAGE_KEYS.user, JSON.stringify(data.user))
         set({ user: data.user, isAuthenticated: true, isLoading: false })
       } catch (err: any) {
-        set({ error: err.response?.data?.error || 'Registration failed', isLoading: false })
+        set({ error: apiErrorMessage(err, 'Registration failed.'), isLoading: false })
         throw err
       }
     },

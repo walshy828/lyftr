@@ -1,5 +1,5 @@
-import { ReactNode } from 'react'
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
+import { ReactNode, useRef, useState } from 'react'
+import { View, Text, KeyboardAvoidingView, Platform, Animated } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -19,6 +19,28 @@ export function AuthScaffold({
   children: ReactNode
 }) {
   const { colors } = useTheme()
+
+  // Stretchy pull-down header (classic iOS): track the scroll offset and, on
+  // overscroll (negative scrollY, iOS bounce), stretch the hero's gradient BACKGROUND
+  // while the hero text rides down with the content. The background is (1) pinned to
+  // the viewport top by translating it against the scroll and (2) scaled from its top
+  // edge (transformOrigin 'top', RN 0.81+) by 1 + pull/heroH, so its bottom edge
+  // tracks the sheet exactly — no base-color gap ever peeks above the gradient or
+  // between gradient and sheet, and the notch/safe area stays covered. Both
+  // interpolations clamp at 0 so normal (positive) scrolling is untouched.
+  const scrollY = useRef(new Animated.Value(0)).current
+  const [heroH, setHeroH] = useState(320) // measured; fallback ≈ real hero height
+  const bgTranslate = scrollY.interpolate({
+    inputRange: [-1, 0],
+    outputRange: [-1, 0], // identity for pulls (extrapolates left), 0 once scrolled
+    extrapolateRight: 'clamp',
+  })
+  const bgScale = scrollY.interpolate({
+    inputRange: [-heroH, 0],
+    outputRange: [2, 1],
+    extrapolateRight: 'clamp',
+  })
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.base }}
@@ -26,25 +48,47 @@ export function AuthScaffold({
     >
       {/* Hero is always the brand gradient (dark), so the status bar stays light. */}
       <StatusBar style="light" />
-      <ScrollView
+      <Animated.ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        bounces={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: Platform.OS !== 'web', // RN-web has no native driver
+        })}
+        scrollEventThrottle={16}
       >
-        {/* HERO */}
-        <LinearGradient
-          colors={['#00b8d9', '#8b5cf6']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        {/* HERO — gradient bg is absolute so it can stretch independently of the text */}
+        <View
+          onLayout={(e) => setHeroH(Math.max(1, Math.round(e.nativeEvent.layout.height)))}
           style={{ paddingBottom: 46 }}
         >
-          <View
+          <Animated.View
             pointerEvents="none"
-            style={{ position: 'absolute', right: -60, top: 118, opacity: 0.15, transform: [{ rotate: '-8deg' }] }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              transformOrigin: 'top',
+              transform: [{ translateY: bgTranslate }, { scale: bgScale }],
+            }}
           >
-            <BarbellMark size={260} bar="#ffffff" plate="#ffffff" plateEdge="#ffffff" highlight={false} />
-          </View>
+            <LinearGradient
+              colors={['#00b8d9', '#8b5cf6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ flex: 1 }}
+            >
+              {/* Watermark lives in the stretchy layer → subtle parallax drift on pull. */}
+              <View
+                pointerEvents="none"
+                style={{ position: 'absolute', right: -60, top: 118, opacity: 0.15, transform: [{ rotate: '-8deg' }] }}
+              >
+                <BarbellMark size={260} bar="#ffffff" plate="#ffffff" plateEdge="#ffffff" highlight={false} />
+              </View>
+            </LinearGradient>
+          </Animated.View>
 
           <SafeAreaView edges={['top']}>
             <View style={{ paddingHorizontal: 28, paddingTop: 14 }}>
@@ -106,7 +150,7 @@ export function AuthScaffold({
               </Text>
             </View>
           </SafeAreaView>
-        </LinearGradient>
+        </View>
 
         {/* SHEET */}
         <View
@@ -127,7 +171,7 @@ export function AuthScaffold({
           />
           {children}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </KeyboardAvoidingView>
   )
 }
