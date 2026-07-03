@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import {
   AlertCircle, ArrowLeft, Clock, Dumbbell, FileText, Plus, Zap,
@@ -11,6 +11,7 @@ import {
 import { AppText, Button, EmptyState, Field, IconButton, Label, Screen } from '../../../../src/components/ui'
 import { ExerciseFormCard } from '../../../../src/components/workouts/ExerciseFormCard'
 import { ExercisePicker } from '../../../../src/components/workouts/ExercisePicker'
+import { KeyboardDoneBar } from '../../../../src/components/workouts/KeyboardDoneBar'
 import { client, useSettingsStore } from '../../../../src/lib/lyftr'
 import { useTheme } from '../../../../src/theme/useTheme'
 
@@ -26,6 +27,9 @@ interface WorkoutFormData {
     sets: { set_number: number; reps: number; weight: number }[]
   }[]
 }
+
+// One accessory bar per screen — unique ID so a stacked log screen's bar can't clash.
+const KEYPAD_DONE_ID = 'workout-edit-keypad-done'
 
 function FieldHeader({ icon: Icon, label, hint }: { icon: LucideIcon; label: string; hint?: string }) {
   // Muted (not accent) field icons — matches new.tsx: with every header cyan the
@@ -197,6 +201,9 @@ export default function EditWorkout() {
         contentContainerStyle={{ paddingBottom: 24 }}
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
+        // Drag-to-dismiss the keyboard: 'interactive' (finger-tracked) is iOS-only;
+        // Android falls back to dismiss-on-drag-start.
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
         <View className="gap-6 py-4">
           <View className="flex-row items-center gap-3">
@@ -241,6 +248,8 @@ export default function EditWorkout() {
               }
               keyboardType="number-pad"
               returnKeyType="done"
+              selectTextOnFocus
+              inputAccessoryViewID={KEYPAD_DONE_ID}
               placeholder="0"
             />
           </View>
@@ -297,8 +306,23 @@ export default function EditWorkout() {
                   onAddSet={() => addSet(exIdx)}
                   onRemoveSet={(setIdx) => removeSet(exIdx, setIdx)}
                   onUpdateSet={(setIdx, field, v) => updateSet(exIdx, setIdx, field, v)}
+                  inputAccessoryViewID={KEYPAD_DONE_ID}
                 />
               ))}
+              {/* Thumb-zone duplicate of Add Exercise: the header button scrolls away
+                  as cards stack up, so the "next exercise" tap lands where the thumb
+                  already is (right after the last card) — no scroll-to-top round trip. */}
+              {formData.exercises.length > 0 && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Add exercise"
+                  onPress={() => setShowPicker(true)}
+                  className="h-11 flex-row items-center justify-center gap-1.5 rounded-2xl border border-dashed border-surface-border active:opacity-60"
+                >
+                  <Plus size={14} color={accent} />
+                  <Text className="font-sans-semibold text-xs" style={{ color: accent }}>Add Exercise</Text>
+                </Pressable>
+              )}
             </View>
           </View>
 
@@ -311,6 +335,9 @@ export default function EditWorkout() {
         <Button title="Cancel" variant="secondary" className="flex-1" onPress={goBack} />
         <Button title="Save Changes" className="flex-1" onPress={handleSubmit} loading={loading} />
       </View>
+
+      {/* iOS-only Done bar docked above the numeric keypads (they have no return key). */}
+      <KeyboardDoneBar nativeID={KEYPAD_DONE_ID} />
 
       {showPicker && (
         <ExercisePicker selectedIds={selectedIds} onSelect={addExercise} onClose={() => setShowPicker(false)} />

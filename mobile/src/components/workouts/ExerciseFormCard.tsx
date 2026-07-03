@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
 import { FileText, Plus, Trash2, X } from 'lucide-react-native'
@@ -28,6 +28,8 @@ interface Props {
   onUpdateSet: (setIdx: number, field: 'reps' | 'weight', value: string) => void
   /** Optional extra per-exercise control (Log form's RestPicker) tucked at the card foot. */
   footer?: ReactNode
+  /** iOS: ties the numeric cells to the screen's keyboard "Done" accessory bar. */
+  inputAccessoryViewID?: string
 }
 
 // Compact spreadsheet cell: static border, no focus glow — never re-renders on focus
@@ -35,17 +37,24 @@ interface Props {
 const CELL = 'h-9 flex-1 rounded-lg border border-surface-border/60 bg-surface-overlay px-2 py-0 text-center font-sans text-sm text-tx-primary'
 
 // Set-table column widths — header and rows must agree or the columns shear.
+// COL_DELETE fits the 32pt IconButton so its hitSlop isn't clipped by the parent
+// (hitSlop outside parent bounds is unreliable on Android) → ~44pt effective target.
 const COL_SET = 'w-9'
-const COL_DELETE = 'w-7'
+const COL_DELETE = 'w-9'
 
 // Weight gets its own component so each row can own a useNumericText buffer —
 // preserves a trailing "." / leading "0" while the parent re-derives value as a
 // number each keystroke (same contract as workouts/WeightInput, minus the inline
 // unit suffix: in a table the unit lives in the column header once).
-function WeightCell({ value, onChange, placeholderColor }: {
+function WeightCell({ value, onChange, placeholderColor, inputRef, onNext, inputAccessoryViewID }: {
   value: string
   onChange: (next: string) => void
   placeholderColor: string
+  /** Callback ref so the parent's focus chain can jump reps → weight. */
+  inputRef?: (r: TextInput | null) => void
+  /** Present on all but the last set: Android's numeric "next" key hops to the next row's reps. */
+  onNext?: () => void
+  inputAccessoryViewID?: string
 }) {
   const [text, setText] = useNumericText(value)
   const emit = (raw: string) => {
@@ -57,10 +66,15 @@ function WeightCell({ value, onChange, placeholderColor }: {
   }
   return (
     <TextInput
+      ref={inputRef}
       value={text}
       onChangeText={emit}
       keyboardType="decimal-pad"
-      returnKeyType="done"
+      returnKeyType={onNext ? 'next' : 'done'}
+      submitBehavior={onNext ? 'submit' : 'blurAndSubmit'}
+      onSubmitEditing={onNext}
+      selectTextOnFocus
+      inputAccessoryViewID={inputAccessoryViewID}
       placeholder="0"
       placeholderTextColor={placeholderColor}
       accessibilityLabel="Set weight"
@@ -78,11 +92,18 @@ function WeightCell({ value, onChange, placeholderColor }: {
 export function ExerciseFormCard({
   index, exercise, notes, sets, unit,
   onRemove, onNotesChange, onAddSet, onRemoveSet, onUpdateSet, footer,
+  inputAccessoryViewID,
 }: Props) {
   const { colors, accent } = useTheme()
   // Once revealed the input stays mounted for the card's lifetime, so typed text
   // can never be hidden; cards with saved notes start revealed.
   const [showNotes, setShowNotes] = useState(notes.length > 0)
+  // Focus chain (reps → weight → next row's reps) so a whole exercise logs off the
+  // Android numeric keyboard's next key without re-tapping each cell. (iOS numeric
+  // pads have no return key — there the accessory Done bar is the exit instead.)
+  // Plain refs mutated in callback refs: never triggers a render (Fabric rule).
+  const repsRefs = useRef<(TextInput | null)[]>([])
+  const weightRefs = useRef<(TextInput | null)[]>([])
 
   return (
     <View className="rounded-2xl border border-surface-border bg-surface-muted/30 p-4">
@@ -126,10 +147,15 @@ export function ExerciseFormCard({
             </View>
             <View className="flex-1">
               <TextInput
+                ref={(r) => { repsRefs.current[setIdx] = r }}
                 value={set.reps ? String(set.reps) : ''}
                 onChangeText={(t) => onUpdateSet(setIdx, 'reps', t.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
-                returnKeyType="done"
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => weightRefs.current[setIdx]?.focus()}
+                selectTextOnFocus
+                inputAccessoryViewID={inputAccessoryViewID}
                 placeholder="0"
                 placeholderTextColor={colors.txMuted}
                 accessibilityLabel="Set reps"
@@ -142,6 +168,11 @@ export function ExerciseFormCard({
                 value={set.weight ? String(set.weight) : ''}
                 onChange={(v) => onUpdateSet(setIdx, 'weight', v)}
                 placeholderColor={colors.txMuted}
+                inputRef={(r) => { weightRefs.current[setIdx] = r }}
+                onNext={setIdx < sets.length - 1
+                  ? () => repsRefs.current[setIdx + 1]?.focus()
+                  : undefined}
+                inputAccessoryViewID={inputAccessoryViewID}
               />
             </View>
             <View className={`${COL_DELETE} items-center`}>
@@ -156,6 +187,9 @@ export function ExerciseFormCard({
         <Pressable
           accessibilityRole="button"
           onPress={onAddSet}
+          // 36pt row + 6pt vertical slop ≈ 48pt effective target; the slop stays
+          // inside the surrounding whitespace (mt-2.5 above, card padding below).
+          hitSlop={{ top: 6, bottom: 6 }}
           className="h-9 flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border border-dashed border-surface-border active:opacity-60"
         >
           <Plus size={13} color={accent} />
@@ -167,6 +201,7 @@ export function ExerciseFormCard({
             accessibilityRole="button"
             accessibilityLabel="Add exercise note"
             onPress={() => setShowNotes(true)}
+            hitSlop={{ top: 6, bottom: 6 }}
             className="h-9 flex-row items-center gap-1.5 rounded-lg px-3 active:opacity-60"
           >
             <FileText size={13} color={colors.txMuted} />

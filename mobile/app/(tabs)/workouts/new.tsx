@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Pressable, ScrollView, Text, View } from 'react-native'
+import { Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import {
   AlertCircle, ArrowLeft, BookOpen, CalendarDays, Clock, Dumbbell, FileText, Plus, Timer, Zap,
@@ -9,6 +9,7 @@ import { apiErrorMessage, displayToLbs, weightShort, type Exercise, type Program
 import { AppText, Button, DateInput, EmptyState, Field, IconButton, Label, Screen } from '../../../src/components/ui'
 import { ExerciseFormCard } from '../../../src/components/workouts/ExerciseFormCard'
 import { ExercisePicker } from '../../../src/components/workouts/ExercisePicker'
+import { KeyboardDoneBar } from '../../../src/components/workouts/KeyboardDoneBar'
 import { ProgramPicker } from '../../../src/components/workouts/ProgramPicker'
 import { RestPicker } from '../../../src/components/workouts/RestPicker'
 import { client, useSettingsStore } from '../../../src/lib/lyftr'
@@ -28,6 +29,9 @@ interface WorkoutFormData {
     sets: { set_number: number; reps: number; weight: number }[]
   }[]
 }
+
+// One accessory bar per screen — unique ID so a stacked edit screen's bar can't clash.
+const KEYPAD_DONE_ID = 'workout-new-keypad-done'
 
 // Web's icon+label field headers (Dumbbell/CalendarDays/Clock/FileText/Zap rows).
 function FieldHeader({ icon: Icon, label, hint }: { icon: LucideIcon; label: string; hint?: string }) {
@@ -196,6 +200,9 @@ export default function AddWorkout() {
         contentContainerStyle={{ paddingBottom: 24 }}
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
+        // Drag-to-dismiss the keyboard: 'interactive' (finger-tracked) is iOS-only;
+        // Android falls back to dismiss-on-drag-start.
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
         <View className="gap-6 py-4">
           {/* Back + title */}
@@ -253,6 +260,8 @@ export default function AddWorkout() {
                 }
                 keyboardType="number-pad"
                 returnKeyType="done"
+                selectTextOnFocus
+                inputAccessoryViewID={KEYPAD_DONE_ID}
                 placeholder="0"
               />
             </View>
@@ -325,6 +334,7 @@ export default function AddWorkout() {
                   onAddSet={() => addSet(exIdx)}
                   onRemoveSet={(setIdx) => removeSet(exIdx, setIdx)}
                   onUpdateSet={(setIdx, field, v) => updateSet(exIdx, setIdx, field, v)}
+                  inputAccessoryViewID={KEYPAD_DONE_ID}
                   footer={
                     <View>
                       <View className="mb-1 flex-row items-center gap-1.5">
@@ -336,6 +346,20 @@ export default function AddWorkout() {
                   }
                 />
               ))}
+              {/* Thumb-zone duplicate of Add Exercise: the header buttons scroll away
+                  as cards stack up, so the "next exercise" tap lands where the thumb
+                  already is (right after the last card) — no scroll-to-top round trip. */}
+              {formData.exercises.length > 0 && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Add exercise"
+                  onPress={() => setShowPicker(true)}
+                  className="h-11 flex-row items-center justify-center gap-1.5 rounded-2xl border border-dashed border-surface-border active:opacity-60"
+                >
+                  <Plus size={14} color={accent} />
+                  <Text className="font-sans-semibold text-xs" style={{ color: accent }}>Add Exercise</Text>
+                </Pressable>
+              )}
             </View>
           </View>
 
@@ -348,6 +372,9 @@ export default function AddWorkout() {
         <Button title="Cancel" variant="secondary" className="flex-1" onPress={goBack} />
         <Button title="Save Workout" className="flex-1" onPress={handleSubmit} loading={loading} />
       </View>
+
+      {/* iOS-only Done bar docked above the numeric keypads (they have no return key). */}
+      <KeyboardDoneBar nativeID={KEYPAD_DONE_ID} />
 
       {/* Conditionally mounted, exactly like web — search state resets per open. */}
       {showPicker && (

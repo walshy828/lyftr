@@ -38,6 +38,7 @@ export function WeightInput({ value, onChange, unit, placeholder = '225', access
         onChangeText={emit}
         keyboardType="decimal-pad"
         returnKeyType="done"
+        selectTextOnFocus
         placeholder={placeholder}
         placeholderTextColor={colors.txMuted}
         accessibilityLabel={accessibilityLabel}
