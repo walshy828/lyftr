@@ -1,5 +1,5 @@
 import { ReactNode, useRef, useState } from 'react'
-import { View, Text, KeyboardAvoidingView, Platform, Animated } from 'react-native'
+import { View, Text, Platform, Animated } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -40,26 +40,38 @@ export function AuthScaffold({
     outputRange: [2, 1],
     extrapolateRight: 'clamp',
   })
+  // Stable scroll handler — recreating Animated.event each render re-attaches the
+  // native scroll listener, which can interrupt an input's focus as the keyboard opens.
+  const onScroll = useRef(
+    Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+      useNativeDriver: Platform.OS !== 'web', // RN-web has no native driver
+    }),
+  ).current
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.base }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    // Plain container — no KeyboardAvoidingView. Its 'padding' behavior fights the
+    // ScrollView's own keyboard auto-scroll on iOS and can bounce the tapped input out
+    // from under the touch (keyboard flashes up, then dismisses). Instead we let the
+    // ScrollView inset itself for the keyboard natively via automaticallyAdjustKeyboardInsets.
+    <View style={{ flex: 1, backgroundColor: colors.base }}>
       {/* Hero is always the brand gradient (dark), so the status bar stays light. */}
       <StatusBar style="light" />
       <Animated.ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: Platform.OS !== 'web', // RN-web has no native driver
-        })}
+        onScroll={onScroll}
         scrollEventThrottle={16}
       >
         {/* HERO — gradient bg is absolute so it can stretch independently of the text */}
         <View
-          onLayout={(e) => setHeroH(Math.max(1, Math.round(e.nativeEvent.layout.height)))}
+          onLayout={(e) => {
+            // Guard: only update on a real height change so the keyboard-open layout
+            // pass doesn't trigger a needless re-render (another focus-stealer).
+            const h = Math.max(1, Math.round(e.nativeEvent.layout.height))
+            setHeroH((prev) => (Math.abs(prev - h) > 1 ? h : prev))
+          }}
           style={{ paddingBottom: 46 }}
         >
           <Animated.View
@@ -172,6 +184,6 @@ export function AuthScaffold({
           {children}
         </View>
       </Animated.ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   )
 }
