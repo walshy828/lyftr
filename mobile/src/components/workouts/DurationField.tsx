@@ -41,10 +41,10 @@ export function DurationField({ value, onChange, inputAccessoryViewID }: {
           placeholder="0"
           placeholderTextColor={colors.txMuted}
           accessibilityLabel="Duration in minutes"
-          // maxWidth keeps the web <input> from claiming a wide default size (which
-          // would drift the value away from "min"); text-right sits it next to the label.
-          className="py-0 text-right font-sans-bold text-base text-tx-primary"
-          style={{ fontVariant: ['tabular-nums'], minWidth: 22, maxWidth: 56 }}
+          // Hug the value's width (small min + a cap for the web <input>'s wide default)
+          // so the value + "min" read as one tight group, centered by the parent.
+          className="py-0 text-center font-sans-bold text-base text-tx-primary"
+          style={{ fontVariant: ['tabular-nums'], minWidth: 16, maxWidth: 44 }}
         />
         <Text className="ml-1 font-sans text-sm text-tx-muted">min</Text>
       </View>
