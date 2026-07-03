@@ -40,15 +40,6 @@ export function AuthScaffold({
     outputRange: [2, 1],
     extrapolateRight: 'clamp',
   })
-  // Hero text grows with the pull but ONLY taller, never wider — scaleY from the top
-  // edge so the words enlarge downward toward the sheet without ever clipping on the
-  // left/right. Clamped both ends so positive scrolling is untouched and deep pulls
-  // don't distort it past a tasteful cap.
-  const textScaleY = scrollY.interpolate({
-    inputRange: [-heroH, 0],
-    outputRange: [1.25, 1],
-    extrapolate: 'clamp',
-  })
 
   return (
     <KeyboardAvoidingView
@@ -100,14 +91,7 @@ export function AuthScaffold({
           </Animated.View>
 
           <SafeAreaView edges={['top']}>
-            <Animated.View
-              style={{
-                paddingHorizontal: 28,
-                paddingTop: 14,
-                transformOrigin: 'top',
-                transform: [{ scaleY: textScaleY }],
-              }}
-            >
+            <View style={{ paddingHorizontal: 28, paddingTop: 14 }}>
               {/* Brand */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
                 <View
@@ -164,7 +148,7 @@ export function AuthScaffold({
               >
                 {subtitle}
               </Text>
-            </Animated.View>
+            </View>
           </SafeAreaView>
         </View>
 
