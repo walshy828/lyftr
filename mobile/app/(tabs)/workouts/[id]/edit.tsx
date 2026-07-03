@@ -10,6 +10,7 @@ import {
 } from '@lyftr/shared'
 import { AppText, Button, EmptyState, Field, IconButton, Label, Screen } from '../../../../src/components/ui'
 import { ExerciseFormCard } from '../../../../src/components/workouts/ExerciseFormCard'
+import { DurationField } from '../../../../src/components/workouts/DurationField'
 import { ExercisePicker } from '../../../../src/components/workouts/ExercisePicker'
 import { KeyboardDoneBar } from '../../../../src/components/workouts/KeyboardDoneBar'
 import { client, useSettingsStore } from '../../../../src/lib/lyftr'
@@ -241,16 +242,10 @@ export default function EditWorkout() {
                 ? `= ${Math.floor(formData.duration / 60)}h ${formData.duration % 60}m`
                 : undefined}
             />
-            <Field
-              value={formData.duration ? String(formData.duration) : ''}
-              onChangeText={(t) =>
-                setFormData((prev) => ({ ...prev, duration: Number(t.replace(/[^0-9]/g, '')) || 0 }))
-              }
-              keyboardType="number-pad"
-              returnKeyType="done"
-              selectTextOnFocus
+            <DurationField
+              value={formData.duration}
+              onChange={(m) => setFormData((prev) => ({ ...prev, duration: m }))}
               inputAccessoryViewID={KEYPAD_DONE_ID}
-              placeholder="0"
             />
           </View>
 

@@ -211,14 +211,25 @@ export function ExerciseFormCard({
       </View>
 
       {showNotes && (
-        <TextInput
-          value={notes}
-          onChangeText={onNotesChange}
-          placeholder="e.g., Felt strong"
-          placeholderTextColor={colors.txMuted}
-          accessibilityLabel="Exercise notes"
-          className="mt-2.5 h-9 rounded-lg border border-surface-border/60 bg-surface-overlay px-3 py-0 font-sans text-sm text-tx-primary"
-        />
+        // The note is dismissible: the × clears the text AND hides the field (bringing
+        // back the "Note" toggle), so a note added by mistake isn't stuck open/filled.
+        <View className="mt-2.5 flex-row items-center gap-2">
+          <TextInput
+            value={notes}
+            onChangeText={onNotesChange}
+            placeholder="e.g., Felt strong"
+            placeholderTextColor={colors.txMuted}
+            accessibilityLabel="Exercise notes"
+            className="h-9 flex-1 rounded-lg border border-surface-border/60 bg-surface-overlay px-3 py-0 font-sans text-sm text-tx-primary"
+          />
+          <IconButton
+            icon={X}
+            label="Remove note"
+            variant="ghost"
+            size="sm"
+            onPress={() => { onNotesChange(''); setShowNotes(false) }}
+          />
+        </View>
       )}
 
       {footer ? (
