@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import {
-  AlertCircle, ArrowLeft, BookOpen, CalendarDays, Clock, Dumbbell, FileText, Plus, Timer, Trash2, Zap,
+  AlertCircle, ArrowLeft, BookOpen, CalendarDays, Clock, Dumbbell, FileText, Plus, Timer, Zap,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 import { apiErrorMessage, displayToLbs, weightShort, type Exercise, type Program } from '@lyftr/shared'
-import { AppText, Button, DateInput, Field, IconButton, Label, Screen } from '../../../src/components/ui'
+import { AppText, Button, DateInput, EmptyState, Field, IconButton, Label, Screen } from '../../../src/components/ui'
+import { ExerciseFormCard } from '../../../src/components/workouts/ExerciseFormCard'
 import { ExercisePicker } from '../../../src/components/workouts/ExercisePicker'
 import { ProgramPicker } from '../../../src/components/workouts/ProgramPicker'
 import { RestPicker } from '../../../src/components/workouts/RestPicker'
-import { WeightInput } from '../../../src/components/workouts/WeightInput'
 import { client, useSettingsStore } from '../../../src/lib/lyftr'
 import { useTheme } from '../../../src/theme/useTheme'
 
@@ -28,12 +28,6 @@ interface WorkoutFormData {
     sets: { set_number: number; reps: number; weight: number }[]
   }[]
 }
-
-// Compact one-line input for the repeated exercise/set rows — static border, no
-// focus glow: it never re-renders on focus (Fabric-safe by construction) and web's
-// equivalent rows use the low-key `.input text-sm` too. ui/Field (Reanimated glow)
-// is reserved for the top-level fields.
-const COMPACT_INPUT = 'h-10 rounded-lg border border-surface-border bg-surface-overlay px-3 font-sans text-sm text-tx-primary'
 
 // Web's icon+label field headers (Dumbbell/CalendarDays/Clock/FileText/Zap rows).
 function FieldHeader({ icon: Icon, label, hint }: { icon: LucideIcon; label: string; hint?: string }) {
@@ -199,7 +193,7 @@ export default function AddWorkout() {
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: 24 }}
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
       >
@@ -211,6 +205,7 @@ export default function AddWorkout() {
               <AppText variant="title">Log Workout</AppText>
               <AppText variant="caption" color="muted">
                 {formData.exercises.length} exercises • {totalSets} sets
+                {totalWeight > 0 ? ` • ${Math.round(totalWeight)} ${wUnit}` : ''}
               </AppText>
             </View>
           </View>
@@ -232,20 +227,26 @@ export default function AddWorkout() {
             />
           </View>
 
-          <View>
-            <FieldHeader icon={CalendarDays} label="Date" />
-            <DateInput
-              value={formData.date}
-              onChange={(d) => setFormData((prev) => ({ ...prev, date: d }))}
-              maximumDate={new Date()}
-            />
-          </View>
-
-          <View>
-            <FieldHeader icon={Clock} label="Duration (minutes)" />
-            <View className="flex-row gap-3">
+          {/* Date + duration share a row — related scalar facts, half-width each. */}
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <FieldHeader icon={CalendarDays} label="Date" />
+              <DateInput
+                value={formData.date}
+                onChange={(d) => setFormData((prev) => ({ ...prev, date: d }))}
+                maximumDate={new Date()}
+              />
+            </View>
+            <View className="flex-1">
+              <FieldHeader
+                icon={Clock}
+                label="Duration (min)"
+                // h/m readout only once it means something — "0h 5m" is noise.
+                hint={formData.duration >= 60
+                  ? `= ${Math.floor(formData.duration / 60)}h ${formData.duration % 60}m`
+                  : undefined}
+              />
               <Field
-                className="flex-1"
                 value={formData.duration ? String(formData.duration) : ''}
                 onChangeText={(t) =>
                   setFormData((prev) => ({ ...prev, duration: Number(t.replace(/[^0-9]/g, '')) || 0 }))
@@ -254,11 +255,6 @@ export default function AddWorkout() {
                 returnKeyType="done"
                 placeholder="0"
               />
-              <View className="flex-1 justify-center rounded-lg bg-surface-muted/30 px-3">
-                <AppText variant="body" color="muted">
-                  {Math.floor(formData.duration / 60)}h {formData.duration % 60}m
-                </AppText>
-              </View>
             </View>
           </View>
 
@@ -272,31 +268,8 @@ export default function AddWorkout() {
             />
           </View>
 
-          {/* Summary grid (web's 3-col brand strip) */}
-          {formData.exercises.length > 0 && (
-            <View className="flex-row rounded-lg border border-brand-500/20 bg-brand-500/10 p-3">
-              <View className="flex-1 items-center">
-                <AppText variant="subheading" color="brand" style={{ fontVariant: ['tabular-nums'] }}>
-                  {formData.exercises.length}
-                </AppText>
-                <AppText variant="caption" color="muted">Exercises</AppText>
-              </View>
-              <View className="flex-1 items-center">
-                <AppText variant="subheading" color="brand" style={{ fontVariant: ['tabular-nums'] }}>
-                  {totalSets}
-                </AppText>
-                <AppText variant="caption" color="muted">Sets</AppText>
-              </View>
-              <View className="flex-1 items-center">
-                <AppText variant="subheading" color="brand" style={{ fontVariant: ['tabular-nums'] }}>
-                  {Math.round(totalWeight)}
-                </AppText>
-                <AppText variant="caption" color="muted">Total {wUnit}</AppText>
-              </View>
-            </View>
-          )}
-
-          {/* Exercises section */}
+          {/* Exercises section (no summary strip — the header caption already
+              carries exercises · sets · total weight) */}
           <View>
             {/* Label row + full-width button row: label group AND two buttons don't
                 fit one 390pt row (the Add button clipped off-screen), and equal-width
@@ -327,135 +300,54 @@ export default function AddWorkout() {
               </View>
             </View>
 
+            {formData.exercises.length === 0 && (
+              <View className="rounded-2xl border border-dashed border-surface-border">
+                <EmptyState
+                  compact
+                  icon={Dumbbell}
+                  title="No exercises yet"
+                  subtitle="Add an exercise or load a program to start"
+                />
+              </View>
+            )}
+
             <View className="gap-4">
-              {formData.exercises.map((workoutEx, exIdx) => {
-                const exercise = pickerExercises[workoutEx.exercise_id]
-                return (
-                  <View key={exIdx} className="rounded-lg border border-surface-border bg-surface-muted/30 p-4">
-                    {/* Card header: order badge, name, muscle • equipment, remove */}
-                    <View className="mb-4 flex-row items-start justify-between">
-                      <View className="flex-1">
-                        <View className="mb-1 flex-row items-center gap-2">
-                          <View className="h-6 w-6 items-center justify-center rounded bg-brand-500/20">
-                            <AppText variant="caption" color="brand" style={{ fontVariant: ['tabular-nums'] }}>
-                              {exIdx + 1}
-                            </AppText>
-                          </View>
-                          <AppText variant="bodySemibold" className="flex-1" numberOfLines={1}>
-                            {exercise?.name}
-                          </AppText>
-                        </View>
-                        <AppText variant="caption" color="muted" className="ml-8">
-                          {exercise?.muscle_group} • {exercise?.equipment}
-                        </AppText>
-                      </View>
-                      <IconButton
-                        icon={Trash2}
-                        label={`Remove ${exercise?.name ?? 'exercise'}`}
-                        variant="danger"
-                        size="sm"
-                        onPress={() => removeExercise(exIdx)}
-                      />
-                    </View>
-
-                    {/* Per-exercise notes */}
-                    <View className="mb-4">
-                      <Label className="mb-1">Notes</Label>
-                      <TextInput
-                        value={workoutEx.notes}
-                        onChangeText={(t) => updateExNotes(exIdx, t)}
-                        placeholder="e.g., Felt strong"
-                        placeholderTextColor={colors.txMuted}
-                        className={COMPACT_INPUT}
-                      />
-                    </View>
-
-                    {/* Rest between sets */}
-                    <View className="mb-4">
+              {formData.exercises.map((workoutEx, exIdx) => (
+                <ExerciseFormCard
+                  key={exIdx}
+                  index={exIdx}
+                  exercise={pickerExercises[workoutEx.exercise_id]}
+                  notes={workoutEx.notes}
+                  sets={workoutEx.sets}
+                  unit={wUnit}
+                  onRemove={() => removeExercise(exIdx)}
+                  onNotesChange={(t) => updateExNotes(exIdx, t)}
+                  onAddSet={() => addSet(exIdx)}
+                  onRemoveSet={(setIdx) => removeSet(exIdx, setIdx)}
+                  onUpdateSet={(setIdx, field, v) => updateSet(exIdx, setIdx, field, v)}
+                  footer={
+                    <View>
                       <View className="mb-1 flex-row items-center gap-1.5">
                         <Timer size={13} color={accent} />
                         <Label>Rest between sets</Label>
                       </View>
                       <RestPicker value={workoutEx.rest_seconds ?? 90} onChange={(secs) => setExRest(exIdx, secs)} />
                     </View>
-
-                    {/* Sets */}
-                    <View className="mb-3 gap-2">
-                      <View className="flex-row items-center justify-between">
-                        <Label>Sets</Label>
-                        <AppText variant="caption" color="muted">{workoutEx.sets.length} sets</AppText>
-                      </View>
-                      {workoutEx.sets.map((set, setIdx) => (
-                        <View
-                          key={setIdx}
-                          className="flex-row items-end gap-2 rounded-lg border border-surface-border/50 bg-surface-raised/40 p-3"
-                        >
-                          <View className="w-10">
-                            <Label className="mb-1">Set</Label>
-                            <View className="items-center rounded bg-surface-muted px-2 py-2">
-                              <AppText variant="subheading" style={{ fontVariant: ['tabular-nums'] }}>
-                                {set.set_number}
-                              </AppText>
-                            </View>
-                          </View>
-                          <View className="flex-1">
-                            <Label className="mb-1">Reps</Label>
-                            <TextInput
-                              value={set.reps ? String(set.reps) : ''}
-                              onChangeText={(t) => updateSet(exIdx, setIdx, 'reps', t.replace(/[^0-9]/g, ''))}
-                              keyboardType="number-pad"
-                              returnKeyType="done"
-                              placeholder="10"
-                              placeholderTextColor={colors.txMuted}
-                              accessibilityLabel="Set reps"
-                              className={`${COMPACT_INPUT} text-center`}
-                              style={{ fontVariant: ['tabular-nums'] }}
-                            />
-                          </View>
-                          <View className="flex-1">
-                            <Label className="mb-1">Weight</Label>
-                            <WeightInput
-                              value={set.weight ? String(set.weight) : ''}
-                              onChange={(v) => updateSet(exIdx, setIdx, 'weight', v)}
-                              unit={wUnit}
-                              placeholder="225"
-                              accessibilityLabel="Set weight"
-                            />
-                          </View>
-                          <IconButton
-                            icon={Trash2}
-                            label="Remove set"
-                            variant="danger"
-                            size="sm"
-                            className="mb-1"
-                            onPress={() => removeSet(exIdx, setIdx)}
-                          />
-                        </View>
-                      ))}
-                    </View>
-
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => addSet(exIdx)}
-                      className="flex-row items-center gap-1 self-start py-1 active:opacity-60"
-                    >
-                      <Plus size={13} color={accent} />
-                      {/* accent (not text-brand-500): raw brand cyan washes out on light. */}
-                      <Text className="font-sans-semibold text-xs" style={{ color: accent }}>Add Set</Text>
-                    </Pressable>
-                  </View>
-                )
-              })}
+                  }
+                />
+              ))}
             </View>
           </View>
 
-          {/* Footer actions */}
-          <View className="flex-row gap-3 pt-2">
-            <Button title="Cancel" variant="secondary" className="flex-1" onPress={goBack} />
-            <Button title="Save Workout" className="flex-1" onPress={handleSubmit} loading={loading} />
-          </View>
         </View>
       </ScrollView>
+
+      {/* Sticky footer actions — Save stays reachable however long the form grows.
+          -mx-5 lets the divider span edge-to-edge past Screen's px-5. */}
+      <View className="-mx-5 flex-row gap-3 border-t border-surface-border bg-surface-base px-5 pb-2 pt-3">
+        <Button title="Cancel" variant="secondary" className="flex-1" onPress={goBack} />
+        <Button title="Save Workout" className="flex-1" onPress={handleSubmit} loading={loading} />
+      </View>
 
       {/* Conditionally mounted, exactly like web — search state resets per open. */}
       {showPicker && (
