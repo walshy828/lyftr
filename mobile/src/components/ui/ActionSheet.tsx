@@ -52,8 +52,8 @@ export function ActionSheet({ open, title, subtitle, actions, cancelLabel = 'Can
         ) : null}
 
         {/* Chunky stacked buttons in the ConfirmSheet's language: normal actions are
-            neutral (gray fill, brand icon, left-aligned menu-row feel), destructive is
-            solid red, and Cancel is muted + centered to read as the dismiss. */}
+            brand-outlined (matching the detail Edit pill), left-aligned menu-row feel;
+            destructive is solid red; Cancel is muted + centered to read as the dismiss. */}
         <View className="gap-3">
           {actions.map((a, i) => (
             <SheetButton
@@ -61,7 +61,7 @@ export function ActionSheet({ open, title, subtitle, actions, cancelLabel = 'Can
               label={a.label}
               icon={a.icon}
               align="left"
-              variant={a.destructive ? 'destructive' : 'neutral'}
+              variant={a.destructive ? 'destructive' : 'brandOutline'}
               onPress={() => run(a.onPress)}
             />
           ))}
