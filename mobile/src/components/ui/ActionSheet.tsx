@@ -21,19 +21,37 @@ interface Props {
   subtitle?: string
   actions: SheetAction[]
   cancelLabel?: string
+  /** 'stack' = full-width buttons (any count); 'row' = side-by-side (best for 2). */
+  layout?: 'stack' | 'row'
   onClose: () => void
 }
 
 // A native-style options sheet — the kebab (⋮) menu other apps use. An optional
-// title/subtitle header over chunky stacked buttons (one per action) + a Cancel, in
-// the generic slide-up Sheet — same button language as ConfirmSheet. An action's
-// onPress fires *after* the sheet dismisses so a follow-up modal (e.g. a delete
-// ConfirmSheet) isn't presented while this one is still closing.
-export function ActionSheet({ open, title, subtitle, actions, cancelLabel = 'Cancel', onClose }: Props) {
+// title/subtitle header over chunky action buttons + a Cancel, in the generic slide-up
+// Sheet (same button language as ConfirmSheet). layout='stack' is the scalable default
+// (full-width rows); layout='row' packs the actions side-by-side, the pattern apps use
+// when there are exactly two. An action's onPress fires *after* the sheet dismisses so
+// a follow-up modal (e.g. a delete ConfirmSheet) isn't presented mid-close.
+export function ActionSheet({
+  open, title, subtitle, actions, cancelLabel = 'Cancel', layout = 'stack', onClose,
+}: Props) {
   const run = (onPress: () => void) => {
     onClose()
     setTimeout(onPress, SHEET_ANIM_MS)
   }
+
+  const button = (a: SheetAction, i: number) => (
+    <SheetButton
+      key={i}
+      label={a.label}
+      icon={a.icon}
+      // Row buttons are narrow → center their content; stacked buttons read as menu
+      // rows → left-align. Normal actions match the detail Edit pill (brand outline).
+      align={layout === 'row' ? 'center' : 'left'}
+      variant={a.destructive ? 'destructive' : 'brandOutline'}
+      onPress={() => run(a.onPress)}
+    />
+  )
 
   return (
     <Sheet open={open} onClose={onClose} haptic="selection">
@@ -51,20 +69,16 @@ export function ActionSheet({ open, title, subtitle, actions, cancelLabel = 'Can
           </View>
         ) : null}
 
-        {/* Chunky stacked buttons in the ConfirmSheet's language: normal actions are
-            brand-outlined (matching the detail Edit pill), left-aligned menu-row feel;
-            destructive is solid red; Cancel is muted + centered to read as the dismiss. */}
         <View className="gap-3">
-          {actions.map((a, i) => (
-            <SheetButton
-              key={i}
-              label={a.label}
-              icon={a.icon}
-              align="left"
-              variant={a.destructive ? 'destructive' : 'brandOutline'}
-              onPress={() => run(a.onPress)}
-            />
-          ))}
+          {layout === 'row' ? (
+            <View className="flex-row gap-3">
+              {actions.map((a, i) => (
+                <View key={i} className="flex-1">{button(a, i)}</View>
+              ))}
+            </View>
+          ) : (
+            actions.map((a, i) => button(a, i))
+          )}
           <SheetButton label={cancelLabel} variant="muted" onPress={onClose} />
         </View>
       </View>

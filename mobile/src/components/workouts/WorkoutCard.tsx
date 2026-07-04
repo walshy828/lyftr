@@ -109,10 +109,11 @@ export function WorkoutCard({ workout, unit, onPress, onDeleted }: Props) {
         open={menuOpen}
         title="Workout"
         subtitle={workout.name}
+        layout="row"
         onClose={() => setMenuOpen(false)}
         actions={[
-          { label: 'Edit Workout', icon: Edit2, onPress: () => router.push(`/workouts/${workout.id}/edit`) },
-          { label: 'Delete Workout', icon: Trash2, destructive: true, onPress: () => setConfirming(true) },
+          { label: 'Edit', icon: Edit2, onPress: () => router.push(`/workouts/${workout.id}/edit`) },
+          { label: 'Delete', icon: Trash2, destructive: true, onPress: () => setConfirming(true) },
         ]}
       />
 
