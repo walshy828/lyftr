@@ -52,13 +52,17 @@ export function ConfirmSheet({
         <AppText variant="body" color="muted" className="mb-6 text-center">{message}</AppText>
 
         <View className="flex-row gap-3">
-          <SheetButton label={cancelLabel} variant="muted" onPress={onCancel} />
-          <SheetButton
-            label={busy ? (busyLabel ?? confirmLabel) : confirmLabel}
-            variant={destructive ? 'destructive' : 'primary'}
-            disabled={busy}
-            onPress={onConfirm}
-          />
+          <View className="flex-1">
+            <SheetButton label={cancelLabel} variant="muted" onPress={onCancel} />
+          </View>
+          <View className="flex-1">
+            <SheetButton
+              label={busy ? (busyLabel ?? confirmLabel) : confirmLabel}
+              variant={destructive ? 'destructive' : 'primary'}
+              disabled={busy}
+              onPress={onConfirm}
+            />
+          </View>
         </View>
       </View>
     </Sheet>
