@@ -152,6 +152,7 @@ was an interim stand-in).
 | `Toast` | `Toast` | built |
 | `DateInput` | `DateInput` | built (wraps `@react-native-community/datetimepicker`; value stays `YYYY-MM-DD`) |
 | portal confirm sheet (per page) | `ConfirmSheet` | built (slide-up bottom sheet; **use instead of `Alert.alert` for confirms** — icon badge + centered copy + Cancel/confirm) |
+| mobile kebab (⋮) → portal menu | `ActionSheet` | built (slide-up options menu; `actions: SheetAction[]` with icon/label/`destructive`; fires each onPress after dismiss so a follow-up sheet doesn't overlap) |
 | `Loading` (barbell rig) | `Loading` | built (full-screen initial-load state; barbell dips/flexes + rep-dot chase, Reanimated. `if (initialLoading) return <Loading />`, same as web) |
 | `.card` CSS class | `Card` | built |
 | `.btn` CSS classes | `Button` | built |

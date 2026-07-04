@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Pressable, View } from 'react-native'
+import { router } from 'expo-router'
 import { format } from 'date-fns'
-import { ChevronRight, Clock, TrendingUp, Trash2 } from 'lucide-react-native'
+import { ChevronRight, Clock, Edit2, MoreVertical, TrendingUp, Trash2 } from 'lucide-react-native'
 import { displayVolume, type Workout } from '@lyftr/shared'
-import { AppText, Card, ConfirmSheet, IconButton } from '../ui'
+import { ActionSheet, AppText, Card, ConfirmSheet, IconButton } from '../ui'
 import { useTheme } from '../../theme/useTheme'
 import { client } from '../../lib/lyftr'
 import { ExerciseImage } from './ExerciseImage'
@@ -18,13 +19,13 @@ interface Props {
 }
 
 // Purpose-built card (richer than ListRow): thumbnail, name/date/meta lines, chevron
-// AND a delete action. The web's mobile kebab→portal menu + inline confirm collapses
-// to a trash IconButton + the shared ConfirmSheet — Edit stays reachable from the
-// detail screen instead of a per-card menu.
+// AND a kebab (⋮) menu. Mirrors the web card's mobile kebab → options (Edit / Delete);
+// the menu is a native ActionSheet and Delete routes through the shared ConfirmSheet.
 export function WorkoutCard({ workout, unit, onPress, onDeleted }: Props) {
   const { colors } = useTheme()
   const [deleting, setDeleting] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const durationMin = Math.round(workout.duration / 60)
   // The meta line has ~3 items competing for one row next to the trash/chevron
@@ -90,19 +91,30 @@ export function WorkoutCard({ workout, unit, onPress, onDeleted }: Props) {
             )}
           </View>
         </View>
-        {/* De-emphasized destructive action: a muted glyph (not a loud red box)
-            keeps the row reading as tap-to-open media, native-list style. The
-            ConfirmSheet still gates the actual delete, so discoverability is preserved. */}
+        {/* Kebab (⋮) options menu — the native pattern other apps use. A muted glyph
+            keeps the row reading as tap-to-open media; the ActionSheet holds Edit +
+            Delete, and Delete still routes through the ConfirmSheet. */}
         <IconButton
-          icon={Trash2}
-          label={`Delete ${workout.name}`}
+          icon={MoreVertical}
+          label={`${workout.name} options`}
           variant="ghost"
           size="sm"
-          onPress={() => setConfirming(true)}
+          onPress={() => setMenuOpen(true)}
           disabled={deleting}
         />
         <ChevronRight size={16} color={colors.txMuted} />
       </Card>
+
+      <ActionSheet
+        open={menuOpen}
+        title="Workout"
+        subtitle={workout.name}
+        onClose={() => setMenuOpen(false)}
+        actions={[
+          { label: 'Edit Workout', icon: Edit2, onPress: () => router.push(`/workouts/${workout.id}/edit`) },
+          { label: 'Delete Workout', icon: Trash2, destructive: true, onPress: () => setConfirming(true) },
+        ]}
+      />
 
       <ConfirmSheet
         open={confirming}
