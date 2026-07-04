@@ -9,7 +9,7 @@ import {
   apiErrorMessage, displayVolume, displayWeight, weightShort,
   type Workout, type Set as WorkoutSet,
 } from '@lyftr/shared'
-import { AppText, IconButton, Screen } from '../../../src/components/ui'
+import { AppText, Screen } from '../../../src/components/ui'
 import { ExerciseImage } from '../../../src/components/workouts/ExerciseImage'
 import { client, useSettingsStore } from '../../../src/lib/lyftr'
 import { useTheme } from '../../../src/theme/useTheme'
@@ -158,27 +158,31 @@ export default function WorkoutDetail() {
               <ArrowLeft size={16} color={colors.txMuted} />
               <AppText variant="body" color="muted">Workouts</AppText>
             </Pressable>
-            <View className="flex-row items-center gap-1">
-              {/* IconButton has no bg-less brand variant; the chip 'brand' variant is
-                  the kit-conformant nearest to the web's bare brand pencil. */}
-              <IconButton
-                icon={Edit2}
-                label="Edit workout"
-                variant="brand"
-                size="md"
+            <View className="flex-row items-center gap-2">
+              {/* Clear hierarchy over two competing colored squares: Edit is the
+                  primary action, so it gets a labeled brand pill; Delete stays a
+                  quiet ghost glyph and only turns red at the confirm step (Alert).
+                  Both are h-9 so they read as a matched pair. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Edit workout"
                 onPress={() => router.push(`/workouts/${workout.id}/edit`)}
-              />
-              {/* Match the edit chip's tinted-pill weight (danger variant is bare by
-                  design elsewhere; a bare glyph next to a chip reads unbalanced here). */}
-              <IconButton
-                icon={Trash2}
-                label="Delete workout"
-                variant="danger"
-                size="md"
-                className="bg-error-500/10 border border-error-500/20"
+                hitSlop={6}
+                className="h-9 flex-row items-center gap-1.5 rounded-lg border border-brand-500/20 bg-brand-500/10 px-3 active:scale-95"
+              >
+                <Edit2 size={15} color={accent} strokeWidth={2.2} />
+                <AppText variant="label" style={{ color: accent }}>Edit</AppText>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Delete workout"
                 onPress={confirmDelete}
                 disabled={deleting}
-              />
+                hitSlop={6}
+                className={`h-9 w-9 items-center justify-center rounded-lg active:bg-error-500/10 ${deleting ? 'opacity-40' : ''}`}
+              >
+                <Trash2 size={17} color={colors.txMuted} strokeWidth={2.2} />
+              </Pressable>
             </View>
           </View>
 
