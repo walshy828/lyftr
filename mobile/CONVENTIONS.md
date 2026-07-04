@@ -130,7 +130,10 @@ error border, `AlertCircle`) or `Field`'s `error` prop inline; transient success
 progression feedback uses Toast (to-build, mirror web's: icon chip + title +
 description, auto-dismiss ~4s, docked above the tab bar); loading uses the control's
 own `loading` prop (`Button`) or a pull-to-refresh `RefreshControl` — not full-screen
-spinners for partial data.
+spinners for partial data. **Confirmations (destructive or otherwise) use
+`ConfirmSheet`, not `Alert.alert`** — a `[pending, setPending]` state drives
+`open`/`busy`; it mirrors web's portal bottom sheet and stays on-theme (the OS Alert
+was an interim stand-in).
 
 ## 7. Web → mobile component map
 
@@ -145,6 +148,7 @@ spinners for partial data.
 | `EmptyState` | `EmptyState` | built |
 | `Toast` | `Toast` | built |
 | `DateInput` | `DateInput` | built (wraps `@react-native-community/datetimepicker`; value stays `YYYY-MM-DD`) |
+| portal confirm sheet (per page) | `ConfirmSheet` | built (slide-up bottom sheet; **use instead of `Alert.alert` for confirms** — icon badge + centered copy + Cancel/confirm) |
 | `.card` CSS class | `Card` | built |
 | `.btn` CSS classes | `Button` | built |
 | `.input` / `.label` CSS classes | `Field` | built (focus-glow, Fabric-safe) |

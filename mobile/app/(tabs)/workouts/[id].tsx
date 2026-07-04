@@ -153,7 +153,7 @@ export default function WorkoutDetail() {
             <View className="flex-row items-center gap-2">
               {/* Clear hierarchy over two competing colored squares: Edit is the
                   primary action, so it gets a labeled brand pill; Delete stays a
-                  quiet ghost glyph and only turns red at the confirm step (Alert).
+                  quiet ghost glyph and only turns red at the confirm step (ConfirmSheet).
                   Both are h-9 so they read as a matched pair. */}
               <Pressable
                 accessibilityRole="button"

@@ -5,11 +5,10 @@ import {
   FlatList,
   Pressable,
   useWindowDimensions,
-  Alert,
 } from 'react-native'
 import { format, parseISO } from 'date-fns'
 import { Trash2 } from 'lucide-react-native'
-import { Screen, H1, Card, Field, Button, Muted } from '../../src/components/ui'
+import { Screen, H1, Card, Field, Button, Muted, ConfirmSheet } from '../../src/components/ui'
 import { WeightChart } from '../../src/components/WeightChart'
 import { client, useSettingsStore } from '../../src/lib/lyftr'
 import {
@@ -32,6 +31,8 @@ export default function Weight() {
   const [input, setInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<WeightLog | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     const [list, s] = await Promise.all([
@@ -70,18 +71,13 @@ export default function Weight() {
     }
   }
 
-  const remove = (log: WeightLog) => {
-    Alert.alert('Delete entry?', `Remove ${displayWeight(log.weight, unit)} ${weightShort(unit)}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await client.weightAPI.delete(log.id).catch(() => {})
-          await load()
-        },
-      },
-    ])
+  const handleDelete = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    await client.weightAPI.delete(pendingDelete.id).catch(() => {})
+    await load()
+    setDeleting(false)
+    setPendingDelete(null)
   }
 
   // Chart wants oldest -> newest in the display unit.
@@ -139,12 +135,27 @@ export default function Weight() {
               </Text>
               <Muted className="text-xs">{format(parseISO(item.logged_at), 'EEE, MMM d')}</Muted>
             </View>
-            <Pressable onPress={() => remove(item)} hitSlop={12} className="p-2">
+            <Pressable onPress={() => setPendingDelete(item)} hitSlop={12} className="p-2">
               <Trash2 color="#f87171" size={18} />
             </Pressable>
           </View>
         )}
         ListEmptyComponent={<Muted className="text-center mt-8">No entries yet — log your first weigh-in above.</Muted>}
+      />
+
+      <ConfirmSheet
+        open={!!pendingDelete}
+        title="Delete Entry?"
+        message={pendingDelete
+          ? `${displayWeight(pendingDelete.weight, unit)} ${weightShort(unit)} will be permanently deleted.`
+          : ''}
+        confirmLabel="Delete"
+        busyLabel="Deleting…"
+        destructive
+        icon={Trash2}
+        busy={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
       />
     </Screen>
   )

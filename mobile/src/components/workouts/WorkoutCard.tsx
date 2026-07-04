@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Alert, Pressable, View } from 'react-native'
+import { Pressable, View } from 'react-native'
 import { format } from 'date-fns'
 import { ChevronRight, Clock, TrendingUp, Trash2 } from 'lucide-react-native'
 import { displayVolume, type Workout } from '@lyftr/shared'
-import { AppText, Card, IconButton } from '../ui'
+import { AppText, Card, ConfirmSheet, IconButton } from '../ui'
 import { useTheme } from '../../theme/useTheme'
 import { client } from '../../lib/lyftr'
 import { ExerciseImage } from './ExerciseImage'
@@ -19,11 +19,12 @@ interface Props {
 
 // Purpose-built card (richer than ListRow): thumbnail, name/date/meta lines, chevron
 // AND a delete action. The web's mobile kebab→portal menu + inline confirm collapses
-// to a trash IconButton + the OS Alert confirm (weight.tsx precedent) — Edit stays
-// reachable from the detail screen instead of a per-card menu.
+// to a trash IconButton + the shared ConfirmSheet — Edit stays reachable from the
+// detail screen instead of a per-card menu.
 export function WorkoutCard({ workout, unit, onPress, onDeleted }: Props) {
   const { colors } = useTheme()
   const [deleting, setDeleting] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   const durationMin = Math.round(workout.duration / 60)
   // The meta line has ~3 items competing for one row next to the trash/chevron
@@ -38,24 +39,16 @@ export function WorkoutCard({ workout, unit, onPress, onDeleted }: Props) {
     unit
   )
 
-  const confirmDelete = () => {
-    Alert.alert(`Delete "${workout.name}"?`, 'This cannot be undone', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setDeleting(true)
-          try {
-            await client.workoutAPI.delete(workout.id)
-            onDeleted(workout.id)
-          } catch {
-            // Web parity: a failed delete quietly restores the card.
-            setDeleting(false)
-          }
-        },
-      },
-    ])
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await client.workoutAPI.delete(workout.id)
+      onDeleted(workout.id)
+    } catch {
+      // Web parity: a failed delete quietly restores the card.
+      setDeleting(false)
+      setConfirming(false)
+    }
   }
 
   return (
@@ -98,18 +91,31 @@ export function WorkoutCard({ workout, unit, onPress, onDeleted }: Props) {
           </View>
         </View>
         {/* De-emphasized destructive action: a muted glyph (not a loud red box)
-            keeps the row reading as tap-to-open media, native-list style. The OS
-            Alert still gates the actual delete, so discoverability is preserved. */}
+            keeps the row reading as tap-to-open media, native-list style. The
+            ConfirmSheet still gates the actual delete, so discoverability is preserved. */}
         <IconButton
           icon={Trash2}
           label={`Delete ${workout.name}`}
           variant="ghost"
           size="sm"
-          onPress={confirmDelete}
+          onPress={() => setConfirming(true)}
           disabled={deleting}
         />
         <ChevronRight size={16} color={colors.txMuted} />
       </Card>
+
+      <ConfirmSheet
+        open={confirming}
+        title="Delete Workout?"
+        message={`"${workout.name}" will be permanently deleted.`}
+        confirmLabel="Delete"
+        busyLabel="Deleting…"
+        destructive
+        icon={Trash2}
+        busy={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirming(false)}
+      />
     </Pressable>
   )
 }
