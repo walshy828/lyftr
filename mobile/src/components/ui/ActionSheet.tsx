@@ -44,7 +44,7 @@ export function ActionSheet({ open, title, subtitle, actions, cancelLabel = 'Can
     <Sheet open={open} onClose={onClose} bottomInset={12} haptic="selection">
       <View className="px-3">
         {(title || subtitle) ? (
-          <View className="items-center px-3 pb-2">
+          <View className="items-center px-3 pb-3">
             {title ? (
               <AppText variant="label" color="muted" className="uppercase" style={{ letterSpacing: 1.5 }}>
                 {title}
@@ -56,34 +56,38 @@ export function ActionSheet({ open, title, subtitle, actions, cancelLabel = 'Can
           </View>
         ) : null}
 
-        <View className="border-t border-surface-border/50 pt-1.5">
+        {/* iOS-style grouped action list: one rounded card, hairline dividers inset
+            past the icon. Reads as a premium menu instead of bare rows. */}
+        <View className="overflow-hidden rounded-2xl border border-surface-border bg-surface-overlay">
           {actions.map((a, i) => (
-            <Pressable
-              key={i}
-              accessibilityRole="button"
-              onPress={() => run(a.onPress)}
-              className="flex-row items-center gap-3 rounded-xl px-3 py-3 active:bg-surface-muted"
-            >
-              {a.icon ? (
-                <View
-                  className={`h-9 w-9 items-center justify-center rounded-xl ${
-                    a.destructive ? 'bg-error-500/15' : 'bg-brand-500/15'
-                  }`}
-                >
-                  <a.icon size={18} color={iconColor(a.destructive)} strokeWidth={2.2} />
-                </View>
-              ) : null}
-              <AppText
-                variant="bodySemibold"
-                style={a.destructive ? { color: iconColor(true) } : undefined}
+            <View key={i}>
+              {i > 0 ? <View className="ml-[60px] h-px bg-surface-border/70" /> : null}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => run(a.onPress)}
+                className="h-14 flex-row items-center gap-3 px-3.5 active:bg-surface-muted"
               >
-                {a.label}
-              </AppText>
-            </Pressable>
+                {a.icon ? (
+                  <View
+                    className={`h-9 w-9 items-center justify-center rounded-xl ${
+                      a.destructive ? 'bg-error-500/15' : 'bg-brand-500/15'
+                    }`}
+                  >
+                    <a.icon size={18} color={iconColor(a.destructive)} strokeWidth={2.2} />
+                  </View>
+                ) : null}
+                <AppText
+                  variant="bodySemibold"
+                  style={a.destructive ? { color: iconColor(true) } : undefined}
+                >
+                  {a.label}
+                </AppText>
+              </Pressable>
+            </View>
           ))}
         </View>
 
-        <View className="mt-2">
+        <View className="mt-2.5">
           <SheetButton label={cancelLabel} variant="muted" onPress={onClose} />
         </View>
       </View>
