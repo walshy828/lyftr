@@ -240,7 +240,7 @@ export default function AddWorkout() {
               half column; DateInput opens its picker in a full-width Modal so the
               half-width trigger doesn't crush the calendar. */}
           <View className="flex-row gap-3">
-            <View className="flex-1">
+            <View className="flex-[2]">
               <FieldHeader icon={CalendarDays} label="Date" />
               <DateInput
                 value={formData.date}
@@ -249,14 +249,8 @@ export default function AddWorkout() {
               />
             </View>
             <View className="flex-1">
-              <FieldHeader
-                icon={Clock}
-                label="Duration (min)"
-                // h/m readout only once it means something — "0h 5m" is noise.
-                hint={formData.duration >= 60
-                  ? `= ${Math.floor(formData.duration / 60)}h ${formData.duration % 60}m`
-                  : undefined}
-              />
+              {/* "min" already rides the value, so the label stays just "Duration". */}
+              <FieldHeader icon={Clock} label="Duration" />
               <DurationField
                 value={formData.duration}
                 onChange={(m) => setFormData((prev) => ({ ...prev, duration: m }))}

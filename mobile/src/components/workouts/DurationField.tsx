@@ -31,16 +31,14 @@ export function DurationField({ value, onChange, inputAccessoryViewID }: {
         accessibilityLabel="Decrease duration"
         onPress={() => step(-STEP)}
         disabled={!canDec}
-        className={`w-11 items-center justify-center border-r border-surface-border active:bg-surface-muted ${canDec ? '' : 'opacity-40'}`}
+        className={`w-8 items-center justify-center border-r border-surface-border active:bg-surface-muted ${canDec ? '' : 'opacity-40'}`}
       >
-        <Minus size={18} color={canDec ? accent : colors.txMuted} strokeWidth={2.4} />
+        <Minus size={16} color={canDec ? accent : colors.txMuted} strokeWidth={2.4} />
       </Pressable>
 
-      {/* An invisible "min" on the left balances the real one on the right, so the
-          value is flanked by equal widths and sits dead-center in the segment — no
-          matter the digit count — while "min" still reads to its right (no overlap). */}
+      {/* The value + "min" read as one centered group. This column is only ~1/3 of the
+          row, so the control stays compact: slim ± end caps and a small "min". */}
       <View className="flex-1 flex-row items-center justify-center">
-        <Text className="mr-1 font-sans text-sm opacity-0" style={{ lineHeight: LINE }} aria-hidden>min</Text>
         <TextInput
           value={value ? String(value) : ''}
           onChangeText={(t) => onChange(Number(t.replace(/[^0-9]/g, '')) || 0)}
@@ -55,13 +53,12 @@ export function DurationField({ value, onChange, inputAccessoryViewID }: {
           // Share one lineHeight across the value + "min" so items-center lines up
           // their text boxes exactly (iOS renders placeholder/value low otherwise).
           // includeFontPadding:false drops Android's extra glyph padding.
-          style={{ fontVariant: ['tabular-nums'], minWidth: 16, maxWidth: 44, lineHeight: LINE, includeFontPadding: false }}
+          style={{ fontVariant: ['tabular-nums'], minWidth: 14, maxWidth: 40, lineHeight: LINE, includeFontPadding: false }}
         />
-        {/* Nudge "min" down to sit on the value's optical line. The bold value renders
-            low within its line box on iOS (web centers it, so this looks slightly low
-            in the harness but correct on device); transform keeps it out of layout. */}
+        {/* Nudge "min" down to sit on the value's optical line (the bold value renders
+            low within its line box on iOS); transform keeps it out of layout. */}
         <Text
-          className="ml-1 font-sans text-sm text-tx-muted"
+          className="ml-0.5 font-sans text-xs text-tx-muted"
           style={{ lineHeight: LINE, transform: [{ translateY: MIN_NUDGE }] }}
         >
           min
@@ -72,9 +69,9 @@ export function DurationField({ value, onChange, inputAccessoryViewID }: {
         accessibilityRole="button"
         accessibilityLabel="Increase duration"
         onPress={() => step(STEP)}
-        className="w-11 items-center justify-center border-l border-surface-border active:bg-surface-muted"
+        className="w-8 items-center justify-center border-l border-surface-border active:bg-surface-muted"
       >
-        <Plus size={18} color={accent} strokeWidth={2.4} />
+        <Plus size={16} color={accent} strokeWidth={2.4} />
       </Pressable>
     </View>
   )

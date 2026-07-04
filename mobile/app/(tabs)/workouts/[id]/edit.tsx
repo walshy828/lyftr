@@ -259,7 +259,7 @@ export default function EditWorkout() {
           {/* Date + duration share a row (matches the Log form). Editing the date only
               shifts the day; the original time-of-day is preserved on submit. */}
           <View className="flex-row gap-3">
-            <View className="flex-1">
+            <View className="flex-[2]">
               <FieldHeader icon={CalendarDays} label="Date" />
               <DateInput
                 value={formData.date}
@@ -268,14 +268,8 @@ export default function EditWorkout() {
               />
             </View>
             <View className="flex-1">
-              <FieldHeader
-                icon={Clock}
-                label="Duration (min)"
-                // h/m readout only once it means something — "0h 5m" is noise.
-                hint={formData.duration >= 60
-                  ? `= ${Math.floor(formData.duration / 60)}h ${formData.duration % 60}m`
-                  : undefined}
-              />
+              {/* "min" already rides the value, so the label stays just "Duration". */}
+              <FieldHeader icon={Clock} label="Duration" />
               <DurationField
                 value={formData.duration}
                 onChange={(m) => setFormData((prev) => ({ ...prev, duration: m }))}
