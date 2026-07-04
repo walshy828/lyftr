@@ -30,7 +30,11 @@ export function DurationField({ value, onChange, inputAccessoryViewID }: {
         <Minus size={18} color={canDec ? accent : colors.txMuted} strokeWidth={2.4} />
       </Pressable>
 
+      {/* An invisible "min" on the left balances the real one on the right, so the
+          value is flanked by equal widths and sits dead-center in the segment — no
+          matter the digit count — while "min" still reads to its right (no overlap). */}
       <View className="flex-1 flex-row items-center justify-center">
+        <Text className="mr-1 font-sans text-sm opacity-0" aria-hidden>min</Text>
         <TextInput
           value={value ? String(value) : ''}
           onChangeText={(t) => onChange(Number(t.replace(/[^0-9]/g, '')) || 0)}
@@ -41,8 +45,6 @@ export function DurationField({ value, onChange, inputAccessoryViewID }: {
           placeholder="0"
           placeholderTextColor={colors.txMuted}
           accessibilityLabel="Duration in minutes"
-          // Hug the value's width (small min + a cap for the web <input>'s wide default)
-          // so the value + "min" read as one tight group, centered by the parent.
           className="py-0 text-center font-sans-bold text-base text-tx-primary"
           style={{ fontVariant: ['tabular-nums'], minWidth: 16, maxWidth: 44 }}
         />
