@@ -2,6 +2,12 @@
 // RN adaptation: no IntersectionObserver here, so the web's sentinelRef becomes an
 // explicit loadMore() the screen wires to FlatList onEndReached. Offset lives in a
 // ref (loadMore reads it directly) instead of state feeding an observer effect.
+//
+// One deliberate divergence from web: reload() is a *background* revalidate — it
+// refetches page 0 and swaps the results in place WITHOUT clearing first, so a
+// screen that refetches on focus (the stack keeps it mounted) doesn't flash its
+// summary/cards to empty every time you navigate back. A deps change (e.g. search)
+// still hard-clears, since stale results for the previous query shouldn't linger.
 import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface Options<T> {
@@ -19,7 +25,8 @@ interface Result<T> {
   loading: boolean
   // True only during the very first fetch — use for the initial spinner
   initialLoading: boolean
-  // Call after create/delete to discard loaded items and re-fetch from scratch
+  // Background revalidate: refetch page 0 and swap in place (keeps current items
+  // visible meanwhile). Call on focus / after a mutation without an empty flash.
   reload: () => void
 }
 
@@ -35,8 +42,6 @@ export function useServerInfiniteList<T>({
   // Tracks whether a fetch is in flight to prevent double-fetches (onEndReached can
   // fire repeatedly during momentum scrolling)
   const fetchingRef = useRef(false)
-  // Incremented by reload() to force a reset even if deps haven't changed
-  const [resetKey, setResetKey] = useState(0)
   // Flips true after first fetch settles — never resets — drives initialLoading
   const initializedRef = useRef(false)
 
@@ -60,7 +65,8 @@ export function useServerInfiniteList<T>({
     }
   }, [fetcher, pageSize])
 
-  // Reset and fetch from scratch when deps or resetKey change
+  // Hard reset + fetch from scratch when deps change (e.g. the search query): clear
+  // immediately so results for the previous query don't linger.
   useEffect(() => {
     setItems([])
     offsetRef.current = 0
@@ -68,14 +74,17 @@ export function useServerInfiniteList<T>({
     fetchingRef.current = false
     fetchPage(0, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, resetKey])
+  }, [...deps])
 
   const loadMore = useCallback(() => {
     if (!hasMore || fetchingRef.current) return
     fetchPage(offsetRef.current, false)
   }, [hasMore, fetchPage])
 
-  const reload = useCallback(() => setResetKey(k => k + 1), [])
+  // Soft/background reload: fetchPage(0, replace) swaps the fresh page in on arrival
+  // without a preceding setItems([]) — no empty flash. offset/hasMore are reset by
+  // the fetch itself on success.
+  const reload = useCallback(() => { fetchPage(0, true) }, [fetchPage])
 
   return { items, loadMore, hasMore, loading, initialLoading: loading && !initializedRef.current, reload }
 }
