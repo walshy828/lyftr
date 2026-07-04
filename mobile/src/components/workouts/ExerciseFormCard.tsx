@@ -117,7 +117,9 @@ export function ExerciseFormCard({
           {/* Order number rides the thumbnail's corner so the image stays the anchor
               and we don't spend a second leading chip on it. */}
           <View className="absolute -left-1.5 -top-1.5 h-5 min-w-[20px] items-center justify-center rounded-full border-2 border-surface-base bg-brand-500 px-1">
-            <AppText variant="caption" color="white" style={{ fontVariant: ['tabular-nums'] }}>
+            {/* Nudge the digit up to optically center it in the circle (iOS renders the
+                glyph a hair low within its line box). */}
+            <AppText variant="caption" color="white" style={{ fontVariant: ['tabular-nums'], transform: [{ translateY: -1 }] }}>
               {index + 1}
             </AppText>
           </View>
