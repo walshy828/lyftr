@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Modal, Pressable, View } from 'react-native'
-import Animated, { SlideInDown } from 'react-native-reanimated'
+import Animated, { Easing, SlideInDown } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as Haptics from 'expo-haptics'
 import type { LucideIcon } from 'lucide-react-native'
@@ -35,7 +35,8 @@ interface Props {
 //    is in the app tree; the Modal is just a portal) and pad manually.
 //  • Motion: animationType="slide" would slide the whole overlay — scrim included —
 //    up from the bottom. Instead the scrim fades in place (animationType="fade") and
-//    only the sheet slides, with a Reanimated spring for a natural settle.
+//    only the sheet slides, with a smooth ease-out timing curve (no spring bounce —
+//    the overshoot felt off for a confirm dialog).
 export function ConfirmSheet({
   open, title, message, confirmLabel, busyLabel, cancelLabel = 'Cancel',
   destructive = false, icon: Icon, busy = false, onConfirm, onCancel,
@@ -62,7 +63,7 @@ export function ConfirmSheet({
     <Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={onCancel}>
       {/* Tap the scrim to cancel; the sheet stops propagation. */}
       <Pressable className="flex-1 justify-end bg-black/60" onPress={onCancel}>
-        <Animated.View entering={SlideInDown.springify().damping(22).stiffness(240)}>
+        <Animated.View entering={SlideInDown.duration(240).easing(Easing.out(Easing.cubic))}>
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={{ paddingBottom: insets.bottom + 20 }}
