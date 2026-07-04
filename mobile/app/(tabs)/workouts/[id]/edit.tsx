@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import {
-  AlertCircle, ArrowLeft, Clock, Dumbbell, FileText, Plus, Zap,
+  AlertCircle, ArrowLeft, CalendarDays, Clock, Dumbbell, FileText, Plus, Zap,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 import {
   apiErrorMessage, displayToLbs, lbsToDisplay, weightShort, type Exercise,
 } from '@lyftr/shared'
-import { AppText, Button, EmptyState, Field, IconButton, Label, Screen } from '../../../../src/components/ui'
+import { AppText, Button, DateInput, EmptyState, Field, IconButton, Label, Screen } from '../../../../src/components/ui'
 import { ExerciseFormCard } from '../../../../src/components/workouts/ExerciseFormCard'
 import { DurationField } from '../../../../src/components/workouts/DurationField'
 import { ExercisePicker } from '../../../../src/components/workouts/ExercisePicker'
@@ -16,11 +16,14 @@ import { KeyboardDoneBar } from '../../../../src/components/workouts/KeyboardDon
 import { client, useSettingsStore } from '../../../../src/lib/lyftr'
 import { useTheme } from '../../../../src/theme/useTheme'
 
-// Web's edit-form shape: NO date, NO rest_seconds (the edit screen doesn't touch
-// rest — web parity). Weights/duration in DISPLAY units; converted on submit.
+// Edit-form shape. Unlike web (which leaves the date immutable) mobile lets you
+// correct the workout's date here too — so `date` (local YYYY-MM-DD) joins the form.
+// NO rest_seconds (the edit screen doesn't touch rest). Weights/duration in DISPLAY
+// units; converted on submit.
 interface WorkoutFormData {
   name: string
   notes: string
+  date: string
   duration: number
   exercises: {
     exercise_id: number
@@ -31,6 +34,20 @@ interface WorkoutFormData {
 
 // One accessory bar per screen — unique ID so a stacked log screen's bar can't clash.
 const KEYPAD_DONE_ID = 'workout-edit-keypad-done'
+
+// started_at (full ISO timestamp) ⇄ the DateInput's local calendar date. Editing the
+// date should only move the *day* — the original time-of-day is preserved so a
+// workout logged at 6pm doesn't jump to midnight just because the date was touched.
+const pad = (n: number) => String(n).padStart(2, '0')
+const startedAtToDate = (iso: string): string => {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+const applyDateKeepTime = (iso: string, ymd: string): string => {
+  const orig = new Date(iso)
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(y, (m ?? 1) - 1, d ?? 1, orig.getHours(), orig.getMinutes(), orig.getSeconds()).toISOString()
+}
 
 function FieldHeader({ icon: Icon, label, hint }: { icon: LucideIcon; label: string; hint?: string }) {
   // Muted (not accent) field icons — matches new.tsx: with every header cyan the
@@ -57,7 +74,7 @@ export default function EditWorkout() {
   const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState('')
   const [pickerExercises, setPickerExercises] = useState<Record<number, Exercise>>({})
-  const [formData, setFormData] = useState<WorkoutFormData>({ name: '', notes: '', duration: 0, exercises: [] })
+  const [formData, setFormData] = useState<WorkoutFormData>({ name: '', notes: '', date: '', duration: 0, exercises: [] })
   const [originalStartedAt, setOriginalStartedAt] = useState('')
   const scrollRef = useRef<ScrollView>(null)
 
@@ -80,11 +97,14 @@ export default function EditWorkout() {
         const map: Record<number, Exercise> = {}
         ;(workout.exercises || []).forEach((ex) => { map[ex.exercise_id] = ex.exercise })
         setPickerExercises(map)
-        // The date is immutable in edit: keep the original timestamp for the payload.
-        setOriginalStartedAt(workout.started_at || new Date().toISOString())
+        // Keep the original timestamp so an untouched date round-trips exactly; the
+        // date field only overrides the day-of when the user changes it.
+        const startedAt = workout.started_at || new Date().toISOString()
+        setOriginalStartedAt(startedAt)
         setFormData({
           name: workout.name,
           notes: workout.notes || '',
+          date: startedAtToDate(startedAt),
           duration: Math.round(workout.duration / 60),
           exercises: (workout.exercises || []).map((ex) => ({
             exercise_id: ex.exercise_id,
@@ -162,7 +182,10 @@ export default function EditWorkout() {
       const payload = {
         ...formData,
         duration: formData.duration * 60,
-        started_at: originalStartedAt || new Date().toISOString(),
+        // Move only the day; keep the logged time-of-day from the original timestamp.
+        started_at: formData.date
+          ? applyDateKeepTime(originalStartedAt || new Date().toISOString(), formData.date)
+          : originalStartedAt || new Date().toISOString(),
         exercises: formData.exercises.map((ex) => ({
           ...ex,
           sets: ex.sets.map((s) => ({ ...s, weight: displayToLbs(s.weight, settings.weight_unit) })),
@@ -233,20 +256,32 @@ export default function EditWorkout() {
             />
           </View>
 
-          <View>
-            <FieldHeader
-              icon={Clock}
-              label="Duration (min)"
-              // h/m readout only once it means something — "0h 5m" is noise.
-              hint={formData.duration >= 60
-                ? `= ${Math.floor(formData.duration / 60)}h ${formData.duration % 60}m`
-                : undefined}
-            />
-            <DurationField
-              value={formData.duration}
-              onChange={(m) => setFormData((prev) => ({ ...prev, duration: m }))}
-              inputAccessoryViewID={KEYPAD_DONE_ID}
-            />
+          {/* Date + duration share a row (matches the Log form). Editing the date only
+              shifts the day; the original time-of-day is preserved on submit. */}
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <FieldHeader icon={CalendarDays} label="Date" />
+              <DateInput
+                value={formData.date}
+                onChange={(d) => setFormData((prev) => ({ ...prev, date: d }))}
+                maximumDate={new Date()}
+              />
+            </View>
+            <View className="flex-1">
+              <FieldHeader
+                icon={Clock}
+                label="Duration (min)"
+                // h/m readout only once it means something — "0h 5m" is noise.
+                hint={formData.duration >= 60
+                  ? `= ${Math.floor(formData.duration / 60)}h ${formData.duration % 60}m`
+                  : undefined}
+              />
+              <DurationField
+                value={formData.duration}
+                onChange={(m) => setFormData((prev) => ({ ...prev, duration: m }))}
+                inputAccessoryViewID={KEYPAD_DONE_ID}
+              />
+            </View>
           </View>
 
           <View>

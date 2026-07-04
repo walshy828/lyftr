@@ -73,9 +73,12 @@ export function DateInput({ label, value, onChange, maximumDate }: Props) {
         />
       )}
 
-      {/* iOS: full-width Modal so the inline calendar isn't crushed by the column. */}
-      {isIOS && (
-        <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      {/* iOS: full-width Modal so the inline calendar isn't crushed by the column.
+          Gate the whole Modal on `open` — an RN Modal renders its children even while
+          hidden, so an always-mounted DateTimePicker would spin up its native view on
+          every screen load; mount it only when the user opens the field. */}
+      {isIOS && open && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setOpen(false)}>
           <SafeAreaProvider>
             {/* Tap the scrim to dismiss; the card stops propagation. */}
             <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setOpen(false)}>
