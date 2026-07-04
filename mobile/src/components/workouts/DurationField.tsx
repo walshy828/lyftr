@@ -11,6 +11,9 @@ const STEP = 5
 // One shared line box for the value (16pt bold) and the "min" label (14pt) so
 // vertical centering lines them up on the same optical line.
 const LINE = 20
+// Points to drop "min" so it lands on the value's iOS optical line. Calibrated on
+// device (web centers the value, so it can't measure this) — bump if still high.
+const MIN_NUDGE = 3.5
 
 export function DurationField({ value, onChange, inputAccessoryViewID }: {
   value: number
@@ -54,11 +57,12 @@ export function DurationField({ value, onChange, inputAccessoryViewID }: {
           // includeFontPadding:false drops Android's extra glyph padding.
           style={{ fontVariant: ['tabular-nums'], minWidth: 16, maxWidth: 44, lineHeight: LINE, includeFontPadding: false }}
         />
-        {/* Nudge "min" down a touch to sit on the value's optical line (the bold value
-            renders slightly low on iOS); transform keeps it out of the layout flow. */}
+        {/* Nudge "min" down to sit on the value's optical line. The bold value renders
+            low within its line box on iOS (web centers it, so this looks slightly low
+            in the harness but correct on device); transform keeps it out of layout. */}
         <Text
           className="ml-1 font-sans text-sm text-tx-muted"
-          style={{ lineHeight: LINE, transform: [{ translateY: 1.5 }] }}
+          style={{ lineHeight: LINE, transform: [{ translateY: MIN_NUDGE }] }}
         >
           min
         </Text>
