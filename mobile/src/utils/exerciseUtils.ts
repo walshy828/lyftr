@@ -54,3 +54,61 @@ export const EQUIPMENT_LABEL: Record<string, string> = {
 export function muscleColor(m: string): MuscleTint | null {
   return MUSCLE_COLORS[m?.toLowerCase()] ?? null
 }
+
+// Maps our exercise muscle names → react-native-body-highlighter's `Slug` set for the
+// gym exercise-info muscle diagram. Adapted from web's MUSCLE_TO_BODY_SLUG, but the RN
+// library's slug model differs from react-body-highlighter: it has a single 'deltoids'
+// (no front/back split) and no 'abductors'/'middle-back', so those remap to the nearest
+// available part. Slugs are kept as plain strings (the diagram component casts to the
+// library's Slug type) so this util doesn't depend on the library.
+const MUSCLE_TO_BODY_SLUG: Record<string, string[]> = {
+  chest: ['chest'],
+  back: ['upper-back', 'lower-back'],
+  'upper back': ['upper-back'],
+  'middle back': ['upper-back'], // RN lib has no 'middle-back'
+  'lower back': ['lower-back'],
+  lats: ['upper-back'],
+  shoulders: ['deltoids'],
+  deltoids: ['deltoids'],
+  'anterior deltoid': ['deltoids'],
+  'front deltoid': ['deltoids'],
+  'posterior deltoid': ['deltoids'],
+  'rear deltoid': ['deltoids'],
+  biceps: ['biceps'],
+  triceps: ['triceps'],
+  forearms: ['forearm'],
+  forearm: ['forearm'],
+  traps: ['trapezius'],
+  trapezius: ['trapezius'],
+  neck: ['neck'],
+  rhomboids: ['upper-back'],
+  legs: ['quadriceps', 'hamstring', 'calves', 'gluteal'],
+  quadriceps: ['quadriceps'],
+  hamstrings: ['hamstring'],
+  hamstring: ['hamstring'],
+  glutes: ['gluteal'],
+  gluteal: ['gluteal'],
+  calves: ['calves'],
+  adductors: ['adductors'],
+  abductors: ['gluteal'], // hip abductor ≈ glute; RN lib has no 'abductors'
+  'hip flexors': ['adductors'],
+  abdominals: ['abs'],
+  abs: ['abs'],
+  core: ['abs', 'obliques'],
+  obliques: ['obliques'],
+  'serratus anterior': ['abs'],
+  'spinal erectors': ['lower-back'],
+  erectors: ['lower-back'],
+}
+
+// Body-diagram slugs for a muscle name (exact match, then partial), or [] if unknown.
+// Mirrors web muscleToBodySlugs.
+export function muscleToBodySlugs(m: string): string[] {
+  const key = m?.toLowerCase().trim()
+  if (!key) return []
+  if (MUSCLE_TO_BODY_SLUG[key]) return MUSCLE_TO_BODY_SLUG[key]
+  for (const [k, v] of Object.entries(MUSCLE_TO_BODY_SLUG)) {
+    if (key.includes(k) || k.includes(key)) return v
+  }
+  return []
+}

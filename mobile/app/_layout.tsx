@@ -15,6 +15,7 @@ import {
 import { useAuthStore, useServerStore, useThemeStore, useWorkoutSession } from '../src/lib/lyftr'
 import { useTheme } from '../src/theme/useTheme'
 import { Loading } from '../src/components/ui'
+import { WorkoutSessionLayer } from '../src/components/workouts/WorkoutSessionLayer'
 
 // Root layout: hydrate persisted state once, then gate routes on auth. Unauthed users
 // are pushed into the (auth) group; authed users out of it.
@@ -63,6 +64,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       {ready ? <Slot /> : <Loading />}
+      {/* Always-mounted session UI (gym overlay + minimized pill), above the tabs so it
+          covers the tab bar — mirrors web's Layout. Self-hides when authed/no session. */}
+      {ready && isAuthed ? <WorkoutSessionLayer /> : null}
     </SafeAreaProvider>
   )
 }
