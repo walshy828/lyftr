@@ -10,6 +10,8 @@ interface Props {
   placeholder?: string
   disabled?: boolean
   accessibilityLabel?: string
+  /** iOS: id of an InputAccessoryView (e.g. NUMERIC_ACCESSORY_ID) to show a Done bar. */
+  inputAccessoryViewID?: string
 }
 
 // Web blocks bad keys in onKeyDown; RN keyboards have no such hook, so we sanitize
@@ -34,6 +36,7 @@ export function NumberField({
   placeholder = '0',
   disabled = false,
   accessibilityLabel,
+  inputAccessoryViewID,
 }: Props) {
   const { colors } = useTheme()
   const [text, setText] = useNumericText(value)
@@ -47,6 +50,7 @@ export function NumberField({
       returnKeyType="done"
       selectTextOnFocus
       accessibilityLabel={accessibilityLabel}
+      inputAccessoryViewID={inputAccessoryViewID}
       onChangeText={(raw) => {
         const v = sanitize(raw, inputMode === 'decimal')
         setText(v)

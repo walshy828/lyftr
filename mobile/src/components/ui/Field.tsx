@@ -64,7 +64,12 @@ export function Field({ label, error, className = '', leftIcon: LeftIcon, rightS
           // fontSize inline instead of the `text-base` class so NO lineHeight is imposed:
           // on iOS a single-line TextInput with a set lineHeight top-aligns its text and
           // clips descenders (g, j, p, y). Natural line metrics render them in full.
-          style={multiline ? { fontSize: 16, minHeight: 60, textAlignVertical: 'top' } : { fontSize: 16 }}
+          // Single-line gets an explicit `height` (not padding): a single-line TextInput
+          // vertically CENTERS its text within its frame (iOS always; browsers/RN-web via
+          // the native <input>), so a frame taller than the glyph box centres the text AND
+          // leaves room for descenders. Using paddingVertical instead top-aligned the text
+          // (frame == line box + pad pushed from the top) — it rode too high in the box.
+          style={multiline ? { fontSize: 16, minHeight: 60, textAlignVertical: 'top' } : { fontSize: 16, height: 46 }}
           multiline={multiline}
           placeholderTextColor={colors.txMuted}
           onFocus={(e) => {
