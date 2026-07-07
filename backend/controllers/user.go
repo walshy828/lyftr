@@ -27,10 +27,7 @@ func (h *Handler) GetSettings(c *gin.Context) {
 	s, err := h.s.User.GetSettings(uid)
 	if err == sql.ErrNoRows {
 		// No row yet — return the defaults.
-		utils.OK(c, models.UserSettings{
-			UserID: uid, WeightUnit: "lbs",
-			CalorieTarget: 2000, ProteinTarget: 150, CarbTarget: 250, FatTarget: 65,
-		})
+		utils.OK(c, models.DefaultUserSettings(uid))
 		return
 	}
 	if utils.DBError(c, err) {

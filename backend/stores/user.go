@@ -38,9 +38,34 @@ func (s *UserStore) GetSettings(uid int64) (models.UserSettings, error) {
 	return st, err
 }
 
-// UpsertSettings writes the settings and returns the stored row (no controller-
-// to-controller call to render the response).
+// UpsertSettings applies a partial update and returns the stored row. It starts
+// from the current row (or the defaults if none exists), overlays only the fields
+// the client actually sent, then writes the merged row back — so a partial PUT
+// (e.g. weight-unit only) can never zero the targets it omitted (#37).
 func (s *UserStore) UpsertSettings(uid int64, req models.UpdateSettingsRequest) (models.UserSettings, error) {
+	cur, err := s.GetSettings(uid)
+	if err == sql.ErrNoRows {
+		cur = models.DefaultUserSettings(uid)
+	} else if err != nil {
+		return models.UserSettings{}, err
+	}
+
+	if req.WeightUnit != nil {
+		cur.WeightUnit = *req.WeightUnit
+	}
+	if req.CalorieTarget != nil {
+		cur.CalorieTarget = *req.CalorieTarget
+	}
+	if req.ProteinTarget != nil {
+		cur.ProteinTarget = *req.ProteinTarget
+	}
+	if req.CarbTarget != nil {
+		cur.CarbTarget = *req.CarbTarget
+	}
+	if req.FatTarget != nil {
+		cur.FatTarget = *req.FatTarget
+	}
+
 	if _, err := s.db.Exec(
 		`INSERT INTO user_settings (user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target)
 		 VALUES (?, ?, ?, ?, ?, ?)
@@ -50,7 +75,7 @@ func (s *UserStore) UpsertSettings(uid int64, req models.UpdateSettingsRequest) 
 		   protein_target = excluded.protein_target,
 		   carb_target    = excluded.carb_target,
 		   fat_target     = excluded.fat_target`,
-		uid, req.WeightUnit, req.CalorieTarget, req.ProteinTarget, req.CarbTarget, req.FatTarget,
+		uid, cur.WeightUnit, cur.CalorieTarget, cur.ProteinTarget, cur.CarbTarget, cur.FatTarget,
 	); err != nil {
 		return models.UserSettings{}, err
 	}
