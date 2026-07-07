@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Image, Keyboard, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import Animated, { FadeOut } from 'react-native-reanimated'
 import * as Haptics from 'expo-haptics'
 import { router, usePathname } from 'expo-router'
 import {
@@ -16,6 +17,7 @@ import { ExercisePicker } from './ExercisePicker'
 import { MuscleDiagram } from './MuscleDiagram'
 import { RestTimerBanner } from './RestTimerBanner'
 import { client, useSettingsStore, useWorkoutSession } from '../../lib/lyftr'
+import { useWorkoutOutcome } from '../../lib/workoutOutcome'
 import { useTheme } from '../../theme/useTheme'
 import { clampStep, clampValue } from '../../utils/number'
 import { nextIncompleteSet } from '../../utils/workoutSets'
@@ -63,6 +65,7 @@ export function GymModeWorkout() {
   const updateExerciseNotes = useWorkoutSession((s) => s.updateExerciseNotes)
   const buildPayload = useWorkoutSession((s) => s.buildPayload)
   const cancelSession = useWorkoutSession((s) => s.cancelSession)
+  const setOutcome = useWorkoutOutcome((s) => s.setOutcome)
   const startRest = useWorkoutSession((s) => s.startRest)
   const clearRest = useWorkoutSession((s) => s.clearRest)
   const restExIdx = useWorkoutSession((s) => s.restExIdx)
@@ -120,6 +123,7 @@ export function GymModeWorkout() {
     setSaving(true)
     try {
       await client.workoutAPI.create(buildPayload())
+      setOutcome({ kind: 'saved' })
       cancelSession()
       minimizeGym()
       router.replace('/workouts')
@@ -150,7 +154,11 @@ export function GymModeWorkout() {
   // subtree each time (reloading images + the muscle diagram). Called as plain functions,
   // their returned elements reconcile by real type (SafeAreaView/View) — no remount.
   const overlay = (children: React.ReactNode) => (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }} className="bg-surface-base">
+    // Soft dissolve on exit (finish / discard / minimize) instead of a hard cut — the
+    // overlay fades as the navigation settles underneath. Exit-only; entering is the
+    // route push.
+    <Animated.View exiting={FadeOut.duration(160)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1 }} className="bg-surface-base">
       {children}
       <ConfirmSheet
         open={confirmFinish}
@@ -166,7 +174,7 @@ export function GymModeWorkout() {
         title="Discard workout?"
         message="This ends the workout without saving — all progress is lost."
         confirmLabel="Discard" cancelLabel="Keep Going"
-        onConfirm={() => { cancelSession(); handleMinimize() }}
+        onConfirm={() => { setOutcome({ kind: 'discarded', session }); cancelSession(); handleMinimize() }}
         onCancel={() => setConfirmCancel(false)}
       />
       {showPicker ? (
@@ -182,6 +190,7 @@ export function GymModeWorkout() {
       {/* iOS Done bar above the numeric keyboard (the reps/weight NumberFields link it). */}
       <NumericKeyboardAccessory />
     </SafeAreaView>
+    </Animated.View>
   )
 
   const topBar = (onBack: () => void) => (

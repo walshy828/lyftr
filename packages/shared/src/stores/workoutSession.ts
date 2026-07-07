@@ -26,6 +26,7 @@ export interface WorkoutSessionStore {
   isHydrated: boolean
   hydrate: () => Promise<void>
   startSession: (name: string, exercises: types.ActiveSessionExercise[], programId?: number) => void
+  restoreSession: (session: types.ActiveSession) => void
   updateSet: (exIdx: number, setIdx: number, field: 'actual_reps' | 'actual_weight', val: number) => void
   completeSet: (exIdx: number, setIdx: number) => void
   updateExerciseNotes: (exIdx: number, notes: string) => void
@@ -152,6 +153,13 @@ export function createWorkoutSession(storage: StorageAdapter) {
         exercises,
         program_id: programId,
       }
+      saveLocal(session)
+      set({ session })
+    },
+
+    // Put a previously-captured session back verbatim (preserves started_at + logged
+    // sets) — powers "Undo" after a discard. Unlike startSession it starts nothing new.
+    restoreSession: (session) => {
       saveLocal(session)
       set({ session })
     },

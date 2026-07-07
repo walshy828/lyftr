@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
-import { Dumbbell, Plus } from 'lucide-react-native'
+import { CheckCircle2, Dumbbell, Plus, RotateCcw } from 'lucide-react-native'
 import { weightShort, type Workout } from '@lyftr/shared'
-import { AppText, Card, EmptyState, IconButton, Label, PageHeader, Screen, SearchField } from '../../../src/components/ui'
+import { AppText, Card, EmptyState, IconButton, Label, PageHeader, Screen, SearchField, Toast } from '../../../src/components/ui'
 import { WorkoutCard } from '../../../src/components/workouts/WorkoutCard'
 import { WorkoutsSkeleton } from '../../../src/components/workouts/WorkoutsSkeleton'
 import { useServerInfiniteList } from '../../../src/hooks/useServerInfiniteList'
-import { client, useSettingsStore } from '../../../src/lib/lyftr'
+import { client, useSettingsStore, useWorkoutSession } from '../../../src/lib/lyftr'
+import { useWorkoutOutcome } from '../../../src/lib/workoutOutcome'
 import { useTheme } from '../../../src/theme/useTheme'
 
 export default function Workouts() {
@@ -19,9 +20,11 @@ export default function Workouts() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
-  // TODO(phase-2, #40): show the progression Toast here when arriving from a finished
-  // session (web reads router state; mobile will use a router param or the
-  // workoutSession store). Deliberately NOT built in phase 1a.
+  // Confirmation toast on arrival from a finished/discarded session (the courier is the
+  // one-shot useWorkoutOutcome store, set during teardown before we navigate here).
+  const outcome = useWorkoutOutcome((s) => s.outcome)
+  const clearOutcome = useWorkoutOutcome((s) => s.clear)
+  const restoreSession = useWorkoutSession((s) => s.restoreSession)
 
   useEffect(() => {
     fetchSettings()
@@ -182,6 +185,27 @@ export default function Workouts() {
           ) : null
         }
       />
+
+      {/* Post-session confirmation. Saved = quiet success; discarded = tap-to-undo
+          (restores the exact session snapshot and drops you back into it). */}
+      {outcome ? (
+        outcome.kind === 'saved' ? (
+          <Toast variant="success" icon={CheckCircle2} title="Workout saved" onDismiss={clearOutcome} />
+        ) : (
+          <Toast
+            variant="default"
+            icon={RotateCcw}
+            title="Workout discarded"
+            description="Tap to undo"
+            onPress={() => {
+              restoreSession(outcome.session)
+              clearOutcome()
+              router.push('/workouts/active')
+            }}
+            onDismiss={clearOutcome}
+          />
+        )
+      ) : null}
     </Screen>
   )
 }

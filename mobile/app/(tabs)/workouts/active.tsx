@@ -10,6 +10,7 @@ import { AppText, ConfirmSheet, NumericKeyboardAccessory, NUMERIC_ACCESSORY_ID, 
 import { ExerciseImage } from '../../../src/components/workouts/ExerciseImage'
 import { ExercisePicker } from '../../../src/components/workouts/ExercisePicker'
 import { client, useSettingsStore, useWorkoutSession } from '../../../src/lib/lyftr'
+import { useWorkoutOutcome } from '../../../src/lib/workoutOutcome'
 import { useTheme } from '../../../src/theme/useTheme'
 import { muscleColor } from '../../../src/utils/exerciseUtils'
 
@@ -38,6 +39,7 @@ export default function ActiveWorkout() {
   const buildPayload = useWorkoutSession((s) => s.buildPayload)
   const cancelSession = useWorkoutSession((s) => s.cancelSession)
   const openGym = useWorkoutSession((s) => s.openGym)
+  const setOutcome = useWorkoutOutcome((s) => s.setOutcome)
 
   const settings = useSettingsStore((s) => s.settings)
   const fetchSettings = useSettingsStore((s) => s.fetch)
@@ -81,6 +83,7 @@ export default function ActiveWorkout() {
     setSaveError('')
     try {
       await client.workoutAPI.create(buildPayload())
+      setOutcome({ kind: 'saved' })
       cancelSession()
       router.replace('/workouts')
     } catch (err: any) {
@@ -393,7 +396,7 @@ export default function ActiveWorkout() {
         message="All progress will be lost."
         confirmLabel="Cancel Workout"
         cancelLabel="Keep Going"
-        onConfirm={() => { cancelSession(); router.replace('/workouts') }}
+        onConfirm={() => { setOutcome({ kind: 'discarded', session }); cancelSession(); router.replace('/workouts') }}
         onCancel={() => setConfirmCancel(false)}
       />
 
