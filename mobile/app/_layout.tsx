@@ -2,6 +2,7 @@ import '../src/lib/polyfills'
 import '../global.css'
 import { useEffect } from 'react'
 import { Slot, useRouter, useSegments } from 'expo-router'
+import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { colorScheme } from 'nativewind'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -16,6 +17,11 @@ import { useAuthStore, useServerStore, useThemeStore, useWorkoutSession } from '
 import { useTheme } from '../src/theme/useTheme'
 import { Loading } from '../src/components/ui'
 import { WorkoutSessionLayer } from '../src/components/workouts/WorkoutSessionLayer'
+
+// Hold the native splash (the static barbell icon) up until React has painted its
+// first frame, so cold start hands off splash → animated barbell loader with no
+// white/blank flash in between. Hidden on mount below.
+SplashScreen.preventAutoHideAsync().catch(() => {})
 
 // Root layout: hydrate persisted state once, then gate routes on auth. Unauthed users
 // are pushed into the (auth) group; authed users out of it.
@@ -46,6 +52,12 @@ export default function RootLayout() {
     hydrateTheme()
     hydrateWorkout()
   }, [hydrateAuth, hydrateServer, hydrateTheme, hydrateWorkout])
+
+  // React has mounted → the barbell loader (or the app, if already ready) is on screen.
+  // Drop the native splash now so it flows straight into the animated loader.
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {})
+  }, [])
 
   // Drive NativeWind's className theming from the same store the inline-styled
   // screens read, so `dark:`/CSS-var tokens flip together with useTheme().
