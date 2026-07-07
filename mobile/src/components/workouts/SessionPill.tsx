@@ -44,8 +44,10 @@ export function SessionPill() {
   const totalSets = session.exercises.reduce((s, ex) => s + ex.sets.length, 0)
 
   const handlePress = () => {
+    // navigate (not push): the pill fires from any tab, so this is a cross-tab jump —
+    // push corrupts the native tab/back stack (strands you with no working back).
     if (layout === 'gym') openGym()
-    else router.push('/workouts/active')
+    else router.navigate('/workouts/active')
   }
 
   return (

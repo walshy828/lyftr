@@ -134,7 +134,7 @@ export default function StartWorkout() {
               <View className="items-center rounded-2xl border border-surface-border bg-surface-raised py-10">
                 <BookOpen size={32} color={colors.txMuted} />
                 <AppText variant="body" color="muted" className="mt-2">No programs yet</AppText>
-                <Pressable onPress={() => router.push('/programs/new')} className="mt-3 active:opacity-60">
+                <Pressable onPress={() => router.navigate('/programs/new')} className="mt-3 active:opacity-60">
                   <AppText variant="caption" style={{ color: accent }}>Create your first program →</AppText>
                 </Pressable>
               </View>

@@ -276,7 +276,7 @@ export default function Dashboard() {
               <AppText variant="title" className="mt-0.5" numberOfLines={1}>{greeting(now)}, {username}</AppText>
             </View>
             <Pressable
-              onPress={() => { hImpact(); router.push('/workouts/start') }}
+              onPress={() => { hImpact(); router.navigate('/workouts/start') }}
               className="flex-row items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2.5 active:scale-95"
             >
               <Play size={15} color="#fff" />
@@ -287,7 +287,7 @@ export default function Dashboard() {
           {/* ── Active-session banner ── */}
           {session ? (
             <Pressable
-              onPress={() => { hSelect(); router.push('/workouts/active') }}
+              onPress={() => { hSelect(); router.navigate('/workouts/active') }}
               className="flex-row items-center justify-between rounded-2xl border border-warning-500/30 bg-warning-500/10 p-3.5 active:scale-[0.99]"
             >
               <View className="flex-row items-center gap-3">
@@ -431,7 +431,7 @@ export default function Dashboard() {
             const totalVolume = displayVolume(calcVolume(lastWorkout), unit)
             const mins = Math.round(lastWorkout.duration / 60)
             return (
-              <Pressable onPress={() => { hSelect(); router.push(`/workouts/${lastWorkout.id}`) }} className="active:scale-[0.99]">
+              <Pressable onPress={() => { hSelect(); router.navigate(`/workouts/${lastWorkout.id}`) }} className="active:scale-[0.99]">
                 <Card>
                   <View className="mb-3 flex-row items-start justify-between gap-2">
                     <View className="min-w-0 flex-1">
@@ -444,7 +444,7 @@ export default function Dashboard() {
                         {totalVolume > 0 ? ` · ${totalVolume.toLocaleString()} ${wUnit}` : ''}
                       </AppText>
                     </View>
-                    <LinkRow label="All" onPress={() => router.push('/workouts')} />
+                    <LinkRow label="All" onPress={() => router.navigate('/workouts')} />
                   </View>
                   <View className="gap-2.5">
                     {exs.slice(0, 4).map((ex, i) => {
@@ -476,7 +476,7 @@ export default function Dashboard() {
             <Card className="items-center justify-center gap-2" style={{ minHeight: 148 }}>
               <Dumbbell size={30} color={colors.txMuted} style={{ opacity: 0.4 }} />
               <AppText variant="body" color="muted">No workouts logged yet</AppText>
-              <Pressable onPress={() => { hSelect(); router.push('/workouts/start') }} hitSlop={6} className="active:opacity-60">
+              <Pressable onPress={() => { hSelect(); router.navigate('/workouts/start') }} hitSlop={6} className="active:opacity-60">
                 <AppText variant="caption" color="brand">Start your first workout →</AppText>
               </Pressable>
             </Card>
@@ -563,7 +563,7 @@ export default function Dashboard() {
             <SectionHeader
               icon={Scale}
               title="Weight"
-              right={<LinkRow label="View" onPress={() => router.push('/weight')} />}
+              right={<LinkRow label="View" onPress={() => router.navigate('/weight')} />}
               className="mb-2"
             />
             {weightLogs.length === 0 ? (

@@ -88,7 +88,9 @@ export default function ProgramDetail() {
 
   const handleStart = () => {
     if (!program) return
-    if (session) { router.push(startHref); return }
+    // navigate (not push): programs → workouts is a cross-tab jump; push corrupts the
+    // native tab/back stack (the "can't get off the workout from a program" bug).
+    if (session) { router.navigate(startHref); return }
     const exercises: ActiveSessionExercise[] = (program.exercises || []).map((ex) => ({
       exercise_id: ex.exercise_id,
       exercise: ex.exercise,
@@ -105,7 +107,7 @@ export default function ProgramDetail() {
       })),
     }))
     startSession(program.name, exercises, program.id)
-    router.push(activeHref)
+    router.navigate(activeHref)
   }
 
   const handleDelete = async () => {
