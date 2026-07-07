@@ -118,7 +118,18 @@ export default function Dashboard() {
   const fetchSettings = useSettingsStore((s) => s.fetch)
   const unit = settings.weight_unit
   const wUnit = weightShort(unit)
-  const { colors, accent, brand } = useTheme()
+  const { colors, accent, brand, isDark } = useTheme()
+
+  // Consistency heatmap cell fill — explicit hex (not NativeWind opacity classes, which
+  // wash out on the light theme + don't render reliably on native): empty is a visible
+  // gray (border, not the near-white `muted`), and workout days are solid cyan that gets
+  // MORE prominent with count on both themes (darker on light, brighter on dark).
+  const heatFill = (count: number, future: boolean) => {
+    if (future) return colors.muted
+    if (count === 0) return colors.border
+    if (count === 1) return isDark ? brand.cyanEdge : brand.cyan
+    return isDark ? brand.cyanLight : brand.cyanEdge
+  }
 
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [food, setFood] = useState<DailyStats>(DEFAULT_FOOD)
@@ -384,12 +395,13 @@ export default function Dashboard() {
                           <Pressable
                             key={di}
                             onPress={() => { hSelect(); setHeatSel((c) => (c && isSameDay(c.day, day) ? null : { day, count })) }}
-                            // Empty days are a solid gray (a different HUE from cyan) so a single-
-                            // workout day never blends in; 1 vs 2+ is an opacity step of brand that
-                            // reads correctly on both light + dark (more opaque = more prominent).
-                            className={`h-3 rounded-[2px] ${
-                              future ? 'bg-surface-muted/40' : count === 0 ? 'bg-surface-muted' : count === 1 ? 'bg-brand-500/70' : 'bg-brand-500'
-                            } ${isSel ? 'border border-brand-300' : ''}`}
+                            style={{
+                              height: 12,
+                              borderRadius: 2,
+                              backgroundColor: heatFill(count, future),
+                              borderWidth: isSel ? 1.5 : 0,
+                              borderColor: brand.cyanLight,
+                            }}
                           />
                         )
                       })}
@@ -403,8 +415,8 @@ export default function Dashboard() {
                 ) : null}
                 <View className="mt-2 flex-row items-center justify-end gap-1.5">
                   <Text className="text-[9px] text-tx-muted">Less</Text>
-                  {['bg-surface-muted', 'bg-brand-500/70', 'bg-brand-500'].map((cls, i) => (
-                    <View key={i} className={`h-3 w-3 rounded-[3px] ${cls}`} />
+                  {[colors.border, isDark ? brand.cyanEdge : brand.cyan, isDark ? brand.cyanLight : brand.cyanEdge].map((c, i) => (
+                    <View key={i} style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: c }} />
                   ))}
                   <Text className="text-[9px] text-tx-muted">More</Text>
                 </View>
