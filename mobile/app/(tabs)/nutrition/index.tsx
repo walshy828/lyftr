@@ -115,13 +115,6 @@ export default function Nutrition() {
   const goDay = (date: string) => { hSelect(); setSelectedDate(date) }
   const openLog = (meal: Meal) => { hSelect(); router.push(`/nutrition/log?meal=${meal}&date=${selectedDate}`) }
 
-  // FoodEntryRow owns the confirm sheet + server delete; we just drop the row and refresh
-  // the day's totals (macro rings + calorie hero) once it's gone.
-  const onEntryDeleted = useCallback((id: number) => {
-    setLogs((prev) => prev.filter((l) => l.id !== id))
-    client.foodAPI.stats(selectedDate).then(setStats).catch(() => {})
-  }, [selectedDate])
-
   if (!hasLoadedRef.current) return <NutritionSkeleton />
 
   const totalCals = stats?.total_calories ?? 0
@@ -270,8 +263,7 @@ export default function Nutrition() {
                           key={entry.id}
                           entry={entry}
                           first={i === 0}
-                          onEdit={() => { hSelect(); router.push(`/nutrition/log?edit=${entry.id}&date=${selectedDate}`) }}
-                          onDeleted={onEntryDeleted}
+                          onPress={() => { hSelect(); router.push(`/nutrition/${entry.id}`) }}
                         />
                       ))}
                     </View>
