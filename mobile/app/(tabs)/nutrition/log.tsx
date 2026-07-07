@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Image, Pressable, ScrollView, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
+import * as Haptics from 'expo-haptics'
 import {
   AlertCircle, ArrowLeft, Bookmark, BookmarkCheck, ChevronRight, Minus, Plus, Scan, Utensils, Zap,
 } from 'lucide-react-native'
@@ -21,6 +22,8 @@ import { useTheme } from '../../../src/theme/useTheme'
 
 type Phase = 'search' | 'detail' | 'scan'
 type SearchTab = 'recent' | 'myfoods' | 'all'
+
+const hSelect = () => Haptics.selectionAsync().catch(() => {})
 
 const TAB_OPTIONS = [
   { value: 'recent', label: 'Recent' },
@@ -175,6 +178,7 @@ export default function LogFood() {
   }, [query, tab])
 
   const selectResult = (result: FoodSearchResult) => {
+    hSelect()
     setSelected(result)
     setServingsStr('1')
     setPhase('detail')
@@ -194,6 +198,7 @@ export default function LogFood() {
   }
 
   const stepServings = (delta: number) => {
+    hSelect()
     const next = delta < 0 ? Math.max(0.5, +(servings - 0.5).toFixed(1)) : +(servings + 0.5).toFixed(1)
     setServingsStr(String(next))
   }
@@ -229,7 +234,9 @@ export default function LogFood() {
           }).catch(() => {})
         }
       }
-      router.replace('/nutrition')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+      // Courier the confirmation to the dashboard toast: which meal (new) or 'Updated'.
+      router.replace(`/nutrition?logged=${editId ? 'Updated' : encodeURIComponent(MEAL_LABELS[meal])}`)
     } catch (err: any) {
       setSaveError(err?.response?.data?.error || 'Failed to save')
       setSaving(false)
@@ -293,7 +300,7 @@ export default function LogFood() {
                 />
               </View>
               <Pressable
-                onPress={() => setPhase('scan')}
+                onPress={() => { hSelect(); setPhase('scan') }}
                 accessibilityLabel="Scan barcode"
                 className="h-12 flex-row items-center gap-1.5 rounded-xl border border-surface-border bg-surface-muted px-3.5 active:opacity-70"
               >
@@ -483,7 +490,7 @@ export default function LogFood() {
                       return (
                         <Pressable
                           key={m}
-                          onPress={() => setMeal(m)}
+                          onPress={() => { hSelect(); setMeal(m) }}
                           style={{ width: '48%' }}
                           className={`flex-row items-center gap-2.5 rounded-xl border px-3.5 py-3 ${active ? 'border-brand-500/40 bg-brand-500/10' : 'border-surface-border bg-surface-muted'}`}
                         >

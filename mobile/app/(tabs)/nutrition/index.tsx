@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Image, Pressable, RefreshControl, ScrollView, View } from 'react-native'
-import { router, useFocusEffect } from 'expo-router'
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
+import * as Haptics from 'expo-haptics'
 import { format, subDays, addDays } from 'date-fns'
 import {
-  AlertCircle, CalendarDays, ChevronLeft, ChevronRight, Flame, Plus, Trash2, Utensils,
+  AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Flame, Plus, Trash2, Utensils,
 } from 'lucide-react-native'
 import { todayStr, type DailyStats, type FoodLog } from '@lyftr/shared'
 import {
-  AppText, Card, DateInput, IconButton, PageHeader, Screen, SectionHeader, SegmentedControl,
+  AppText, Card, ConfirmSheet, DateInput, IconButton, PageHeader, Screen, SectionHeader,
+  SegmentedControl, Toast, deleteConfirmProps,
 } from '../../../src/components/ui'
 import { MacroRing, MacroHistoryChart, type MacroHistoryPoint } from '../../../src/components/nutrition/NutritionCharts'
 import { NutritionSkeleton } from '../../../src/components/nutrition/NutritionSkeleton'
@@ -21,14 +23,20 @@ const HISTORY_PERIODS = ['7d', '30d', '90d'] as const
 type HistoryPeriod = typeof HISTORY_PERIODS[number]
 const HISTORY_OPTIONS = HISTORY_PERIODS.map((p) => ({ value: p, label: p }))
 
-// Port of web/pages/Food.tsx — the daily Nutrition dashboard. Date navigator, calorie
-// hero + macro rings, four meal cards with entries (inline delete-confirm), and the
-// macro-history chart. Calorie/macro targets come from the settings store (the mobile
-// equivalent of web's userAPI.getSettings, already loaded app-wide).
+// Port of web/pages/Food.tsx — the daily Nutrition dashboard, mobile-polished: date
+// navigator + haptics, calorie hero + macro rings, four meal cards with entries whose
+// delete routes through the native ConfirmSheet (not web's inline row), the macro-
+// history chart, and a success Toast on arrival back from a log. Calorie/macro targets
+// come from the settings store (the mobile equivalent of web's userAPI.getSettings).
+const hSelect = () => Haptics.selectionAsync().catch(() => {})
+
 export default function Nutrition() {
   const { colors, brand, accent, isDark } = useTheme()
   const settings = useSettingsStore((s) => s.settings)
   const fetchSettings = useSettingsStore((s) => s.fetch)
+  // One-shot courier from the log flow: ?logged=<meal label> | 'Updated' → success toast.
+  const params = useLocalSearchParams<{ logged?: string }>()
+  const [toast, setToast] = useState<string | null>(null)
 
   const [selectedDate, setSelectedDate] = useState(todayStr())
   const [logs, setLogs] = useState<FoodLog[]>([])
@@ -41,7 +49,7 @@ export default function Nutrition() {
   const [chartWidth, setChartWidth] = useState(0)
 
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  const [confirmEntry, setConfirmEntry] = useState<FoodLog | null>(null)
   const [pulling, setPulling] = useState(false)
   const hasLoadedRef = useRef(false)
 
@@ -98,14 +106,24 @@ export default function Nutrition() {
     setPulling(false)
   }, [loadDay, selectedDate, loadHistory, fetchSettings])
 
-  const openLog = (meal: Meal) => router.push(`/nutrition/log?meal=${meal}&date=${selectedDate}`)
+  // Show the arrival toast once, then strip the param so it doesn't re-fire on re-render.
+  useEffect(() => {
+    if (params.logged) {
+      setToast(params.logged === 'Updated' ? 'Entry updated' : `Added to ${params.logged}`)
+      router.setParams({ logged: undefined })
+    }
+  }, [params.logged])
 
-  const handleDelete = async (id: number) => {
-    setDeletingId(id)
+  const goDay = (date: string) => { hSelect(); setSelectedDate(date) }
+  const openLog = (meal: Meal) => { hSelect(); router.push(`/nutrition/log?meal=${meal}&date=${selectedDate}`) }
+
+  const handleDelete = async (entry: FoodLog) => {
+    setDeletingId(entry.id)
     try {
-      await client.foodAPI.delete(id)
-      setLogs((prev) => prev.filter((l) => l.id !== id))
-      setDeleteConfirmId(null)
+      await client.foodAPI.delete(entry.id)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+      setLogs((prev) => prev.filter((l) => l.id !== entry.id))
+      setConfirmEntry(null)
       client.foodAPI.stats(selectedDate).then(setStats).catch(() => {})
     } catch {
       setError('Failed to delete entry')
@@ -166,7 +184,7 @@ export default function Nutrition() {
           <View className="flex-row items-center gap-2">
             <Pressable
               accessibilityLabel="Previous day"
-              onPress={() => setSelectedDate(prevDate)}
+              onPress={() => goDay(prevDate)}
               className="items-center justify-center rounded-xl p-3 active:scale-95"
             >
               <ChevronLeft size={20} color={colors.txMuted} />
@@ -176,13 +194,13 @@ export default function Nutrition() {
                 dayLabel={dayLabel}
                 yearLabel={!isToday ? format(selectedDateObj, 'yyyy') : undefined}
                 value={selectedDate}
-                onChange={setSelectedDate}
+                onChange={goDay}
               />
             </View>
             <Pressable
               accessibilityLabel="Next day"
               disabled={!canGoNext}
-              onPress={() => setSelectedDate(nextDate)}
+              onPress={() => goDay(nextDate)}
               className={`items-center justify-center rounded-xl p-3 active:scale-95 ${canGoNext ? '' : 'opacity-30'}`}
             >
               <ChevronRight size={20} color={colors.txMuted} />
@@ -266,60 +284,34 @@ export default function Nutrition() {
                   ) : (
                     <View className="border-t border-surface-border">
                       {entries.map((entry, i) => (
-                        <View key={entry.id} className={i > 0 ? 'border-t border-surface-border' : ''}>
-                          {deleteConfirmId === entry.id ? (
-                            <View
-                              className="flex-row items-center justify-between gap-3 px-4 py-3"
-                              style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderLeftWidth: 2, borderLeftColor: brand.error }}
-                            >
-                              <AppText variant="caption" color="secondary" className="min-w-0 flex-1">
-                                Delete <AppText variant="caption" style={{ color: colors.txPrimary }}>{entry.name}</AppText>?
-                              </AppText>
-                              <View className="flex-row gap-2">
-                                <Pressable onPress={() => setDeleteConfirmId(null)} className="rounded-lg border border-surface-border bg-surface-overlay px-3 py-1.5 active:opacity-70">
-                                  <AppText variant="caption" color="secondary">Cancel</AppText>
-                                </Pressable>
-                                <Pressable
-                                  onPress={() => handleDelete(entry.id)}
-                                  disabled={deletingId === entry.id}
-                                  className="rounded-lg bg-error-500 px-3 py-1.5 active:opacity-70"
-                                  style={{ opacity: deletingId === entry.id ? 0.5 : 1 }}
-                                >
-                                  <AppText variant="caption" color="white">{deletingId === entry.id ? '…' : 'Delete'}</AppText>
-                                </Pressable>
+                        <View key={entry.id} className={`flex-row items-center gap-2 px-4 py-3 ${i > 0 ? 'border-t border-surface-border' : ''}`}>
+                          <Pressable
+                            onPress={() => { hSelect(); router.push(`/nutrition/log?edit=${entry.id}&date=${selectedDate}`) }}
+                            className="min-w-0 flex-1 flex-row items-center gap-3 active:opacity-70"
+                          >
+                            {entry.image_url ? (
+                              <Image source={{ uri: entry.image_url }} className="h-11 w-11 rounded-xl border border-surface-border" />
+                            ) : (
+                              <View className="h-11 w-11 items-center justify-center rounded-xl border border-surface-border bg-surface-muted">
+                                <Utensils size={20} color={colors.txMuted} style={{ opacity: 0.4 }} />
+                              </View>
+                            )}
+                            <View className="min-w-0 flex-1">
+                              <AppText variant="bodySemibold" numberOfLines={1}>{entry.name}</AppText>
+                              <View className="mt-0.5 flex-row flex-wrap items-center gap-x-2">
+                                <AppText variant="caption" color="secondary" style={{ fontWeight: '600', fontVariant: ['tabular-nums'] }}>{Math.round(entry.calories)} kcal</AppText>
+                                <MacroDot />
+                                <AppText variant="caption" style={{ color: MACRO_TEXT.protein, fontVariant: ['tabular-nums'] }}>{entry.protein.toFixed(0)}g P</AppText>
+                                <MacroDot />
+                                <AppText variant="caption" style={{ color: MACRO_TEXT.carbs, fontVariant: ['tabular-nums'] }}>{entry.carbs.toFixed(0)}g C</AppText>
+                                <MacroDot />
+                                <AppText variant="caption" style={{ color: MACRO_TEXT.fat, fontVariant: ['tabular-nums'] }}>{entry.fat.toFixed(0)}g F</AppText>
+                                {entry.servings !== 1 ? <AppText variant="caption" color="muted">× {entry.servings}</AppText> : null}
                               </View>
                             </View>
-                          ) : (
-                            <View className="flex-row items-center gap-2 px-4 py-3">
-                              <Pressable
-                                onPress={() => router.push(`/nutrition/log?edit=${entry.id}&date=${selectedDate}`)}
-                                className="min-w-0 flex-1 flex-row items-center gap-3 active:opacity-70"
-                              >
-                                {entry.image_url ? (
-                                  <Image source={{ uri: entry.image_url }} className="h-11 w-11 rounded-xl border border-surface-border" />
-                                ) : (
-                                  <View className="h-11 w-11 items-center justify-center rounded-xl border border-surface-border bg-surface-muted">
-                                    <Utensils size={20} color={colors.txMuted} style={{ opacity: 0.4 }} />
-                                  </View>
-                                )}
-                                <View className="min-w-0 flex-1">
-                                  <AppText variant="bodySemibold" numberOfLines={1}>{entry.name}</AppText>
-                                  <View className="mt-0.5 flex-row flex-wrap items-center gap-x-2">
-                                    <AppText variant="caption" color="secondary" style={{ fontWeight: '600', fontVariant: ['tabular-nums'] }}>{Math.round(entry.calories)} kcal</AppText>
-                                    <MacroDot />
-                                    <AppText variant="caption" style={{ color: MACRO_TEXT.protein, fontVariant: ['tabular-nums'] }}>{entry.protein.toFixed(0)}g P</AppText>
-                                    <MacroDot />
-                                    <AppText variant="caption" style={{ color: MACRO_TEXT.carbs, fontVariant: ['tabular-nums'] }}>{entry.carbs.toFixed(0)}g C</AppText>
-                                    <MacroDot />
-                                    <AppText variant="caption" style={{ color: MACRO_TEXT.fat, fontVariant: ['tabular-nums'] }}>{entry.fat.toFixed(0)}g F</AppText>
-                                    {entry.servings !== 1 ? <AppText variant="caption" color="muted">× {entry.servings}</AppText> : null}
-                                  </View>
-                                </View>
-                                <ChevronRight size={16} color={colors.txMuted} />
-                              </Pressable>
-                              <IconButton icon={Trash2} variant="danger" label="Delete" onPress={() => setDeleteConfirmId(entry.id)} />
-                            </View>
-                          )}
+                            <ChevronRight size={16} color={colors.txMuted} />
+                          </Pressable>
+                          <IconButton icon={Trash2} variant="danger" label={`Delete ${entry.name}`} onPress={() => { hSelect(); setConfirmEntry(entry) }} />
                         </View>
                       ))}
                     </View>
@@ -366,6 +358,20 @@ export default function Nutrition() {
           </Card>
         </View>
       </ScrollView>
+
+      {/* Delete an entry — native confirm sheet (replaces web's inline confirm row). */}
+      <ConfirmSheet
+        {...deleteConfirmProps({ title: 'Delete entry?', subject: confirmEntry ? `"${confirmEntry.name}"` : 'This entry' })}
+        open={confirmEntry != null}
+        busy={deletingId != null}
+        onConfirm={() => { if (confirmEntry) handleDelete(confirmEntry) }}
+        onCancel={() => setConfirmEntry(null)}
+      />
+
+      {/* Success toast on arrival back from the log flow. */}
+      {toast ? (
+        <Toast variant="success" icon={CheckCircle2} title={toast} onDismiss={() => setToast(null)} />
+      ) : null}
     </Screen>
   )
 }
