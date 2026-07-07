@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router'
-import { House, Dumbbell, BookOpen, Apple, Scale, Settings } from 'lucide-react-native'
+import { House, Dumbbell, BookOpen, Apple, Scale } from 'lucide-react-native'
 import { useTheme } from '../../src/theme/useTheme'
 
 export default function TabsLayout() {
@@ -36,10 +36,9 @@ export default function TabsLayout() {
         name="weight"
         options={{ title: 'Weight', tabBarIcon: ({ color, size }) => <Scale color={color} size={size} /> }}
       />
-      <Tabs.Screen
-        name="settings"
-        options={{ title: 'Settings', tabBarIcon: ({ color, size }) => <Settings color={color} size={size} /> }}
-      />
+      {/* Settings lives off the footer now — reached via the avatar in the Home header.
+          href:null keeps /settings routable while hiding it from the tab bar. */}
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   )
 }

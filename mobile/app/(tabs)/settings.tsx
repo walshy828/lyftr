@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ScrollView, View } from 'react-native'
+import { Pressable, ScrollView, View } from 'react-native'
+import { router } from 'expo-router'
 import {
+  ArrowLeft,
   CalendarDays,
   Clock,
   Dumbbell,
@@ -163,7 +165,18 @@ export default function SettingsScreen() {
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View className="gap-6 py-4">
-          <PageHeader title="Settings" subtitle="Preferences and account configuration" />
+          {/* Back — Settings is reached from the Home avatar (no longer a footer tab). */}
+          <View className="gap-3">
+            <Pressable
+              onPress={() => (router.canGoBack() ? router.back() : router.navigate('/'))}
+              hitSlop={8}
+              className="flex-row items-center gap-1.5 self-start active:opacity-60"
+            >
+              <ArrowLeft size={16} color={colors.txMuted} />
+              <AppText variant="body" color="muted">Home</AppText>
+            </Pressable>
+            <PageHeader title="Settings" subtitle="Preferences and account configuration" />
+          </View>
 
           {/* Account */}
           <SettingsGroup title="Account">

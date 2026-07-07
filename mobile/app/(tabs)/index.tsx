@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
+import { LinearGradient } from 'expo-linear-gradient'
 import * as Haptics from 'expo-haptics'
 import {
   eachDayOfInterval, endOfWeek, format, isSameDay, startOfWeek, subWeeks,
@@ -258,6 +259,7 @@ export default function Dashboard() {
   }))
 
   const username = user?.email?.split('@')[0] ?? 'there'
+  const avatarInitial = (username[0] ?? 'U').toUpperCase()
 
   return (
     <Screen>
@@ -275,13 +277,32 @@ export default function Dashboard() {
               </Text>
               <AppText variant="title" className="mt-0.5" numberOfLines={1}>{greeting(now)}, {username}</AppText>
             </View>
-            <Pressable
-              onPress={() => { hImpact(); router.navigate('/workouts/start') }}
-              className="flex-row items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2.5 active:scale-95"
-            >
-              <Play size={15} color="#fff" />
-              <Text className="font-sans-bold text-sm text-white">{session ? 'Resume' : 'Start'}</Text>
-            </Pressable>
+            <View className="flex-row items-center gap-2">
+              <Pressable
+                onPress={() => { hImpact(); router.navigate('/workouts/start') }}
+                className="flex-row items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2.5 active:scale-95"
+              >
+                <Play size={15} color="#fff" />
+                <Text className="font-sans-bold text-sm text-white">{session ? 'Resume' : 'Start'}</Text>
+              </Pressable>
+              {/* Avatar → Settings. Settings moved off the footer; this is its entry point. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
+                onPress={() => { hSelect(); router.navigate('/settings') }}
+                hitSlop={6}
+                className="active:scale-95"
+              >
+                <LinearGradient
+                  colors={['#0891b2', '#00b8d9']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text className="font-sans-bold text-sm text-white">{avatarInitial}</Text>
+                </LinearGradient>
+              </Pressable>
+            </View>
           </View>
 
           {/* ── Active-session banner ── */}
