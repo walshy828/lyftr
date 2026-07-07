@@ -1,9 +1,8 @@
 import { useEffect, useRef } from 'react'
 import * as Haptics from 'expo-haptics'
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake'
-import { useSettingsStore, useWorkoutSession } from '../../lib/lyftr'
+import { useWorkoutSession } from '../../lib/lyftr'
 import { useRestTimer } from '../../hooks/useRestTimer'
-import { GymModeWorkout } from './GymModeWorkout'
 import { SessionPill } from './SessionPill'
 
 const KEEP_AWAKE_TAG = 'lyftr-workout-session'
@@ -23,17 +22,15 @@ function RestOverHaptic() {
   return null
 }
 
-// Always-mounted session UI layer (mirrors web's Layout): the full-screen gym overlay
-// (gym layout + open) over everything, and the minimized session pill (self-hiding).
-// Mounted once at the ROOT so both sit above the tab bar — and, being a single always-
-// mounted instance, it also owns the session-wide native effects (keep-awake +
-// rest-over haptic) so those fire exactly once rather than per banner/pill consumer.
-// It deliberately does NOT subscribe to the ticking rest timer itself (that lives in the
-// RestOverHaptic leaf) so the gym overlay isn't re-rendered on every countdown tick.
+// Always-mounted session UI layer (mirrors web's Layout): the minimized session pill
+// (self-hiding). The gym overlay itself is NOT here — it renders inside the
+// workouts/active screen so it sits ABOVE the tab bar (leaving tabs tappable to leave a
+// running session), not over the whole device. Being a single always-mounted instance,
+// this layer owns the session-wide native effects (keep-awake + rest-over haptic) so
+// those fire exactly once rather than per banner/pill consumer. It deliberately does NOT
+// subscribe to the ticking rest timer (that lives in the RestOverHaptic leaf).
 export function WorkoutSessionLayer() {
   const session = useWorkoutSession((s) => s.session)
-  const gymOpen = useWorkoutSession((s) => s.gymOpen)
-  const layout = useSettingsStore((s) => s.settings.workout_layout)
 
   // Keep the screen on for the duration of an active session (logging between sets can
   // leave it idle past the lock timeout). Released as soon as the session ends.
@@ -46,7 +43,6 @@ export function WorkoutSessionLayer() {
   return (
     <>
       {session ? <RestOverHaptic /> : null}
-      {session && layout === 'gym' && gymOpen ? <GymModeWorkout /> : null}
       <SessionPill />
     </>
   )

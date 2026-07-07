@@ -20,7 +20,6 @@ function formatElapsed(seconds: number) {
 // screen (list). Carries the rest-countdown chip so "rest over" clears while minimized.
 export function SessionPill() {
   const session = useWorkoutSession((s) => s.session)
-  const gymOpen = useWorkoutSession((s) => s.gymOpen)
   const openGym = useWorkoutSession((s) => s.openGym)
   const layout = useSettingsStore((s) => s.settings.workout_layout)
   const pathname = usePathname()
@@ -37,17 +36,20 @@ export function SessionPill() {
   }, [session])
 
   if (!session) return null
-  if (gymOpen && layout === 'gym') return null
-  if (pathname === '/workouts/active' && layout !== 'gym') return null
+  // Hidden only on the active screen itself (the gym overlay or the list active UI lives
+  // there); shown on every other tab as the resume shortcut so a running session is never
+  // trapping you on one tab.
+  if (pathname === '/workouts/active') return null
 
   const completedSets = session.exercises.reduce((s, ex) => s + ex.sets.filter((set) => set.completed).length, 0)
   const totalSets = session.exercises.reduce((s, ex) => s + ex.sets.length, 0)
 
   const handlePress = () => {
-    // navigate (not push): the pill fires from any tab, so this is a cross-tab jump —
-    // push corrupts the native tab/back stack (strands you with no working back).
+    // Both layouts land on the active screen (gym renders its overlay there); openGym keeps
+    // the gym flag consistent. navigate (not push): the pill fires from any tab, so this is
+    // a cross-tab jump — push corrupts the native tab/back stack.
     if (layout === 'gym') openGym()
-    else router.navigate('/workouts/active')
+    router.navigate('/workouts/active')
   }
 
   return (

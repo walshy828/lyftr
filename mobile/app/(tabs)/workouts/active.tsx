@@ -9,6 +9,7 @@ import { displayToLbs, displayWeight, weightShort, type Exercise } from '@lyftr/
 import { AppText, ConfirmSheet, NumericKeyboardAccessory, NUMERIC_ACCESSORY_ID, Screen } from '../../../src/components/ui'
 import { ExerciseImage } from '../../../src/components/workouts/ExerciseImage'
 import { ExercisePicker } from '../../../src/components/workouts/ExercisePicker'
+import { GymModeWorkout } from '../../../src/components/workouts/GymModeWorkout'
 import { client, useSettingsStore, useWorkoutSession } from '../../../src/lib/lyftr'
 import { useWorkoutOutcome } from '../../../src/lib/workoutOutcome'
 import { useTheme } from '../../../src/theme/useTheme'
@@ -122,12 +123,14 @@ export default function ActiveWorkout() {
     setShowPicker(false)
   }
 
-  // In gym layout the full-screen gym overlay (rendered at the root) IS the interface;
-  // this route only hosts it. Render a neutral surface — never the list-mode UI — so it
-  // can't flash through on a gym exit: on native, react-native-screens freezes this
-  // screen's snapshot at router.replace() time (before React commits session=null), so a
-  // populated snapshot would slide out during the transition. A blank one never does.
-  if (settings.workout_layout === 'gym') return <View className="flex-1 bg-surface-base" />
+  // In gym layout the full-screen gym overlay IS the interface — render it HERE (inside
+  // this tab screen), not at the root, so its bottom:0 sits above the tab bar and you can
+  // still tap other tabs to leave a running session. When the session ends (session=null
+  // on finish/discard) fall back to a neutral surface — never the list-mode UI — so it
+  // can't flash through on the gym exit: react-native-screens freezes this screen's
+  // snapshot at router.replace() time (before React commits session=null), and a blank
+  // one never slides out during the transition.
+  if (settings.workout_layout === 'gym') return session ? <GymModeWorkout /> : <View className="flex-1 bg-surface-base" />
 
   if (!session) {
     return (
