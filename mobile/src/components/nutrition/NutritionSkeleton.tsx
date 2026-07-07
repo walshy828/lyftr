@@ -38,14 +38,22 @@ export function NutritionSkeleton() {
           </View>
         </Card>
 
-        {/* Meal cards */}
-        {[0, 1, 2, 3].map((i) => (
-          <Card key={i} className="flex-row items-center gap-3">
-            <Skeleton width={32} height={32} radius={8} />
-            <View className="flex-1"><Skeleton width={100} height={16} /></View>
-            <Skeleton width={32} height={32} radius={8} />
+        {/* Today's Food — one card, a few rows */}
+        <View className="gap-2">
+          <Skeleton width={92} height={14} />
+          <Card className="gap-3">
+            {[0, 1, 2].map((i) => (
+              <View key={i} className="flex-row items-center gap-3">
+                <Skeleton width={44} height={44} radius={12} />
+                <View className="flex-1 gap-1.5">
+                  <Skeleton width={140} height={14} />
+                  <Skeleton width={100} height={10} />
+                </View>
+                <Skeleton width={16} height={16} radius={4} />
+              </View>
+            ))}
           </Card>
-        ))}
+        </View>
 
         {/* Macro history */}
         <Card>

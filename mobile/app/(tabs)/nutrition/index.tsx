@@ -4,18 +4,16 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import * as Haptics from 'expo-haptics'
 import { format, subDays, addDays } from 'date-fns'
 import {
-  AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Flame, Plus,
+  AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Flame, Plus, Utensils,
 } from 'lucide-react-native'
 import { todayStr, type DailyStats, type FoodLog } from '@lyftr/shared'
 import {
-  AppText, Card, DateInput, IconButton, PageHeader, Screen, SectionHeader, SegmentedControl, Toast,
+  AppText, Card, DateInput, IconButton, Label, PageHeader, Screen, SectionHeader, SegmentedControl, Toast,
 } from '../../../src/components/ui'
 import { MacroRing, MacroHistoryChart, type MacroHistoryPoint } from '../../../src/components/nutrition/NutritionCharts'
 import { FoodEntryRow } from '../../../src/components/nutrition/FoodEntryRow'
 import { NutritionSkeleton } from '../../../src/components/nutrition/NutritionSkeleton'
-import {
-  MACRO_COLORS, MEALS, MEAL_COLORS, MEAL_ICONS, MEAL_LABELS, type Meal,
-} from '../../../src/components/nutrition/nutritionMeta'
+import { MACRO_COLORS, MEALS, type Meal } from '../../../src/components/nutrition/nutritionMeta'
 import { client, useSettingsStore } from '../../../src/lib/lyftr'
 import { useTheme } from '../../../src/theme/useTheme'
 
@@ -29,6 +27,13 @@ const HISTORY_OPTIONS = HISTORY_PERIODS.map((p) => ({ value: p, label: p }))
 // history chart, and a success Toast on arrival back from a log. Calorie/macro targets
 // come from the settings store (the mobile equivalent of web's userAPI.getSettings).
 const hSelect = () => Haptics.selectionAsync().catch(() => {})
+
+// With per-meal add gone, the single Log Food button seeds the meal from the time of day
+// (still changeable in the log flow's meal picker).
+const mealForNow = (): Meal => {
+  const h = new Date().getHours()
+  return h < 11 ? 'breakfast' : h < 15 ? 'lunch' : h < 21 ? 'dinner' : 'snacks'
+}
 
 export default function Nutrition() {
   const { colors, brand, accent, isDark } = useTheme()
@@ -129,6 +134,9 @@ export default function Nutrition() {
   const isOver = remaining < 0
   const calPct = Math.min(100, (totalCals / calTarget) * 100) || 0
 
+  // One flat list, ordered by meal (breakfast → snacks) so same-meal items group.
+  const dayEntries = MEALS.flatMap((m) => logs.filter((l) => l.meal === m))
+
   const isToday = selectedDate === todayStr()
   const selectedDateObj = new Date(selectedDate + 'T12:00:00')
   const prevDate = format(subDays(selectedDateObj, 1), 'yyyy-MM-dd')
@@ -151,7 +159,7 @@ export default function Nutrition() {
           <PageHeader
             title="Nutrition"
             subtitle="Macros & meals"
-            action={<IconButton icon={Plus} variant="solid" size="md" label="Log Food" onPress={() => openLog('breakfast')} />}
+            action={<IconButton icon={Plus} variant="solid" size="md" label="Log Food" onPress={() => openLog(mealForNow())} />}
           />
 
           {error ? (
@@ -233,52 +241,30 @@ export default function Nutrition() {
             </View>
           </Card>
 
-          {/* Meals */}
-          <View className="gap-3">
-            {MEALS.map((meal) => {
-              const MealIcon = MEAL_ICONS[meal]
-              const entries = logs.filter((l) => l.meal === meal)
-              const mealCals = entries.reduce((sum, e) => sum + e.calories, 0)
-              return (
-                <Card key={meal} className="overflow-hidden p-0">
-                  {/* Meal header */}
-                  <View className="flex-row items-center gap-3 px-4 py-3.5">
-                    <View className="h-8 w-8 items-center justify-center rounded-lg bg-surface-muted">
-                      <MealIcon size={16} color={MEAL_COLORS[meal]} />
-                    </View>
-                    <View className="min-w-0 flex-1 flex-row items-center gap-2">
-                      <AppText variant="subheading">{MEAL_LABELS[meal]}</AppText>
-                      {mealCals > 0 ? (
-                        <AppText variant="caption" color="muted" style={{ fontVariant: ['tabular-nums'] }}>{Math.round(mealCals)} kcal</AppText>
-                      ) : null}
-                    </View>
-                    <IconButton icon={Plus} variant="solid" label={`Add to ${MEAL_LABELS[meal]}`} onPress={() => openLog(meal)} />
-                  </View>
-
-                  {entries.length === 0 ? (
-                    <Pressable
-                      onPress={() => openLog(meal)}
-                      className="w-full border-t border-surface-border px-4 py-4 active:bg-surface-muted/50"
-                    >
-                      <AppText variant="caption" color="muted" className="text-center">＋ Tap to add food</AppText>
-                    </Pressable>
-                  ) : (
-                    <View className="border-t border-surface-border">
-                      {entries.map((entry, i) => (
-                        <FoodEntryRow
-                          key={entry.id}
-                          entry={entry}
-                          first={i === 0}
-                          onPress={() => { hSelect(); router.push(`/nutrition/${entry.id}`) }}
-                          onEdit={() => router.push(`/nutrition/log?edit=${entry.id}`)}
-                          onDeleted={onEntryDeleted}
-                        />
-                      ))}
-                    </View>
-                  )}
-                </Card>
-              )
-            })}
+          {/* Food log — one list; each row carries its meal as a chip. Ordered by meal
+              (breakfast → snacks) so same-meal items still sit together. */}
+          <View className="gap-2">
+            <Label className="px-1">Today's Food</Label>
+            <Card className="overflow-hidden p-0">
+              {dayEntries.length === 0 ? (
+                <Pressable onPress={() => openLog(mealForNow())} className="items-center px-4 py-10 active:opacity-70">
+                  <Utensils size={32} color={colors.txMuted} style={{ opacity: 0.4 }} />
+                  <AppText variant="body" color="muted" className="mt-2">No food logged yet</AppText>
+                  <AppText variant="caption" color="muted" className="mt-1">Tap to log your first meal</AppText>
+                </Pressable>
+              ) : (
+                dayEntries.map((entry, i) => (
+                  <FoodEntryRow
+                    key={entry.id}
+                    entry={entry}
+                    first={i === 0}
+                    onPress={() => { hSelect(); router.push(`/nutrition/${entry.id}`) }}
+                    onEdit={() => router.push(`/nutrition/log?edit=${entry.id}`)}
+                    onDeleted={onEntryDeleted}
+                  />
+                ))
+              )}
+            </Card>
           </View>
 
           {/* Macro history */}

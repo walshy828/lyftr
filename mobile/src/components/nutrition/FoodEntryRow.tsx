@@ -6,7 +6,20 @@ import type { FoodLog } from '@lyftr/shared'
 import { ActionSheet, AppText, ConfirmSheet, IconButton, deleteAction, deleteConfirmProps, editAction } from '../ui'
 import { useTheme } from '../../theme/useTheme'
 import { client } from '../../lib/lyftr'
-import { MACRO_TEXT } from './nutritionMeta'
+import { MACRO_TEXT, MEAL_COLORS, MEAL_ICONS, MEAL_LABELS, type Meal } from './nutritionMeta'
+
+// Compact meal tag shown on each row now that meals share one list (icon + label in the
+// meal's tint). 8-digit hex (#RRGGBBAA) for the fill/border is fine on RN core Views.
+function MealChip({ meal }: { meal: Meal }) {
+  const Icon = MEAL_ICONS[meal]
+  const color = MEAL_COLORS[meal]
+  return (
+    <View className="flex-row items-center gap-1 rounded-full border px-2 py-0.5" style={{ backgroundColor: `${color}1A`, borderColor: `${color}40` }}>
+      <Icon size={11} color={color} />
+      <AppText variant="caption" style={{ fontSize: 10, color, fontWeight: '700' }}>{MEAL_LABELS[meal]}</AppText>
+    </View>
+  )
+}
 
 interface Props {
   entry: FoodLog
@@ -71,7 +84,10 @@ export function FoodEntryRow({ entry, first, onPress, onEdit, onDeleted }: Props
     >
       <Thumb />
       <View className="min-w-0 flex-1">
-        <AppText variant="bodySemibold" numberOfLines={1}>{entry.name}</AppText>
+        <View className="flex-row items-center gap-2">
+          <AppText variant="bodySemibold" numberOfLines={1} className="flex-1">{entry.name}</AppText>
+          <MealChip meal={entry.meal} />
+        </View>
         {macroLine}
       </View>
       <IconButton
