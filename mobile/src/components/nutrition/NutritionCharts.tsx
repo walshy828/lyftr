@@ -33,7 +33,7 @@ export function MacroRing({ value, target, color, label }: {
 
   return (
     <View className="flex-col items-center gap-1.5">
-      <View style={{ width: size, height: size }}>
+      <View style={{ width: size, height: size, overflow: 'hidden' }}>
         <Svg width={size} height={size}>
           {/* Rotate -90° so the arc starts at 12 o'clock. originX/originY as numbers +
               string strokeDasharray keep react-native-svg happy on native. */}

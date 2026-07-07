@@ -214,14 +214,11 @@ export default function Nutrition() {
               </View>
             </View>
 
-            {/* Segmented progress bar */}
+            {/* Segmented progress bar — fully explicit inline sizing (fixed heights on
+                BOTH track and fill, no percentage heights) so native can't expand it. */}
             <View className="gap-1">
-              <View className="h-2.5 overflow-hidden rounded-full bg-surface-muted">
-                {/* Inner bar height MUST be inline height:'100%' (not the h-full class):
-                    NativeWind's percentage h-full doesn't resolve against a class-set
-                    parent height on native and expands to a giant arch — the known-good
-                    Home ProgressBar uses this same inline pattern. */}
-                <View style={{ width: `${calPct}%`, height: '100%', borderRadius: 999, backgroundColor: isOver ? MACRO_COLORS.carbs : brand.cyan }} />
+              <View style={{ height: 10, overflow: 'hidden', borderRadius: 999, backgroundColor: colors.muted }}>
+                <View style={{ height: 10, width: `${calPct}%`, borderRadius: 999, backgroundColor: isOver ? MACRO_COLORS.carbs : brand.cyan }} />
               </View>
               <View className="flex-row justify-between">
                 <AppText variant="caption" color="muted" style={{ fontSize: 10 }}>0</AppText>
