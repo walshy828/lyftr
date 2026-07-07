@@ -6,7 +6,7 @@ import type { ActiveSession } from '@lyftr/shared'
 // navigate, so a tiny store is the courier. 'discarded' carries the session snapshot so the
 // toast's "Tap to undo" can restore it verbatim. Mobile-only (UI feedback, never persisted).
 export type WorkoutOutcome =
-  | { kind: 'saved' }
+  | { kind: 'saved'; workoutId: number }
   | { kind: 'discarded'; session: ActiveSession }
   | null
 

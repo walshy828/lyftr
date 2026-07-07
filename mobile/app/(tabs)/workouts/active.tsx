@@ -82,8 +82,8 @@ export default function ActiveWorkout() {
     setSaving(true)
     setSaveError('')
     try {
-      await client.workoutAPI.create(buildPayload())
-      setOutcome({ kind: 'saved' })
+      const created = await client.workoutAPI.create(buildPayload())
+      setOutcome({ kind: 'saved', workoutId: created.id })
       cancelSession()
       router.replace('/workouts')
     } catch (err: any) {

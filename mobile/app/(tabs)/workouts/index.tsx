@@ -190,7 +190,17 @@ export default function Workouts() {
           (restores the exact session snapshot and drops you back into it). */}
       {outcome ? (
         outcome.kind === 'saved' ? (
-          <Toast variant="success" icon={CheckCircle2} title="Workout saved" onDismiss={clearOutcome} />
+          <Toast
+            variant="success"
+            icon={CheckCircle2}
+            title="Workout saved"
+            description="Tap to view"
+            onPress={() => {
+              clearOutcome()
+              router.push(`/workouts/${outcome.workoutId}`)
+            }}
+            onDismiss={clearOutcome}
+          />
         ) : (
           <Toast
             variant="default"
