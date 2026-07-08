@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, ArrowLeft, Trash2, AlertCircle, BookOpen, FileText, Zap, Target, Timer } from 'lucide-react'
+import { Plus, ArrowLeft, Trash2, AlertCircle, BookOpen, FileText, Zap, Target, Timer, ChevronUp, ChevronDown } from 'lucide-react'
 import { programAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayToLbs } from '../stores/settings'
 import WeightInput from '../components/WeightInput'
@@ -48,6 +48,16 @@ export default function AddProgram() {
 
   const removeExercise = (index: number) => {
     setFormData(prev => ({ ...prev, exercises: prev.exercises.filter((_, i) => i !== index) }))
+  }
+
+  const moveExercise = (index: number, direction: -1 | 1) => {
+    setFormData(prev => {
+      const target = index + direction
+      if (target < 0 || target >= prev.exercises.length) return prev
+      const exercises = [...prev.exercises]
+      ;[exercises[index], exercises[target]] = [exercises[target], exercises[index]]
+      return { ...prev, exercises }
+    })
   }
 
   const addSet = (exIdx: number) => {
@@ -198,7 +208,7 @@ export default function AddProgram() {
             {formData.exercises.map((workoutEx, exIdx) => {
               const exercise = pickerExercises[workoutEx.exercise_id]
               return (
-                <div key={exIdx} className="p-4 bg-surface-muted/30 border border-surface-border rounded-lg">
+                <div key={workoutEx.exercise_id} className="p-4 bg-surface-muted/30 border border-surface-border rounded-lg">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
@@ -209,9 +219,17 @@ export default function AddProgram() {
                       </div>
                       <p className="text-xs text-tx-muted ml-8">{exercise?.muscle_group} • {exercise?.equipment}</p>
                     </div>
-                    <button type="button" onClick={() => removeExercise(exIdx)} className="p-1.5 hover:bg-error-500/20 rounded transition-colors flex-shrink-0">
-                      <Trash2 className="w-4 h-4 text-error-400" />
-                    </button>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button type="button" onClick={() => moveExercise(exIdx, -1)} disabled={exIdx === 0} className="p-1.5 hover:bg-surface-muted rounded transition-colors disabled:opacity-30 disabled:pointer-events-none" aria-label="Move exercise up">
+                        <ChevronUp className="w-4 h-4 text-tx-muted" />
+                      </button>
+                      <button type="button" onClick={() => moveExercise(exIdx, 1)} disabled={exIdx === formData.exercises.length - 1} className="p-1.5 hover:bg-surface-muted rounded transition-colors disabled:opacity-30 disabled:pointer-events-none" aria-label="Move exercise down">
+                        <ChevronDown className="w-4 h-4 text-tx-muted" />
+                      </button>
+                      <button type="button" onClick={() => removeExercise(exIdx)} className="p-1.5 hover:bg-error-500/20 rounded transition-colors" aria-label="Remove exercise">
+                        <Trash2 className="w-4 h-4 text-error-400" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mb-4">

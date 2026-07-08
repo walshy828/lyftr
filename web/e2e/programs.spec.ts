@@ -163,4 +163,56 @@ test.describe('Programs', () => {
     const value = await nameInput.inputValue()
     expect(value.length).toBeGreaterThan(0)
   })
+
+  test('reordering exercises persists after save', async ({ page, request }) => {
+    const headers = { Authorization: `Bearer ${authToken}` }
+
+    const findExercise = async (q: string): Promise<number> => {
+      const r = await request.get(`${API}/exercises?q=${encodeURIComponent(q)}`, { headers })
+      const rb = await r.json()
+      if (!rb.data?.[0]?.id) throw new Error(`No exercise found for query "${q}"`)
+      return rb.data[0].id
+    }
+    const squatId = await findExercise('squat')
+    const benchId = await findExercise('bench press')
+
+    const createResp = await request.post(`${API}/programs`, {
+      headers,
+      data: {
+        name: 'Reorder Test Program E2E',
+        notes: '',
+        exercises: [
+          { exercise_id: squatId, notes: '', rest_seconds: 90, sets: [{ set_number: 1, target_reps: 5, target_weight: 100 }] },
+          { exercise_id: benchId, notes: '', rest_seconds: 90, sets: [{ set_number: 1, target_reps: 5, target_weight: 100 }] },
+        ],
+      },
+    })
+    const created = (await createResp.json()).data
+    const reorderProgramId = created.id
+
+    try {
+      await page.goto(`/programs/${reorderProgramId}/edit`)
+      await expect(page.getByRole('heading', { name: /edit program/i })).toBeVisible()
+
+      const exerciseNames = page.locator('p.font-semibold.text-tx-primary')
+      await expect(exerciseNames).toHaveCount(2)
+      const firstBefore = await exerciseNames.nth(0).textContent()
+      const secondBefore = await exerciseNames.nth(1).textContent()
+
+      // Move the second exercise up so it becomes first.
+      await page.getByRole('button', { name: 'Move exercise up' }).nth(1).click()
+      await expect(exerciseNames.nth(0)).toHaveText(secondBefore || '')
+      await expect(exerciseNames.nth(1)).toHaveText(firstBefore || '')
+
+      await page.getByRole('button', { name: /save changes/i }).click()
+      await page.waitForURL('/programs')
+
+      const getResp = await request.get(`${API}/programs/${reorderProgramId}`, { headers })
+      const program = (await getResp.json()).data
+      expect(program.exercises[0].exercise_id).toBe(benchId)
+      expect(program.exercises[1].exercise_id).toBe(squatId)
+    } finally {
+      await request.delete(`${API}/programs/${reorderProgramId}`, { headers })
+    }
+  })
 })
