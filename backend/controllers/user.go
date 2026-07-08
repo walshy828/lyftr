@@ -43,6 +43,13 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		utils.BadRequest(c, err.Error())
 		return
 	}
+	// Enforce the request tags (weight_unit oneof, targets gte=0) like every other
+	// controller — binding alone doesn't run them, so without this an invalid unit
+	// or a negative target would be persisted unchecked.
+	if err := validate.Struct(req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
 	s, err := h.s.User.UpsertSettings(uid, req)
 	if utils.DBError(c, err) {
 		return

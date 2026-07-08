@@ -100,6 +100,34 @@ func TestUpdateSettings_partialUpdatePreservesCustomTargets(t *testing.T) {
 	assertNum(t, d, "fat_target", 50)
 }
 
+// Invalid values are rejected — the request tags are now actually enforced.
+func TestUpdateSettings_rejectsInvalid(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	cases := []map[string]any{
+		{"weight_unit": "stone"}, // not lbs/kg
+		{"protein_target": -5},   // negative
+		{"calorie_target": -1},
+	}
+	for _, body := range cases {
+		c, w := newContext(uid, http.MethodPut, "/api/v1/settings", body)
+		th.UpdateSettings(c)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("body %v: expected 400, got %d: %s", body, w.Code, w.Body.String())
+		}
+	}
+
+	// The rejected requests must not have created/mutated a row.
+	c, w := newContext(uid, http.MethodGet, "/api/v1/settings", nil)
+	th.GetSettings(c)
+	d := settingsData(t, w)
+	assertNum(t, d, "protein_target", 150)
+	if d["weight_unit"] != "lbs" {
+		t.Fatalf("weight_unit = %v, want lbs (unchanged)", d["weight_unit"])
+	}
+}
+
 // An explicit 0 is a real value (the pointer distinguishes it from "absent"),
 // so it must be stored while other omitted fields keep their values.
 func TestUpdateSettings_explicitZeroRespected(t *testing.T) {
