@@ -86,8 +86,9 @@ func (h *Handler) LogFood(c *gin.Context) {
 		utils.BadRequest(c, "barcode exceeds 50 characters")
 		return
 	}
-	if len(req.ImageURL) > 500 {
-		utils.BadRequest(c, "image_url exceeds 500 characters")
+	// Data URL base64 image strings can be very large; cap them at 10MB to match typical payloads.
+	if len(req.ImageURL) > 10_000_000 {
+		utils.BadRequest(c, "image_url exceeds size limit")
 		return
 	}
 
@@ -134,8 +135,8 @@ func (h *Handler) UpdateFoodLog(c *gin.Context) {
 		utils.BadRequest(c, "barcode exceeds 50 characters")
 		return
 	}
-	if len(req.ImageURL) > 500 {
-		utils.BadRequest(c, "image_url exceeds 500 characters")
+	if len(req.ImageURL) > 10_000_000 {
+		utils.BadRequest(c, "image_url exceeds size limit")
 		return
 	}
 	if req.Servings == 0 {
