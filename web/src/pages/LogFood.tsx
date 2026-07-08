@@ -476,6 +476,26 @@ export default function LogFood() {
             {tab === 'all' && !searching && searchResults.map((item) => (
               <FoodResultRow key={`${item.name}-${item.calories}`} item={item} onClick={() => selectResult(item)} />
             ))}
+            {tab === 'all' && query.trim() && !searching && searchResults.length > 0 && (
+              <div className="px-4 py-4 text-center space-y-2 border-t border-surface-border">
+                <p className="text-xs text-tx-muted">Not the right match?</p>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, serving_size: '1 serving', source: 'manual' })}
+                    className="btn-secondary text-xs"
+                  >
+                    + Enter "{query.trim()}" manually
+                  </button>
+                  <button
+                    onClick={() => setPhase('scan-label')}
+                    className="btn-secondary text-xs flex items-center gap-1.5"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    Scan label
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

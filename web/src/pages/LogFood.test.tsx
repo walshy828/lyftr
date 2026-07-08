@@ -72,4 +72,21 @@ describe('LogFood manual entry', () => {
     // 400 kcal typed at servings=1, then servings bumped to 2 → total should double
     expect(payload.calories).toBe(800)
   })
+
+  it('still offers manual entry and label scan when search returns matches', async () => {
+    ;(foodAPI.search as any).mockResolvedValue([
+      { name: 'Peanut Butter (Brand A)', calories: 190, protein: 8, carbs: 6, fat: 16, fiber: 2, sugar: 3, sodium: 140, serving_size: '2 tbsp', source: 'off' },
+    ])
+
+    renderLogFood()
+
+    const input = await screen.findByPlaceholderText('Search food…')
+    fireEvent.change(input, { target: { value: 'Peanut Butter' } })
+
+    await screen.findByText('Peanut Butter (Brand A)')
+
+    expect(screen.getByText(/not the right match/i)).toBeTruthy()
+    expect(screen.getByText(/enter "peanut butter" manually/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /scan label/i })).toBeTruthy()
+  })
 })
