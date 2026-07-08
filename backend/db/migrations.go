@@ -48,6 +48,13 @@ func alterMigrations() {
 	// Per-exercise rest timer (#33). Existing rows seed to 90s (on); 0 = off.
 	ensureColumn("program_exercises", "rest_seconds", `ALTER TABLE program_exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 90`)
 	ensureColumn("workout_exercises", "rest_seconds", `ALTER TABLE workout_exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 90`)
+
+	// Manual entry / nutrition-label photo import. source distinguishes how a
+	// food_logs row was created ("off" | "saved" | "manual" | "photo"); existing
+	// rows default to '' since their real origin isn't recoverable.
+	ensureColumn("food_logs", "source", `ALTER TABLE food_logs ADD COLUMN source TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("food_logs", "sugar", `ALTER TABLE food_logs ADD COLUMN sugar REAL NOT NULL DEFAULT 0`)
+	ensureColumn("food_logs", "sodium", `ALTER TABLE food_logs ADD COLUMN sodium REAL NOT NULL DEFAULT 0`)
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

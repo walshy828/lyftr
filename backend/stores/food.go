@@ -12,13 +12,13 @@ type FoodStore struct{ db *sql.DB }
 
 func NewFoodStore(db *sql.DB) *FoodStore { return &FoodStore{db: db} }
 
-const foodLogSelect = `SELECT id, user_id, name, meal, calories, protein, carbs, fat, fiber, servings, serving_size, barcode, image_url, logged_at, created_at FROM food_logs`
+const foodLogSelect = `SELECT id, user_id, name, meal, calories, protein, carbs, fat, fiber, sugar, sodium, servings, serving_size, barcode, image_url, source, logged_at, created_at FROM food_logs`
 
 func scanFoodLog(row interface{ Scan(...any) error }, f *models.FoodLog) error {
 	return row.Scan(
 		&f.ID, &f.UserID, &f.Name, &f.Meal,
-		&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber,
-		&f.Servings, &f.ServingSize, &f.Barcode, &f.ImageURL,
+		&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber, &f.Sugar, &f.Sodium,
+		&f.Servings, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.Source,
 		&f.LoggedAt, &f.CreatedAt,
 	)
 }
@@ -52,10 +52,10 @@ func (s *FoodStore) Get(uid, id int64) (models.FoodLog, error) {
 
 func (s *FoodStore) Create(uid int64, req models.LogFoodRequest) (models.FoodLog, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO food_logs (user_id, name, meal, calories, protein, carbs, fat, fiber, servings, serving_size, barcode, image_url, logged_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		uid, req.Name, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber,
-		req.Servings, req.ServingSize, req.Barcode, req.ImageURL, req.LoggedAt,
+		`INSERT INTO food_logs (user_id, name, meal, calories, protein, carbs, fat, fiber, sugar, sodium, servings, serving_size, barcode, image_url, source, logged_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uid, req.Name, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium,
+		req.Servings, req.ServingSize, req.Barcode, req.ImageURL, req.Source, req.LoggedAt,
 	)
 	if err != nil {
 		return models.FoodLog{}, err
@@ -66,11 +66,11 @@ func (s *FoodStore) Create(uid int64, req models.LogFoodRequest) (models.FoodLog
 
 func (s *FoodStore) Update(uid, id int64, req models.LogFoodRequest) (models.FoodLog, error) {
 	res, err := s.db.Exec(
-		`UPDATE food_logs SET name=?, meal=?, calories=?, protein=?, carbs=?, fat=?, fiber=?,
-		 servings=?, serving_size=?, barcode=?, image_url=?, logged_at=?
+		`UPDATE food_logs SET name=?, meal=?, calories=?, protein=?, carbs=?, fat=?, fiber=?, sugar=?, sodium=?,
+		 servings=?, serving_size=?, barcode=?, image_url=?, source=?, logged_at=?
 		 WHERE id=? AND user_id=?`,
-		req.Name, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber,
-		req.Servings, req.ServingSize, req.Barcode, req.ImageURL, req.LoggedAt,
+		req.Name, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium,
+		req.Servings, req.ServingSize, req.Barcode, req.ImageURL, req.Source, req.LoggedAt,
 		id, uid,
 	)
 	if err != nil {

@@ -36,7 +36,7 @@ func setupTestDB(t *testing.T) {
 	if err = applySchema(); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
-	th = NewHandler(stores.New(db.DB))
+	th = NewHandler(stores.New(db.DB), nil)
 	t.Cleanup(func() { db.DB.Close() })
 }
 
@@ -137,10 +137,13 @@ CREATE TABLE IF NOT EXISTS food_logs (
   carbs        REAL    NOT NULL DEFAULT 0,
   fat          REAL    NOT NULL DEFAULT 0,
   fiber        REAL    NOT NULL DEFAULT 0,
+  sugar        REAL    NOT NULL DEFAULT 0,
+  sodium       REAL    NOT NULL DEFAULT 0,
   servings     REAL    NOT NULL DEFAULT 1,
   serving_size TEXT    NOT NULL DEFAULT '',
   barcode      TEXT    NOT NULL DEFAULT '',
   image_url    TEXT    NOT NULL DEFAULT '',
+  source       TEXT    NOT NULL DEFAULT '',
   logged_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

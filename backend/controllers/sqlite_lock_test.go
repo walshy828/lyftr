@@ -30,7 +30,7 @@ func setupFileDB(t *testing.T) string {
 	if err = applySchema(); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
-	th = NewHandler(stores.New(db.DB))
+	th = NewHandler(stores.New(db.DB), nil)
 	t.Cleanup(func() { db.DB.Close() })
 	return path
 }

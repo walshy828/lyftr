@@ -82,10 +82,13 @@ export interface FoodLog {
   carbs: number
   fat: number
   fiber?: number
+  sugar?: number
+  sodium?: number
   servings: number
   serving_size?: string
   barcode?: string
   image_url?: string
+  source?: 'off' | 'saved' | 'manual' | 'photo'
   logged_at: string
   created_at?: string
 }
@@ -108,9 +111,24 @@ export interface FoodSearchResult {
   carbs: number
   fat: number
   fiber: number
+  sugar?: number
+  sodium?: number
   serving_size: string
   image_url?: string
-  source: 'off' | 'saved' | 'manual'
+  source: 'off' | 'saved' | 'manual' | 'photo'
+}
+
+export interface NutritionExtraction {
+  name?: string
+  brand?: string
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  fiber: number
+  sugar: number
+  sodium: number
+  serving_size?: string
 }
 
 export interface SavedFood {

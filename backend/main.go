@@ -12,6 +12,7 @@ import (
 	"github.com/Cawlumm/lyftr-backend/routes"
 	"github.com/Cawlumm/lyftr-backend/seed"
 	"github.com/Cawlumm/lyftr-backend/stores"
+	"github.com/Cawlumm/lyftr-backend/vision"
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,7 +36,18 @@ func main() {
 
 	r := gin.Default()
 	s := stores.New(db.DB)
-	h := controllers.NewHandler(s)
+
+	visionProvider, err := vision.New(vision.Config{
+		VisionProvider:  config.C.VisionProvider,
+		AnthropicAPIKey: config.C.AnthropicAPIKey,
+		OpenAIAPIKey:    config.C.OpenAIAPIKey,
+		GeminiAPIKey:    config.C.GeminiAPIKey,
+	})
+	if err != nil {
+		log.Printf("vision: %v (photo import disabled)", err)
+	}
+
+	h := controllers.NewHandler(s, visionProvider)
 	routes.Setup(r, h)
 
 	addr := ":" + config.C.Port

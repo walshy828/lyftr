@@ -21,6 +21,13 @@ type Config struct {
 	CORSOrigin string
 	Env        string
 	Version    string
+
+	// Nutrition label photo import (optional). VisionProvider selects which
+	// of the three keys below is used; leave it unset to disable the feature.
+	VisionProvider  string
+	AnthropicAPIKey string
+	OpenAIAPIKey    string
+	GeminiAPIKey    string
 }
 
 var C *Config
@@ -56,6 +63,11 @@ func Load() {
 		CORSOrigin: getEnv("CORS_ORIGIN", "http://localhost:5173"),
 		Env:        getEnv("ENV", "development"),
 		Version:    buildVersion,
+
+		VisionProvider:  getEnv("VISION_PROVIDER", ""),
+		AnthropicAPIKey: getEnv("ANTHROPIC_API_KEY", ""),
+		OpenAIAPIKey:    getEnv("OPENAI_API_KEY", ""),
+		GeminiAPIKey:    getEnv("GEMINI_API_KEY", ""),
 	}
 
 	if C.Env == "production" && C.JWTSecret == "change-me-in-production-min-32-chars!!" {

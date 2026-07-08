@@ -98,10 +98,13 @@ type FoodLog struct {
 	Carbs       float64   `json:"carbs" db:"carbs"`
 	Fat         float64   `json:"fat" db:"fat"`
 	Fiber       float64   `json:"fiber" db:"fiber"`
+	Sugar       float64   `json:"sugar" db:"sugar"`
+	Sodium      float64   `json:"sodium" db:"sodium"`
 	Servings    float64   `json:"servings" db:"servings"`
 	ServingSize string    `json:"serving_size" db:"serving_size"`
 	Barcode     string    `json:"barcode,omitempty" db:"barcode"`
 	ImageURL    string    `json:"image_url,omitempty" db:"image_url"`
+	Source      string    `json:"source,omitempty" db:"source"` // "off" | "saved" | "manual" | "photo"
 	LoggedAt    time.Time `json:"logged_at" db:"logged_at"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 }
@@ -129,9 +132,11 @@ type FoodSearchResult struct {
 	Carbs       float64 `json:"carbs"`
 	Fat         float64 `json:"fat"`
 	Fiber       float64 `json:"fiber"`
+	Sugar       float64 `json:"sugar"`
+	Sodium      float64 `json:"sodium"`
 	ServingSize string  `json:"serving_size"`
 	ImageURL    string  `json:"image_url,omitempty"`
-	Source      string  `json:"source"` // "off" | "saved"
+	Source      string  `json:"source"` // "off" | "saved" | "manual" | "photo"
 }
 
 type FoodHistoryPoint struct {
@@ -204,11 +209,19 @@ type LogFoodRequest struct {
 	Carbs       float64   `json:"carbs" validate:"gte=0"`
 	Fat         float64   `json:"fat" validate:"gte=0"`
 	Fiber       float64   `json:"fiber" validate:"gte=0"`
+	Sugar       float64   `json:"sugar" validate:"gte=0"`
+	Sodium      float64   `json:"sodium" validate:"gte=0"`
 	Servings    float64   `json:"servings" validate:"gte=0"`
 	ServingSize string    `json:"serving_size"`
 	Barcode     string    `json:"barcode"`
 	ImageURL    string    `json:"image_url"`
+	Source      string    `json:"source" validate:"omitempty,oneof=off manual photo saved"`
 	LoggedAt    time.Time `json:"logged_at"`
+}
+
+type AnalyzeLabelRequest struct {
+	ImageBase64 string `json:"image_base64" validate:"required"`
+	MediaType   string `json:"media_type" validate:"required,oneof=image/jpeg image/png image/webp"`
 }
 
 type SaveFoodRequest struct {

@@ -20,6 +20,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// maxLabelImageBytes caps the base64-encoded image payload accepted by
+// AnalyzeFoodLabel — roughly a ~4MB raw image after base64's ~4/3 inflation,
+// comfortably above a client-side-downscaled (~1600px) JPEG.
+const maxLabelImageBytes = 5_600_000
+
 var offClient = &http.Client{Timeout: 5 * time.Second}
 
 const offUserAgent = "Lyftr/1.0 (https://lyftr.app; nutrition-tracker)"
@@ -520,4 +525,46 @@ func (h *Handler) DeleteSavedFood(c *gin.Context) {
 		return
 	}
 	utils.OK(c, gin.H{"deleted": true})
+}
+
+// ─── Nutrition label vision proxy ───
+
+// AnalyzeFoodLabel photographs a nutrition facts label and returns a
+// best-effort structured extraction via the configured vision provider
+// (Anthropic/OpenAI/Gemini — see backend/vision). The result is always a
+// suggestion: nothing is written to food_logs here, and the frontend routes
+// the response through the same editable fields as manual entry.
+func (h *Handler) AnalyzeFoodLabel(c *gin.Context) {
+	var req models.AnalyzeLabelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	if len(req.ImageBase64) > maxLabelImageBytes {
+		utils.BadRequest(c, "image too large — please retake at a lower resolution")
+		return
+	}
+	if h.vision == nil {
+		utils.ServiceUnavailable(c, "photo import is not configured on this server")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	defer cancel()
+
+	result, err := h.vision.AnalyzeLabel(ctx, req.ImageBase64, req.MediaType)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			utils.ServiceUnavailable(c, "label analysis timed out — try again or enter manually")
+			return
+		}
+		log.Printf("[food/analyze-label] vision error: %v", err)
+		utils.ServiceUnavailable(c, "could not read the label — try again or enter manually")
+		return
+	}
+	utils.OK(c, result)
 }

@@ -3,18 +3,19 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Search, Scan, Minus, Plus, X,
   Bookmark, BookmarkCheck, AlertCircle, Utensils, Zap,
-  Coffee, Sun, Moon, Cookie, ChevronRight,
+  Coffee, Sun, Moon, Cookie, ChevronRight, Camera,
 } from 'lucide-react'
 import { foodAPI, savedFoodsAPI } from '../services/api'
 import { todayStr, dayToIsoNoon } from '../utils/dateUtils'
 import { MACRO_COLORS } from '../utils/macroColors'
 import BarcodeScanner from '../components/BarcodeScanner'
+import NutritionLabelCamera from '../components/NutritionLabelCamera'
 import IconButton from '../components/ui/IconButton'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import DateInput from '../components/ui/DateInput'
 import * as types from '../types'
 
-type Phase = 'search' | 'detail' | 'scan'
+type Phase = 'search' | 'detail' | 'scan' | 'scan-label'
 type SearchTab = 'recent' | 'myfoods' | 'all'
 
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'] as const
@@ -38,9 +39,11 @@ function entryToResult(e: types.FoodLog): types.FoodSearchResult {
     carbs: e.carbs / s,
     fat: e.fat / s,
     fiber: (e.fiber ?? 0) / s,
+    sugar: (e.sugar ?? 0) / s,
+    sodium: (e.sodium ?? 0) / s,
     serving_size: e.serving_size ?? '',
     image_url: e.image_url,
-    source: 'saved',
+    source: (e.source as types.FoodSearchResult['source']) || 'saved',
   }
 }
 
@@ -179,11 +182,51 @@ export default function LogFood() {
       selectResult(await foodAPI.barcode(code))
     } catch (err: any) {
       if (err?.response?.status === 404) {
-        selectResult({ name: '', calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, serving_size: '1 serving', source: 'manual' })
+        selectResult({ name: '', calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, serving_size: '1 serving', source: 'manual' })
       } else {
         setSearchError('Product not found — enter details manually')
       }
     }
+  }
+
+  // Handles both entry points: from the search phase (selected is null — seed a
+  // fresh manual entry from the extraction) and an in-form rescan (selected is
+  // already set — merge the extraction into it in place rather than replacing it,
+  // so servings/meal/date the user already set are preserved).
+  const handleLabelResult = (extraction: types.NutritionExtraction) => {
+    setSelected(prev => {
+      if (!prev) {
+        return {
+          name: extraction.name ?? '',
+          brand: extraction.brand,
+          calories: extraction.calories,
+          protein: extraction.protein,
+          carbs: extraction.carbs,
+          fat: extraction.fat,
+          fiber: extraction.fiber,
+          sugar: extraction.sugar,
+          sodium: extraction.sodium,
+          serving_size: extraction.serving_size ?? '1 serving',
+          source: 'photo',
+        }
+      }
+      return {
+        ...prev,
+        name: extraction.name || prev.name,
+        brand: extraction.brand || prev.brand,
+        calories: extraction.calories,
+        protein: extraction.protein,
+        carbs: extraction.carbs,
+        fat: extraction.fat,
+        fiber: extraction.fiber,
+        sugar: extraction.sugar,
+        sodium: extraction.sodium,
+        serving_size: extraction.serving_size || prev.serving_size,
+        source: 'photo',
+      }
+    })
+    if (!selected) setServings(1)
+    setPhase('detail')
   }
 
   const handleLog = async () => {
@@ -199,9 +242,12 @@ export default function LogFood() {
         carbs: +(selected.carbs * servings).toFixed(1),
         fat: +(selected.fat * servings).toFixed(1),
         fiber: +((selected.fiber ?? 0) * servings).toFixed(1),
+        sugar: +((selected.sugar ?? 0) * servings).toFixed(1),
+        sodium: +((selected.sodium ?? 0) * servings).toFixed(1),
         servings,
         serving_size: selected.serving_size ?? '',
         image_url: selected.image_url ?? '',
+        source: selected.source,
         logged_at: dayToIsoNoon(date),
       }
       if (editId) {
@@ -233,12 +279,29 @@ export default function LogFood() {
     )
   }
 
+  if (phase === 'scan-label') {
+    return (
+      <NutritionLabelCamera
+        onResult={handleLabelResult}
+        onClose={() => setPhase(selected ? 'detail' : 'search')}
+      />
+    )
+  }
+
   const cal = selected ? Math.round(selected.calories * servings) : 0
   const pro = selected ? +(selected.protein * servings).toFixed(1) : 0
   const carb = selected ? +(selected.carbs * servings).toFixed(1) : 0
   const fat_ = selected ? +(selected.fat * servings).toFixed(1) : 0
   const fib = selected ? +((selected.fiber ?? 0) * servings).toFixed(1) : 0
+  const sug = selected ? +((selected.sugar ?? 0) * servings).toFixed(1) : 0
+  const sod = selected ? +((selected.sodium ?? 0) * servings).toFixed(1) : 0
   const quickAddCals = /^\d+(\.\d+)?$/.test(query.trim()) ? Number(query.trim()) : null
+
+  // Macro inputs edit the displayed (servings-multiplied) total; back-solve the
+  // per-serving base value stored on `selected` so the Servings stepper keeps working.
+  const setMacro = (field: 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sugar' | 'sodium', total: number) => {
+    setSelected(s => s && ({ ...s, [field]: servings > 0 ? total / servings : total }))
+  }
 
   return (
     <div className="animate-slide-up flex flex-col min-h-0">
@@ -258,10 +321,20 @@ export default function LogFood() {
                 <ChevronRight className="w-3 h-3" />
                 <span className="text-tx-secondary">Details</span>
               </div>
-              <h1 className="font-display font-bold text-xl text-tx-primary truncate">
-                {selected.name || 'New Entry'}
-              </h1>
-              {selected.brand && <p className="text-xs text-tx-muted mt-0.5">{selected.brand}</p>}
+              <input
+                type="text"
+                value={selected.name}
+                onChange={e => setSelected(s => s && ({ ...s, name: e.target.value }))}
+                placeholder="Food name"
+                className="font-display font-bold text-xl text-tx-primary bg-transparent border-0 border-b border-transparent hover:border-surface-border focus:border-brand-500 outline-none w-full truncate px-0 py-0.5"
+              />
+              <input
+                type="text"
+                value={selected.brand ?? ''}
+                onChange={e => setSelected(s => s && ({ ...s, brand: e.target.value }))}
+                placeholder="Brand (optional)"
+                className="text-xs text-tx-muted bg-transparent border-0 border-b border-transparent hover:border-surface-border focus:border-brand-500 outline-none w-full mt-0.5 px-0 py-0.5"
+              />
             </>
           ) : (
             <h1 className="font-display font-bold text-2xl text-tx-primary">Log Food</h1>
@@ -332,7 +405,7 @@ export default function LogFood() {
           <div className="card overflow-hidden">
             {tab === 'all' && quickAddCals !== null && (
               <button
-                onClick={() => selectResult({ name: `${quickAddCals} kcal`, calories: quickAddCals, protein: 0, carbs: 0, fat: 0, fiber: 0, serving_size: '1 serving', source: 'off' })}
+                onClick={() => selectResult({ name: `${quickAddCals} kcal`, calories: quickAddCals, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, serving_size: '1 serving', source: 'manual' })}
                 className="flex items-center gap-3 w-full px-4 py-3.5 hover:bg-surface-muted transition-colors border-b border-surface-border"
               >
                 <div className="w-11 h-11 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
@@ -383,12 +456,21 @@ export default function LogFood() {
             {tab === 'all' && query.trim() && !searching && searchResults.length === 0 && !searchError && !rateLimited && (
               <div className="px-4 py-14 text-center space-y-3">
                 <p className="text-sm text-tx-muted">No results for "{query}"</p>
-                <button
-                  onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, serving_size: '1 serving', source: 'off' })}
-                  className="btn-secondary text-xs"
-                >
-                  + Enter "{query.trim()}" manually
-                </button>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, serving_size: '1 serving', source: 'manual' })}
+                    className="btn-secondary text-xs"
+                  >
+                    + Enter "{query.trim()}" manually
+                  </button>
+                  <button
+                    onClick={() => setPhase('scan-label')}
+                    className="btn-secondary text-xs flex items-center gap-1.5"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    Scan label
+                  </button>
+                </div>
               </div>
             )}
             {tab === 'all' && !searching && searchResults.map((item) => (
@@ -425,18 +507,39 @@ export default function LogFood() {
             )}
 
             <div className="p-5">
+              <div className="flex justify-end mb-2">
+                <button
+                  type="button"
+                  onClick={() => setPhase('scan-label')}
+                  className="flex items-center gap-1.5 text-xs text-tx-muted hover:text-tx-primary transition-colors"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  {selected.source === 'photo' ? 'Rescan label' : 'Scan label'}
+                </button>
+              </div>
+
               {/* Calorie hero */}
               <div className="flex items-end justify-between mb-5">
                 <div>
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-5xl font-bold tabular-nums text-tx-primary leading-none">{cal}</span>
+                    <input
+                      type="number"
+                      value={cal}
+                      onChange={e => setMacro('calories', Number(e.target.value) || 0)}
+                      className="text-5xl font-bold tabular-nums text-tx-primary leading-none bg-transparent border-0 outline-none w-32"
+                    />
                     <span className="text-sm text-tx-muted">kcal</span>
                   </div>
-                  {selected.serving_size && (
-                    <p className="text-xs text-tx-muted mt-1">
-                      per {servings === 1 ? '' : `${servings} × `}{selected.serving_size}
-                    </p>
-                  )}
+                  <p className="text-xs text-tx-muted mt-1">
+                    per {servings === 1 ? '' : `${servings} × `}
+                    <input
+                      type="text"
+                      value={selected.serving_size ?? ''}
+                      onChange={e => setSelected(s => s && ({ ...s, serving_size: e.target.value }))}
+                      placeholder="1 serving"
+                      className="inline-block bg-transparent border-0 border-b border-transparent hover:border-surface-border focus:border-brand-500 outline-none w-28 px-0"
+                    />
+                  </p>
                 </div>
                 {/* Macro composition mini-bars */}
                 {(pro + carb + fat_) > 0 && (
@@ -463,15 +566,25 @@ export default function LogFood() {
               </div>
 
               {/* Macro grid */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {[
-                  { label: 'Protein', value: pro, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-                  { label: 'Carbs',   value: carb, color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20' },
-                  { label: 'Fat',     value: fat_, color: 'text-violet-400',  bg: 'bg-violet-500/10 border-violet-500/20' },
-                  { label: 'Fiber',   value: fib,  color: 'text-tx-secondary', bg: 'bg-surface-muted border-surface-border' },
+                  { field: 'protein' as const, label: 'Protein', value: pro, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+                  { field: 'carbs' as const,   label: 'Carbs',   value: carb, color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20' },
+                  { field: 'fat' as const,     label: 'Fat',     value: fat_, color: 'text-violet-400',  bg: 'bg-violet-500/10 border-violet-500/20' },
+                  { field: 'fiber' as const,   label: 'Fiber',   value: fib,  color: 'text-tx-secondary', bg: 'bg-surface-muted border-surface-border' },
+                  { field: 'sugar' as const,   label: 'Sugar',   value: sug,  color: 'text-tx-secondary', bg: 'bg-surface-muted border-surface-border' },
+                  { field: 'sodium' as const,  label: 'Sodium (mg)', value: sod, color: 'text-tx-secondary', bg: 'bg-surface-muted border-surface-border' },
                 ].map(m => (
                   <div key={m.label} className={`rounded-xl border p-2.5 text-center ${m.bg}`}>
-                    <p className={`text-sm font-bold tabular-nums ${m.color}`}>{m.value}g</p>
+                    <div className="flex items-baseline justify-center gap-0.5">
+                      <input
+                        type="number"
+                        value={m.value}
+                        onChange={e => setMacro(m.field, Number(e.target.value) || 0)}
+                        className={`text-sm font-bold tabular-nums bg-transparent border-0 outline-none w-10 text-center ${m.color}`}
+                      />
+                      {m.field !== 'sodium' && <span className={`text-sm font-bold ${m.color}`}>g</span>}
+                    </div>
                     <p className="text-[10px] text-tx-muted mt-0.5">{m.label}</p>
                   </div>
                 ))}

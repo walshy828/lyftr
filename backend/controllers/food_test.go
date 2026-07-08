@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/db"
+	"github.com/Cawlumm/lyftr-backend/stores"
+	"github.com/Cawlumm/lyftr-backend/vision"
 )
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -929,5 +932,175 @@ func TestDeleteSavedFood_ownershipEnforced(t *testing.T) {
 	db.DB.QueryRow(`SELECT COUNT(*) FROM saved_foods WHERE id = ?`, id).Scan(&count)
 	if count != 1 {
 		t.Fatal("saved food was deleted by wrong user")
+	}
+}
+
+// ─── sugar/sodium/source round-trip ───────────────────────────────────────────
+
+func TestLogFood_withSugarSodiumSource(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	body := map[string]any{
+		"name": "Granola Bar", "meal": "snacks",
+		"calories": 150.0, "protein": 3.0, "carbs": 20.0, "fat": 6.0,
+		"fiber": 2.0, "sugar": 8.0, "sodium": 90.0, "source": "photo",
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food", body)
+	th.LogFood(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].(map[string]any)
+	if data["sugar"].(float64) != 8.0 {
+		t.Errorf("expected sugar 8, got %v", data["sugar"])
+	}
+	if data["sodium"].(float64) != 90.0 {
+		t.Errorf("expected sodium 90, got %v", data["sodium"])
+	}
+	if data["source"].(string) != "photo" {
+		t.Errorf("expected source photo, got %v", data["source"])
+	}
+}
+
+func TestLogFood_invalidSource(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	body := map[string]any{
+		"name": "Test", "meal": "lunch",
+		"calories": 100.0, "protein": 5.0, "carbs": 10.0, "fat": 3.0,
+		"source": "not-a-real-source",
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food", body)
+	th.LogFood(c)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for invalid source enum value, got %d", w.Code)
+	}
+}
+
+func TestUpdateFoodLog_overwritesNutrition(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	id := insertFoodLog(t, uid, "Old name", "breakfast", 300, 20, 40, 10, time.Now())
+
+	body := map[string]any{
+		"name": "New name", "meal": "lunch",
+		"calories": 450.0, "protein": 35.0, "carbs": 55.0, "fat": 12.0,
+		"sugar": 15.0, "sodium": 200.0, "source": "manual",
+	}
+	c, w := newContext(uid, http.MethodPatch, "/api/v1/food/"+fmt.Sprint(id), body)
+	setParam(c, "id", fmt.Sprint(id))
+	th.UpdateFoodLog(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].(map[string]any)
+	if data["sugar"].(float64) != 15.0 {
+		t.Errorf("expected updated sugar 15, got %v", data["sugar"])
+	}
+	if data["sodium"].(float64) != 200.0 {
+		t.Errorf("expected updated sodium 200, got %v", data["sodium"])
+	}
+	if data["source"].(string) != "manual" {
+		t.Errorf("expected updated source manual, got %v", data["source"])
+	}
+}
+
+// ─── AnalyzeFoodLabel ──────────────────────────────────────────────────────────
+
+type fakeVisionProvider struct {
+	result vision.NutritionExtraction
+	err    error
+}
+
+func (f *fakeVisionProvider) AnalyzeLabel(_ context.Context, _, _ string) (vision.NutritionExtraction, error) {
+	return f.result, f.err
+}
+
+func TestAnalyzeFoodLabel_success(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{
+		result: vision.NutritionExtraction{
+			Name: "Peanut Butter", Calories: 190, Protein: 7, Carbs: 8, Fat: 16, Sugar: 3, Sodium: 140,
+		},
+	})
+
+	body := map[string]any{"image_base64": "Zm9vZA==", "media_type": "image/jpeg"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-label", body)
+	h.AnalyzeFoodLabel(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].(map[string]any)
+	if data["calories"].(float64) != 190 {
+		t.Errorf("expected calories 190, got %v", data["calories"])
+	}
+	if data["name"].(string) != "Peanut Butter" {
+		t.Errorf("expected name Peanut Butter, got %v", data["name"])
+	}
+}
+
+func TestAnalyzeFoodLabel_notConfigured(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), nil)
+
+	body := map[string]any{"image_base64": "Zm9vZA==", "media_type": "image/jpeg"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-label", body)
+	h.AnalyzeFoodLabel(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when vision provider is nil, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyzeFoodLabel_oversizedImage(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	body := map[string]any{"image_base64": strings.Repeat("a", maxLabelImageBytes+1), "media_type": "image/jpeg"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-label", body)
+	h.AnalyzeFoodLabel(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized image, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyzeFoodLabel_invalidMediaType(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	body := map[string]any{"image_base64": "Zm9vZA==", "media_type": "image/bmp"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-label", body)
+	h.AnalyzeFoodLabel(c)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for unsupported media_type, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyzeFoodLabel_providerError(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{err: fmt.Errorf("upstream boom")})
+
+	body := map[string]any{"image_base64": "Zm9vZA==", "media_type": "image/jpeg"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-label", body)
+	h.AnalyzeFoodLabel(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 on provider error, got %d: %s", w.Code, w.Body.String())
 	}
 }
