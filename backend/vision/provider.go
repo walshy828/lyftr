@@ -37,13 +37,18 @@ type Provider interface {
 	AnalyzeLabel(ctx context.Context, imageBase64, mediaType string) (NutritionExtraction, error)
 }
 
-// Config carries the selected provider and all three providers' API keys —
-// only the one named by VisionProvider needs to be set.
+// Config carries the selected provider, all three providers' API keys — only
+// the one named by VisionProvider needs to be set — and optional per-provider
+// model overrides. Leaving a model override empty falls back to that
+// provider's built-in default constant.
 type Config struct {
 	VisionProvider  string // "", "anthropic", "openai", or "gemini"
 	AnthropicAPIKey string
 	OpenAIAPIKey    string
 	GeminiAPIKey    string
+	AnthropicModel  string // defaults to anthropicModel if empty
+	OpenAIModel     string // defaults to openAIModel if empty
+	GeminiModel     string // defaults to geminiModel if empty
 }
 
 // extractionPrompt is shared across all three providers so their prompts
@@ -68,17 +73,17 @@ func New(cfg Config) (Provider, error) {
 		if cfg.AnthropicAPIKey == "" {
 			return nil, fmt.Errorf("VISION_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set")
 		}
-		return newAnthropicProvider(cfg.AnthropicAPIKey), nil
+		return newAnthropicProvider(cfg.AnthropicAPIKey, cfg.AnthropicModel), nil
 	case "openai":
 		if cfg.OpenAIAPIKey == "" {
 			return nil, fmt.Errorf("VISION_PROVIDER=openai but OPENAI_API_KEY is not set")
 		}
-		return newOpenAIProvider(cfg.OpenAIAPIKey), nil
+		return newOpenAIProvider(cfg.OpenAIAPIKey, cfg.OpenAIModel), nil
 	case "gemini":
 		if cfg.GeminiAPIKey == "" {
 			return nil, fmt.Errorf("VISION_PROVIDER=gemini but GEMINI_API_KEY is not set")
 		}
-		return newGeminiProvider(cfg.GeminiAPIKey), nil
+		return newGeminiProvider(cfg.GeminiAPIKey, cfg.GeminiModel), nil
 	default:
 		return nil, fmt.Errorf("unknown VISION_PROVIDER %q (expected anthropic, openai, or gemini)", cfg.VisionProvider)
 	}

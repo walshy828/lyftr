@@ -42,6 +42,9 @@ func main() {
 		AnthropicAPIKey: config.C.AnthropicAPIKey,
 		OpenAIAPIKey:    config.C.OpenAIAPIKey,
 		GeminiAPIKey:    config.C.GeminiAPIKey,
+		AnthropicModel:  config.C.AnthropicModel,
+		OpenAIModel:     config.C.OpenAIModel,
+		GeminiModel:     config.C.GeminiModel,
 	})
 	if err != nil {
 		log.Printf("vision: %v (photo import disabled)", err)

@@ -24,10 +24,15 @@ type Config struct {
 
 	// Nutrition label photo import (optional). VisionProvider selects which
 	// of the three keys below is used; leave it unset to disable the feature.
+	// The *Model fields are optional overrides — each provider falls back to
+	// its own built-in default model when left empty.
 	VisionProvider  string
 	AnthropicAPIKey string
 	OpenAIAPIKey    string
 	GeminiAPIKey    string
+	AnthropicModel  string
+	OpenAIModel     string
+	GeminiModel     string
 }
 
 var C *Config
@@ -68,6 +73,9 @@ func Load() {
 		AnthropicAPIKey: getEnv("ANTHROPIC_API_KEY", ""),
 		OpenAIAPIKey:    getEnv("OPENAI_API_KEY", ""),
 		GeminiAPIKey:    getEnv("GEMINI_API_KEY", ""),
+		AnthropicModel:  getEnv("ANTHROPIC_MODEL", ""),
+		OpenAIModel:     getEnv("OPENAI_MODEL", ""),
+		GeminiModel:     getEnv("GEMINI_MODEL", ""),
 	}
 
 	if C.Env == "production" && C.JWTSecret == "change-me-in-production-min-32-chars!!" {

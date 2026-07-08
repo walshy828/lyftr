@@ -9,20 +9,25 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
-// anthropicModel is the current Opus-tier model — no date suffix.
+// anthropicModel is the default Opus-tier model — no date suffix. Overridable
+// per-deployment via the ANTHROPIC_MODEL env var.
 const anthropicModel = "claude-opus-4-8"
 
 type anthropicProvider struct {
 	client anthropic.Client
+	model  string
 }
 
-func newAnthropicProvider(apiKey string) *anthropicProvider {
-	return &anthropicProvider{client: anthropic.NewClient(option.WithAPIKey(apiKey))}
+func newAnthropicProvider(apiKey, model string) *anthropicProvider {
+	if model == "" {
+		model = anthropicModel
+	}
+	return &anthropicProvider{client: anthropic.NewClient(option.WithAPIKey(apiKey)), model: model}
 }
 
 func (p *anthropicProvider) AnalyzeLabel(ctx context.Context, imageBase64, mediaType string) (NutritionExtraction, error) {
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropicModel,
+		Model:     p.model,
 		MaxTokens: 1024,
 		OutputConfig: anthropic.OutputConfigParam{
 			Effort: anthropic.OutputConfigEffortLow,

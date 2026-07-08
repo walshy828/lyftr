@@ -16,15 +16,19 @@ import (
 // on the call shape below.
 //
 // TODO(verify): confirm the current gemini-2.x-flash-class vision+JSON-mode
-// model string.
+// model string. Overridable per-deployment via the GEMINI_MODEL env var.
 const geminiModel = "gemini-2.0-flash"
 
 type geminiProvider struct {
 	apiKey string
+	model  string
 }
 
-func newGeminiProvider(apiKey string) *geminiProvider {
-	return &geminiProvider{apiKey: apiKey}
+func newGeminiProvider(apiKey, model string) *geminiProvider {
+	if model == "" {
+		model = geminiModel
+	}
+	return &geminiProvider{apiKey: apiKey, model: model}
 }
 
 func (p *geminiProvider) AnalyzeLabel(ctx context.Context, imageBase64Data, mediaType string) (NutritionExtraction, error) {
@@ -47,7 +51,7 @@ func (p *geminiProvider) AnalyzeLabel(ctx context.Context, imageBase64Data, medi
 		return NutritionExtraction{}, fmt.Errorf("gemini vision call: decode image: %w", err)
 	}
 
-	resp, err := client.Models.GenerateContent(ctx, geminiModel,
+	resp, err := client.Models.GenerateContent(ctx, p.model,
 		[]*genai.Content{
 			genai.NewContentFromParts([]*genai.Part{
 				genai.NewPartFromBytes(imgBytes, mediaType),

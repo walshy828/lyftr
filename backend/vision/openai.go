@@ -17,15 +17,20 @@ import (
 // the first choice's message content) should carry over either way.
 //
 // TODO(verify): confirm the current gpt-4o-class vision+JSON-mode model string
-// (anthropicModel-equivalent constant below is a placeholder).
+// (anthropicModel-equivalent constant below is a placeholder). Overridable
+// per-deployment via the OPENAI_MODEL env var.
 const openAIModel = "gpt-4o"
 
 type openAIProvider struct {
 	client openai.Client
+	model  string
 }
 
-func newOpenAIProvider(apiKey string) *openAIProvider {
-	return &openAIProvider{client: openai.NewClient(option.WithAPIKey(apiKey))}
+func newOpenAIProvider(apiKey, model string) *openAIProvider {
+	if model == "" {
+		model = openAIModel
+	}
+	return &openAIProvider{client: openai.NewClient(option.WithAPIKey(apiKey)), model: model}
 }
 
 func (p *openAIProvider) AnalyzeLabel(ctx context.Context, imageBase64, mediaType string) (NutritionExtraction, error) {
@@ -37,7 +42,7 @@ func (p *openAIProvider) AnalyzeLabel(ctx context.Context, imageBase64, mediaTyp
 	// SDK's typed constructors/param names must be confirmed via `go doc
 	// github.com/openai/openai-go` or a compile-fix loop.
 	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: openAIModel,
+		Model: p.model,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage([]openai.ChatCompletionContentPartUnionParam{
 				openai.TextContentPart(extractionPrompt),
