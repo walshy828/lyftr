@@ -52,6 +52,7 @@ function savedToResult(s: types.SavedFood): types.FoodSearchResult {
     fat: s.fat,
     fiber: s.fiber,
     serving_size: s.serving_size,
+    image_url: s.image_url,
     source: 'saved',
   }
 }

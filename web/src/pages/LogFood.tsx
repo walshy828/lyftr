@@ -52,7 +52,8 @@ function savedToResult(s: types.SavedFood): types.FoodSearchResult {
   return {
     name: s.name, brand: s.brand,
     calories: s.calories, protein: s.protein, carbs: s.carbs,
-    fat: s.fat, fiber: s.fiber, serving_size: s.serving_size, source: 'saved',
+    fat: s.fat, fiber: s.fiber, serving_size: s.serving_size,
+    image_url: s.image_url, source: 'saved',
   }
 }
 
