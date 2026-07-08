@@ -55,6 +55,9 @@ func alterMigrations() {
 	ensureColumn("food_logs", "source", `ALTER TABLE food_logs ADD COLUMN source TEXT NOT NULL DEFAULT ''`)
 	ensureColumn("food_logs", "sugar", `ALTER TABLE food_logs ADD COLUMN sugar REAL NOT NULL DEFAULT 0`)
 	ensureColumn("food_logs", "sodium", `ALTER TABLE food_logs ADD COLUMN sodium REAL NOT NULL DEFAULT 0`)
+
+	// Food photos for saved foods (#savedFoodPhoto)
+	ensureColumn("saved_foods", "image_url", `ALTER TABLE saved_foods ADD COLUMN image_url TEXT NOT NULL DEFAULT ''`)
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.
@@ -191,6 +194,7 @@ CREATE TABLE IF NOT EXISTS saved_foods (
   fiber        REAL    NOT NULL DEFAULT 0,
   serving_size TEXT    NOT NULL DEFAULT '',
   barcode      TEXT    NOT NULL DEFAULT '',
+  image_url    TEXT    NOT NULL DEFAULT '',
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

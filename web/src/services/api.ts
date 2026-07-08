@@ -191,6 +191,8 @@ export const foodAPI = {
 export const savedFoodsAPI = {
   list:   () => api.get<{ data: types.SavedFood[] }>('/food/saved').then(res => unwrap(res)),
   create: (data: any) => api.post<{ data: types.SavedFood }>('/food/saved', data).then(res => unwrap(res)),
+  get:    (id: number) => api.get<{ data: types.SavedFood }>(`/food/saved/${id}`).then(res => unwrap(res)),
+  update: (id: number, data: any) => api.put<{ data: types.SavedFood }>(`/food/saved/${id}`, data).then(res => unwrap(res)),
   delete: (id: number) => api.delete(`/food/saved/${id}`),
 }
 

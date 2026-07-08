@@ -6,6 +6,7 @@ import * as types from '../types'
 
 interface Props {
   onResult: (extraction: types.NutritionExtraction) => void
+  onImageCapture?: (dataUrl: string) => void
   onClose: () => void
 }
 
@@ -19,7 +20,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export default function NutritionLabelCamera({ onResult, onClose }: Props) {
+export default function NutritionLabelCamera({ onResult, onImageCapture, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -75,6 +76,10 @@ export default function NutritionLabelCamera({ onResult, onClose }: Props) {
         canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY),
       )
       if (!blob) throw new Error('capture failed')
+      // Emit the data URL for callers that want to display the photo
+      if (onImageCapture) {
+        onImageCapture(canvas.toDataURL('image/jpeg', JPEG_QUALITY))
+      }
       const buffer = await blob.arrayBuffer()
       const base64 = arrayBufferToBase64(buffer)
       const extraction = await foodAPI.analyzeLabel(base64, 'image/jpeg')

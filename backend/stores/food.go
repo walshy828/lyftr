@@ -130,11 +130,11 @@ func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, err
 	return points, rows.Err()
 }
 
-const savedFoodSelect = `SELECT id, user_id, name, brand, calories, protein, carbs, fat, fiber, serving_size, barcode, created_at FROM saved_foods`
+const savedFoodSelect = `SELECT id, user_id, name, brand, calories, protein, carbs, fat, fiber, serving_size, barcode, image_url, created_at FROM saved_foods`
 
 func scanSavedFood(row interface{ Scan(...any) error }, f *models.SavedFood) error {
 	return row.Scan(&f.ID, &f.UserID, &f.Name, &f.Brand, &f.Calories, &f.Protein, &f.Carbs, &f.Fat,
-		&f.Fiber, &f.ServingSize, &f.Barcode, &f.CreatedAt)
+		&f.Fiber, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.CreatedAt)
 }
 
 func (s *FoodStore) ListSaved(uid int64) ([]models.SavedFood, error) {
@@ -156,10 +156,10 @@ func (s *FoodStore) ListSaved(uid int64) ([]models.SavedFood, error) {
 
 func (s *FoodStore) CreateSaved(uid int64, req models.SaveFoodRequest) (models.SavedFood, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO saved_foods (user_id, name, brand, calories, protein, carbs, fat, fiber, serving_size, barcode)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO saved_foods (user_id, name, brand, calories, protein, carbs, fat, fiber, serving_size, barcode, image_url)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uid, req.Name, req.Brand, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber,
-		req.ServingSize, req.Barcode,
+		req.ServingSize, req.Barcode, req.ImageURL,
 	)
 	if err != nil {
 		return models.SavedFood{}, err
@@ -168,6 +168,30 @@ func (s *FoodStore) CreateSaved(uid int64, req models.SaveFoodRequest) (models.S
 	var f models.SavedFood
 	err = scanSavedFood(s.db.QueryRow(savedFoodSelect+` WHERE id = ?`, id), &f)
 	return f, err
+}
+
+func (s *FoodStore) GetSaved(uid, id int64) (models.SavedFood, error) {
+	var f models.SavedFood
+	err := scanSavedFood(s.db.QueryRow(savedFoodSelect+` WHERE id = ? AND user_id = ?`, id, uid), &f)
+	return f, err
+}
+
+func (s *FoodStore) UpdateSaved(uid, id int64, req models.UpdateSavedFoodRequest) (models.SavedFood, error) {
+	res, err := s.db.Exec(
+		`UPDATE saved_foods SET name=?, brand=?, calories=?, protein=?, carbs=?, fat=?, fiber=?,
+		 serving_size=?, barcode=?, image_url=?
+		 WHERE id=? AND user_id=?`,
+		req.Name, req.Brand, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber,
+		req.ServingSize, req.Barcode, req.ImageURL,
+		id, uid,
+	)
+	if err != nil {
+		return models.SavedFood{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return models.SavedFood{}, sql.ErrNoRows
+	}
+	return s.GetSaved(uid, id)
 }
 
 func (s *FoodStore) DeleteSaved(uid, id int64) (int64, error) {

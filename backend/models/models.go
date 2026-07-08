@@ -121,6 +121,7 @@ type SavedFood struct {
 	Fiber       float64   `json:"fiber" db:"fiber"`
 	ServingSize string    `json:"serving_size" db:"serving_size"`
 	Barcode     string    `json:"barcode,omitempty" db:"barcode"`
+	ImageURL    string    `json:"image_url,omitempty" db:"image_url"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 }
 
@@ -234,6 +235,20 @@ type SaveFoodRequest struct {
 	Fiber       float64 `json:"fiber" validate:"gte=0"`
 	ServingSize string  `json:"serving_size"`
 	Barcode     string  `json:"barcode"`
+	ImageURL    string  `json:"image_url"`
+}
+
+type UpdateSavedFoodRequest struct {
+	Name        string  `json:"name" validate:"required"`
+	Brand       string  `json:"brand"`
+	Calories    float64 `json:"calories" validate:"gte=0"`
+	Protein     float64 `json:"protein" validate:"gte=0"`
+	Carbs       float64 `json:"carbs" validate:"gte=0"`
+	Fat         float64 `json:"fat" validate:"gte=0"`
+	Fiber       float64 `json:"fiber" validate:"gte=0"`
+	ServingSize string  `json:"serving_size"`
+	Barcode     string  `json:"barcode"`
+	ImageURL    string  `json:"image_url"`
 }
 
 // UpdateSettingsRequest is a PATCH: every field is a pointer so a nil (absent

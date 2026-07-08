@@ -65,6 +65,8 @@ func Setup(r *gin.Engine, h *controllers.Handler) {
 		protected.GET("food/barcode/:code", h.LookupBarcode)
 		protected.GET("food/saved", h.ListSavedFoods)
 		protected.POST("food/saved", h.CreateSavedFood)
+		protected.GET("food/saved/:id", h.GetSavedFood)
+		protected.PUT("food/saved/:id", h.UpdateSavedFood)
 		protected.DELETE("food/saved/:id", h.DeleteSavedFood)
 		protected.POST("food/analyze-label", h.AnalyzeFoodLabel)
 		protected.GET("food/:id", h.GetFoodLog)

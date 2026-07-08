@@ -3,13 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Search, Scan, Minus, Plus, X,
   Bookmark, BookmarkCheck, AlertCircle, Utensils, Zap,
-  Coffee, Sun, Moon, Cookie, ChevronRight, Camera,
+  Coffee, Sun, Moon, Cookie, ChevronRight, Camera, Pencil,
 } from 'lucide-react'
 import { foodAPI, savedFoodsAPI } from '../services/api'
 import { todayStr, dayToIsoNoon } from '../utils/dateUtils'
 import { MACRO_COLORS } from '../utils/macroColors'
 import BarcodeScanner from '../components/BarcodeScanner'
 import NutritionLabelCamera from '../components/NutritionLabelCamera'
+import EditSavedFoodSheet from '../components/EditSavedFoodSheet'
 import IconButton from '../components/ui/IconButton'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import DateInput from '../components/ui/DateInput'
@@ -117,6 +118,8 @@ export default function LogFood() {
   const [saveToMyFoods, setSaveToMyFoods] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [capturedImageUrl, setCapturedImageUrl] = useState<string>('')
+  const [editingSavedFood, setEditingSavedFood] = useState<types.SavedFood | null>(null)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -228,7 +231,6 @@ export default function LogFood() {
     if (!selected) setServings(1)
     setPhase('detail')
   }
-
   const handleLog = async () => {
     if (!selected || saving) return
     setSaving(true)
@@ -260,6 +262,7 @@ export default function LogFood() {
             calories: selected.calories, protein: selected.protein,
             carbs: selected.carbs, fat: selected.fat, fiber: selected.fiber ?? 0,
             serving_size: selected.serving_size ?? '',
+            image_url: capturedImageUrl,
           }).catch(() => {})
         }
       }
@@ -282,6 +285,7 @@ export default function LogFood() {
   if (phase === 'scan-label') {
     return (
       <NutritionLabelCamera
+        onImageCapture={url => setCapturedImageUrl(url)}
         onResult={handleLabelResult}
         onClose={() => setPhase(selected ? 'detail' : 'search')}
       />
@@ -440,7 +444,41 @@ export default function LogFood() {
                     <p className="text-xs text-tx-muted mt-1 opacity-60">Save foods while logging to find them here</p>
                   </div>
                 )
-                : savedFoods.map(sf => <FoodResultRow key={sf.id} item={savedToResult(sf)} onClick={() => selectResult(savedToResult(sf))} />)
+                : savedFoods.map(sf => (
+                  <div key={sf.id} className="flex items-center border-b border-surface-border last:border-0">
+                    <button
+                      className="flex items-center gap-3 flex-1 min-w-0 px-4 py-3.5 hover:bg-surface-muted active:bg-surface-muted/80 transition-colors text-left"
+                      onClick={() => selectResult(savedToResult(sf))}
+                    >
+                      {sf.image_url ? (
+                        <img src={sf.image_url} alt="" className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border" />
+                      ) : (
+                        <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
+                          <Utensils className="w-5 h-5 text-tx-muted" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-tx-primary truncate">{sf.name}</p>
+                        {sf.brand && <p className="text-xs text-tx-muted truncate mt-0.5">{sf.brand}</p>}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-xs font-semibold text-tx-secondary tabular-nums">{Math.round(sf.calories)} kcal</span>
+                          <span className="text-[10px] text-tx-muted">·</span>
+                          <span className="text-xs text-emerald-400 tabular-nums">{sf.protein.toFixed(0)}g P</span>
+                          <span className="text-[10px] text-tx-muted">·</span>
+                          <span className="text-xs text-amber-400 tabular-nums">{sf.carbs.toFixed(0)}g C</span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); setEditingSavedFood(sf) }}
+                      className="px-3 py-4 text-tx-muted hover:text-tx-primary transition-colors flex-shrink-0"
+                      aria-label={`Edit ${sf.name}`}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
             )}
 
             {tab === 'all' && !query.trim() && (
@@ -512,14 +550,23 @@ export default function LogFood() {
 
           {/* Food hero + macros */}
           <div className="card overflow-hidden">
-            {/* Image or placeholder */}
-            {selected.image_url ? (
-              <img
-                src={selected.image_url}
-                alt={selected.name}
-                className="w-full h-52 object-cover"
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
+            {/* Image — captured photo takes priority, then image_url from search result */}
+            {(capturedImageUrl || selected.image_url) ? (
+              <div className="relative">
+                <img
+                  src={capturedImageUrl || selected.image_url}
+                  alt={selected.name}
+                  className="w-full h-52 object-cover"
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+                <button
+                  onClick={() => setCapturedImageUrl('')}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-colors"
+                  aria-label="Remove photo"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             ) : (
               <div className="w-full h-32 bg-surface-muted border-b border-surface-border flex items-center justify-center">
                 <Utensils className="w-10 h-10 text-tx-muted opacity-20" />
@@ -697,6 +744,23 @@ export default function LogFood() {
             {saving ? 'Saving…' : editId ? 'Save Changes' : 'Log Food'}
           </button>
         </div>
+      )}
+
+      {/* Edit saved food sheet */}
+      {editingSavedFood && (
+        <EditSavedFoodSheet
+          food={editingSavedFood}
+          open={editingSavedFood !== null}
+          onClose={() => setEditingSavedFood(null)}
+          onSaved={updated => {
+            setSavedFoods(prev => prev.map(sf => sf.id === updated.id ? updated : sf))
+            setEditingSavedFood(updated)
+          }}
+          onDeleted={id => {
+            setSavedFoods(prev => prev.filter(sf => sf.id !== id))
+            setEditingSavedFood(null)
+          }}
+        />
       )}
     </div>
   )

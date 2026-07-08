@@ -508,6 +508,70 @@ func (h *Handler) CreateSavedFood(c *gin.Context) {
 	utils.Created(c, f)
 }
 
+func (h *Handler) GetSavedFood(c *gin.Context) {
+	uid := middleware.UserID(c)
+	fid, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid id")
+		return
+	}
+
+	f, err := h.s.Food.GetSaved(uid, fid)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "saved food not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, f)
+}
+
+func (h *Handler) UpdateSavedFood(c *gin.Context) {
+	uid := middleware.UserID(c)
+	fid, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid id")
+		return
+	}
+
+	var req models.UpdateSavedFoodRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	if len(req.Name) > 200 {
+		utils.BadRequest(c, "name exceeds 200 characters")
+		return
+	}
+	if len(req.Brand) > 200 {
+		utils.BadRequest(c, "brand exceeds 200 characters")
+		return
+	}
+	if len(req.ServingSize) > 100 {
+		utils.BadRequest(c, "serving_size exceeds 100 characters")
+		return
+	}
+	if len(req.Barcode) > 50 {
+		utils.BadRequest(c, "barcode exceeds 50 characters")
+		return
+	}
+
+	f, err := h.s.Food.UpdateSaved(uid, fid, req)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "saved food not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, f)
+}
+
 func (h *Handler) DeleteSavedFood(c *gin.Context) {
 	uid := middleware.UserID(c)
 	fid, err := strconv.ParseInt(c.Param("id"), 10, 64)

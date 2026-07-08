@@ -142,6 +142,7 @@ export interface SavedFood {
   fiber: number
   serving_size: string
   barcode?: string
+  image_url?: string
 }
 
 export interface FoodHistoryPoint {
