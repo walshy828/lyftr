@@ -18,10 +18,10 @@ type ProgramFilter struct {
 	Query         string
 }
 
-const programCols = `id, user_id, name, notes, created_at`
+const programCols = `id, user_id, name, notes, is_shared, created_at`
 
 func scanProgram(row interface{ Scan(...any) error }, p *models.Program) error {
-	return row.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.CreatedAt)
+	return row.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt)
 }
 
 func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error) {
@@ -66,13 +66,24 @@ func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error
 	return programs, nil
 }
 
-// Get returns a user-owned program with its exercises/sets, or sql.ErrNoRows.
+// Get returns a program the caller owns, or any program that's shared, along
+// with its exercises/sets, or sql.ErrNoRows if neither applies. OwnerEmail is
+// populated only when the caller isn't the owner, for shared-program attribution.
 func (s *ProgramStore) Get(uid, id int64) (models.Program, error) {
 	var p models.Program
-	if err := scanProgram(
-		s.db.QueryRow(`SELECT `+programCols+` FROM programs WHERE id = ? AND user_id = ?`, id, uid), &p,
-	); err != nil {
+	var ownerEmail sql.NullString
+	err := s.db.QueryRow(
+		`SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at,
+		        CASE WHEN p.user_id != ? THEN u.email ELSE NULL END
+		 FROM programs p JOIN users u ON u.id = p.user_id
+		 WHERE p.id = ? AND (p.user_id = ? OR p.is_shared = 1)`,
+		uid, id, uid,
+	).Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &ownerEmail)
+	if err != nil {
 		return models.Program{}, err
+	}
+	if ownerEmail.Valid {
+		p.OwnerEmail = ownerEmail.String
 	}
 	ex, err := s.loadExercises(id)
 	if err != nil {
@@ -80,6 +91,99 @@ func (s *ProgramStore) Get(uid, id int64) (models.Program, error) {
 	}
 	p.Exercises = ex
 	return p, nil
+}
+
+// ListShared returns other users' shared programs, newest first, with the
+// owner's email attached for attribution. Excludes the caller's own programs
+// (even if shared) since those already appear under "My Programs".
+func (s *ProgramStore) ListShared(uid int64, f ProgramFilter) ([]models.Program, error) {
+	var rows *sql.Rows
+	var err error
+	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at, u.email
+	         FROM programs p JOIN users u ON u.id = p.user_id
+	         WHERE p.is_shared = 1 AND p.user_id != ?`
+	if f.Query != "" {
+		rows, err = s.db.Query(base+` AND LOWER(p.name) LIKE ? ORDER BY p.created_at DESC LIMIT ? OFFSET ?`,
+			uid, "%"+strings.ToLower(f.Query)+"%", f.Limit, f.Offset)
+	} else {
+		rows, err = s.db.Query(base+` ORDER BY p.created_at DESC LIMIT ? OFFSET ?`, uid, f.Limit, f.Offset)
+	}
+	if err != nil {
+		return nil, err
+	}
+	programs := []models.Program{}
+	for rows.Next() {
+		var p models.Program
+		var ownerEmail string
+		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &ownerEmail); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		p.OwnerEmail = ownerEmail
+		programs = append(programs, p)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	for i := range programs {
+		ex, err := s.loadExercises(programs[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		programs[i].Exercises = ex
+	}
+	return programs, nil
+}
+
+// SetShared flips is_shared for a program the caller owns. Returns
+// sql.ErrNoRows if the program doesn't exist or isn't theirs.
+func (s *ProgramStore) SetShared(uid, id int64, shared bool) (models.Program, error) {
+	res, err := s.db.Exec(`UPDATE programs SET is_shared = ? WHERE id = ? AND user_id = ?`, shared, id, uid)
+	if err != nil {
+		return models.Program{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return models.Program{}, err
+	}
+	if n == 0 {
+		return models.Program{}, sql.ErrNoRows
+	}
+	return s.Get(uid, id)
+}
+
+// Copy creates an independent copy of program srcID (which must be owned by
+// uid or currently shared) under uid's own account. The copy is never itself
+// shared and carries no link back to the source — it's a fully independent
+// template so the copier can set their own target weights.
+func (s *ProgramStore) Copy(uid, srcID int64) (models.Program, error) {
+	src, err := s.Get(uid, srcID)
+	if err != nil {
+		return models.Program{}, err
+	}
+	req := models.CreateProgramRequest{
+		Name:  src.Name + " (Copy)",
+		Notes: src.Notes,
+	}
+	for _, ex := range src.Exercises {
+		cex := models.CreateProgramExerciseReq{
+			ExerciseID:  ex.ExerciseID,
+			Notes:       ex.Notes,
+			RestSeconds: ex.RestSeconds,
+		}
+		for _, st := range ex.Sets {
+			cex.Sets = append(cex.Sets, models.CreateProgramSetReq{
+				SetNumber:    st.SetNumber,
+				TargetReps:   st.TargetReps,
+				TargetWeight: st.TargetWeight,
+			})
+		}
+		req.Exercises = append(req.Exercises, cex)
+	}
+	return s.Create(uid, req)
 }
 
 func (s *ProgramStore) get(id int64) (models.Program, error) {

@@ -58,6 +58,10 @@ func alterMigrations() {
 
 	// Food photos for saved foods (#savedFoodPhoto)
 	ensureColumn("saved_foods", "image_url", `ALTER TABLE saved_foods ADD COLUMN image_url TEXT NOT NULL DEFAULT ''`)
+
+	// Broadcast program sharing (#shareProgram). is_shared=1 makes a program
+	// readable by any authenticated user, not just its owner.
+	ensureColumn("programs", "is_shared", `ALTER TABLE programs ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 0`)
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.
@@ -212,9 +216,11 @@ CREATE TABLE IF NOT EXISTS programs (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name       TEXT    NOT NULL,
   notes      TEXT    NOT NULL DEFAULT '',
+  is_shared  INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_programs_user ON programs(user_id);
+CREATE INDEX IF NOT EXISTS idx_programs_shared ON programs(is_shared) WHERE is_shared = 1;
 
 CREATE TABLE IF NOT EXISTS program_exercises (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -27,6 +27,22 @@ func (h *Handler) ListPrograms(c *gin.Context) {
 	utils.OK(c, programs)
 }
 
+func (h *Handler) ListSharedPrograms(c *gin.Context) {
+	uid := middleware.UserID(c)
+	f := stores.ProgramFilter{Limit: 20, Query: c.Query("q")}
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
+		f.Limit = l
+	}
+	if o, err := strconv.Atoi(c.Query("offset")); err == nil && o >= 0 {
+		f.Offset = o
+	}
+	programs, err := h.s.Program.ListShared(uid, f)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, programs)
+}
+
 func (h *Handler) GetProgram(c *gin.Context) {
 	uid := middleware.UserID(c)
 	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -114,4 +130,52 @@ func (h *Handler) DeleteProgram(c *gin.Context) {
 		return
 	}
 	utils.OK(c, gin.H{"deleted": true})
+}
+
+func (h *Handler) ShareProgram(c *gin.Context) {
+	h.setProgramShared(c, true)
+}
+
+func (h *Handler) UnshareProgram(c *gin.Context) {
+	h.setProgramShared(c, false)
+}
+
+func (h *Handler) setProgramShared(c *gin.Context, shared bool) {
+	uid := middleware.UserID(c)
+	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid program id")
+		return
+	}
+	p, err := h.s.Program.SetShared(uid, pid, shared)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "program not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, p)
+}
+
+func (h *Handler) CopyProgram(c *gin.Context) {
+	uid := middleware.UserID(c)
+	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid program id")
+		return
+	}
+	p, err := h.s.Program.Copy(uid, pid)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "program not found")
+		return
+	}
+	if utils.IsForeignKeyViolation(err) {
+		utils.BadRequest(c, "one or more exercises do not exist")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.Created(c, p)
 }

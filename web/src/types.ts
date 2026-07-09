@@ -183,8 +183,11 @@ export interface ProgramExercise {
 
 export interface Program {
   id: number
+  user_id: number
   name: string
   notes?: string
+  is_shared: boolean
+  owner_email?: string
   created_at: string
   exercises: ProgramExercise[]
 }

@@ -263,12 +263,14 @@ type UpdateSettingsRequest struct {
 }
 
 type Program struct {
-	ID        int64             `json:"id"`
-	UserID    int64             `json:"user_id,omitempty"`
-	Name      string            `json:"name"`
-	Notes     string            `json:"notes"`
-	CreatedAt time.Time         `json:"created_at"`
-	Exercises []ProgramExercise `json:"exercises"`
+	ID         int64             `json:"id"`
+	UserID     int64             `json:"user_id,omitempty"`
+	Name       string            `json:"name"`
+	Notes      string            `json:"notes"`
+	IsShared   bool              `json:"is_shared"`
+	OwnerEmail string            `json:"owner_email,omitempty"`
+	CreatedAt  time.Time         `json:"created_at"`
+	Exercises  []ProgramExercise `json:"exercises"`
 }
 
 type ProgramExercise struct {

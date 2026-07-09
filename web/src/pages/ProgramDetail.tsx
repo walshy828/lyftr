@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import {
-  ArrowLeft, BookOpen, Dumbbell, Edit2, Trash2, Play, AlertCircle, Loader, ChevronRight, Pause, TimerOff,
+  ArrowLeft, BookOpen, Dumbbell, Edit2, Trash2, Play, AlertCircle, Loader, ChevronRight, Pause, TimerOff, Share2, Copy,
 } from 'lucide-react'
 import { programAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
+import { useAuthStore } from '../stores/auth'
 import { useSettingsStore, weightShort, displayWeight } from '../stores/settings'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
@@ -15,6 +16,7 @@ export default function ProgramDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { session, startSession } = useWorkoutSession()
+  const { user } = useAuthStore()
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
   const restOn = settings.rest_enabled ?? true
@@ -24,6 +26,9 @@ export default function ProgramDetail() {
   const [error, setError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [copying, setCopying] = useState(false)
+  const isOwner = !!program && !!user && program.user_id === user.id
 
   useEffect(() => {
     const load = async () => {
@@ -72,6 +77,28 @@ export default function ProgramDetail() {
     }
   }
 
+  const handleShareToggle = async () => {
+    if (!program) return
+    setSharing(true)
+    try {
+      const updated = program.is_shared ? await programAPI.unshare(program.id) : await programAPI.share(program.id)
+      setProgram(updated)
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const handleCopy = async () => {
+    if (!program) return
+    setCopying(true)
+    try {
+      const copy = await programAPI.copy(program.id)
+      navigate(`/programs/${copy.id}/edit`)
+    } finally {
+      setCopying(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -111,18 +138,38 @@ export default function ProgramDetail() {
           >
             <Play className="w-3.5 h-3.5" /> Start Workout
           </button>
-          <button
-            onClick={() => navigate(`/programs/${program.id}/edit`)}
-            className="p-2 hover:bg-surface-muted rounded-lg transition-colors"
-          >
-            <Edit2 className="w-4 h-4 text-brand-500" />
-          </button>
-          <button
-            onClick={() => setConfirming(true)}
-            className="p-2 hover:bg-error-500/10 rounded-lg transition-colors"
-          >
-            <Trash2 className="w-4 h-4 text-error-400" />
-          </button>
+          {isOwner ? (
+            <>
+              <button
+                onClick={() => navigate(`/programs/${program.id}/edit`)}
+                className="p-2 hover:bg-surface-muted rounded-lg transition-colors"
+              >
+                <Edit2 className="w-4 h-4 text-brand-500" />
+              </button>
+              <button
+                onClick={handleShareToggle}
+                disabled={sharing}
+                className="p-2 hover:bg-surface-muted rounded-lg transition-colors disabled:opacity-50"
+                title={program.is_shared ? 'Unshare program' : 'Share program'}
+              >
+                <Share2 className={`w-4 h-4 ${program.is_shared ? 'text-brand-500' : 'text-tx-muted'}`} />
+              </button>
+              <button
+                onClick={() => setConfirming(true)}
+                className="p-2 hover:bg-error-500/10 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-4 h-4 text-error-400" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleCopy}
+              disabled={copying}
+              className="flex items-center gap-1.5 px-3 py-2 hover:bg-surface-muted text-tx-primary text-xs font-semibold rounded-xl transition-colors disabled:opacity-50"
+            >
+              <Copy className="w-3.5 h-3.5 text-brand-500" /> {copying ? 'Copying…' : 'Copy to My Programs'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -165,7 +212,9 @@ export default function ProgramDetail() {
           <div className="min-w-0 flex-1">
             <h1 className="font-display font-bold text-xl text-tx-primary leading-tight">{program.name}</h1>
             <p className="text-sm text-tx-muted mt-0.5">
-              Created {format(new Date(program.created_at), 'MMMM d, yyyy')}
+              {!isOwner && program.owner_email
+                ? `Shared by ${program.owner_email}`
+                : `Created ${format(new Date(program.created_at), 'MMMM d, yyyy')}`}
             </p>
           </div>
         </div>

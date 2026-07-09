@@ -87,9 +87,13 @@ func Setup(r *gin.Engine, h *controllers.Handler) {
 		// Programs
 		protected.GET("programs", h.ListPrograms)
 		protected.POST("programs", h.CreateProgram)
+		protected.GET("programs/shared", h.ListSharedPrograms) // static path before :id wildcard
 		protected.GET("programs/:id", h.GetProgram)
 		protected.PUT("programs/:id", h.UpdateProgram)
 		protected.DELETE("programs/:id", h.DeleteProgram)
+		protected.POST("programs/:id/share", h.ShareProgram)
+		protected.POST("programs/:id/unshare", h.UnshareProgram)
+		protected.POST("programs/:id/copy", h.CopyProgram)
 
 		// Admin
 		protected.POST("admin/sync-exercises", h.SyncExercises)

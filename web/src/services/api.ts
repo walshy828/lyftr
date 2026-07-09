@@ -155,11 +155,15 @@ export const exerciseAPI = {
 
 
 export const programAPI = {
-  list:   (params?: { limit?: number; offset?: number; q?: string }) => api.get<{ data: types.Program[] }>('/programs', { params }).then(res => unwrap(res)),
+  list:       (params?: { limit?: number; offset?: number; q?: string }) => api.get<{ data: types.Program[] }>('/programs', { params }).then(res => unwrap(res)),
+  listShared: (params?: { limit?: number; offset?: number; q?: string }) => api.get<{ data: types.Program[] }>('/programs/shared', { params }).then(res => unwrap(res)),
   get:    (id: number) => api.get<{ data: types.Program }>(`/programs/${id}`).then(res => unwrap(res)),
   create: (data: any) => api.post<{ data: types.Program }>('/programs', data).then(res => unwrap(res)),
   update: (id: number, data: any) => api.put<{ data: types.Program }>(`/programs/${id}`, data).then(res => unwrap(res)),
   delete: (id: number) => api.delete(`/programs/${id}`),
+  share:   (id: number) => api.post<{ data: types.Program }>(`/programs/${id}/share`).then(res => unwrap(res)),
+  unshare: (id: number) => api.post<{ data: types.Program }>(`/programs/${id}/unshare`).then(res => unwrap(res)),
+  copy:    (id: number) => api.post<{ data: types.Program }>(`/programs/${id}/copy`).then(res => unwrap(res)),
 }
 
 export const weightAPI = {

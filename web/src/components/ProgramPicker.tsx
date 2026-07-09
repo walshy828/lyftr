@@ -14,8 +14,11 @@ export default function ProgramPicker({ onSelect, onClose }: Props) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    programAPI.list()
-      .then(data => setPrograms(data || []))
+    Promise.all([programAPI.list(), programAPI.listShared()])
+      .then(([mine, shared]) => {
+        const seen = new Set(mine.map(p => p.id))
+        setPrograms([...mine, ...shared.filter(p => !seen.has(p.id))])
+      })
       .catch(() => setError('Failed to load programs'))
       .finally(() => setLoading(false))
   }, [])
@@ -69,9 +72,11 @@ export default function ProgramPicker({ onSelect, onClose }: Props) {
                         <Dumbbell className="w-3 h-3 inline mr-1" />
                         {p.exercises?.length || 0} exercises
                       </span>
-                      {p.notes && (
+                      {p.owner_email ? (
+                        <span className="text-xs text-tx-muted truncate">• Shared by {p.owner_email}</span>
+                      ) : p.notes ? (
                         <span className="text-xs text-tx-muted truncate">• {p.notes}</span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
