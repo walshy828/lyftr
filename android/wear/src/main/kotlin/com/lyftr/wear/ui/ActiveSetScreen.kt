@@ -1,21 +1,29 @@
 package com.lyftr.wear.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
-import androidx.wear.compose.material.CompactButton
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.MaterialTheme
+import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.TimeText
+import androidx.wear.compose.material.Vignette
+import androidx.wear.compose.material.VignettePosition
 import com.lyftr.shared.WearExercise
 import com.lyftr.shared.WearSession
 import com.lyftr.shared.WearSet
@@ -23,6 +31,14 @@ import kotlin.math.roundToInt
 
 private const val WEIGHT_STEP = 5.0
 
+/**
+ * Round-screen layout notes: everything lives in a ScalingLazyColumn, which
+ * insets and curves content away from the circular bezel and makes the
+ * screen scrollable (rotating side button / swipe) — a plain Column clipped
+ * the action buttons off the bottom on the Pixel Watch. Buttons are stacked
+ * full-width Chips rather than a side-by-side Row, since a Row's outer
+ * halves fall outside the circle at the screen's bottom.
+ */
 @Composable
 fun ActiveSetScreen(
     session: WearSession,
@@ -35,47 +51,81 @@ fun ActiveSetScreen(
 ) {
     val restEndsAt = session.rest_ends_at
     if (restEndsAt != null && restEndsAt > System.currentTimeMillis()) {
-        RestTimerScreen(endsAtMillis = restEndsAt, exerciseName = exercise.exercise_name)
+        RestTimerScreen(
+            endsAtMillis = restEndsAt,
+            durationSec = session.rest_duration_sec,
+            session = session,
+            exercise = exercise,
+            set = set,
+        )
         return
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+    val elapsed by rememberWorkoutElapsed(session.started_at)
+    val listState = rememberScalingLazyListState()
+
+    Scaffold(
+        timeText = { TimeText() },
+        vignette = { Vignette(vignettePosition = VignettePosition.TopAndBottom) },
     ) {
-        Text(
-            text = exercise.exercise_name,
-            style = MaterialTheme.typography.title3,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-        )
-        Text(
-            text = "Set ${set.set_number} of ${exercise.sets.size}",
-            style = MaterialTheme.typography.caption2,
-        )
-
-        Stepper(
-            label = "lb",
-            value = displayWeight(set),
-            onIncrement = { onWeightChange(displayWeight(set) + WEIGHT_STEP) },
-            onDecrement = { onWeightChange((displayWeight(set) - WEIGHT_STEP).coerceAtLeast(0.0)) },
-            format = { it.roundToInt().toString() },
-        )
-        Stepper(
-            label = "reps",
-            value = displayReps(set).toDouble(),
-            onIncrement = { onRepsChange(displayReps(set) + 1) },
-            onDecrement = { onRepsChange((displayReps(set) - 1).coerceAtLeast(0)) },
-            format = { it.roundToInt().toString() },
-        )
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CompactButton(onClick = onSkip, colors = ButtonDefaults.secondaryButtonColors()) {
-                Text("Skip")
+        ScalingLazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            item {
+                Text(
+                    text = "⏱ $elapsed",
+                    style = MaterialTheme.typography.caption1,
+                    color = MaterialTheme.colors.secondary,
+                )
             }
-            Button(onClick = onComplete) {
-                Text("Done")
+            item {
+                Text(
+                    text = exercise.exercise_name,
+                    style = MaterialTheme.typography.title3,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+            }
+            item {
+                Text(
+                    text = "Set ${set.set_number} of ${exercise.sets.size}",
+                    style = MaterialTheme.typography.caption2,
+                )
+            }
+            item {
+                Stepper(
+                    label = "lb",
+                    value = displayWeight(set).roundToInt().toString(),
+                    onIncrement = { onWeightChange(displayWeight(set) + WEIGHT_STEP) },
+                    onDecrement = { onWeightChange((displayWeight(set) - WEIGHT_STEP).coerceAtLeast(0.0)) },
+                )
+            }
+            item {
+                Stepper(
+                    label = "reps",
+                    value = displayReps(set).toString(),
+                    onIncrement = { onRepsChange(displayReps(set) + 1) },
+                    onDecrement = { onRepsChange((displayReps(set) - 1).coerceAtLeast(0)) },
+                )
+            }
+            item {
+                Chip(
+                    onClick = onComplete,
+                    label = { Text("Done", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                    colors = ChipDefaults.primaryChipColors(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                )
+            }
+            item {
+                Chip(
+                    onClick = onSkip,
+                    label = { Text("Skip", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                    colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                )
             }
         }
     }
@@ -89,14 +139,25 @@ private fun displayReps(set: WearSet) = if (set.actual_reps > 0) set.actual_reps
 @Composable
 private fun Stepper(
     label: String,
-    value: Double,
+    value: String,
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
-    format: (Double) -> String,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        CompactButton(onClick = onDecrement) { Text("-") }
-        Text(text = "${format(value)} $label", style = MaterialTheme.typography.body1)
-        CompactButton(onClick = onIncrement) { Text("+") }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Button(
+            onClick = onDecrement,
+            colors = ButtonDefaults.secondaryButtonColors(),
+            modifier = Modifier.size(ButtonDefaults.SmallButtonSize),
+        ) { Text("−") }
+        Text(text = "$value $label", style = MaterialTheme.typography.body1)
+        Button(
+            onClick = onIncrement,
+            colors = ButtonDefaults.secondaryButtonColors(),
+            modifier = Modifier.size(ButtonDefaults.SmallButtonSize),
+        ) { Text("+") }
     }
 }

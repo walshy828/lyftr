@@ -10,7 +10,10 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.lyftr.wear"
+        // Must be identical to :phone's applicationId — the Wearable Data
+        // Layer API only routes DataItems/Messages between apps that share
+        // the same package name (namespaces may differ, this may not).
+        applicationId = "com.lyftr"
         minSdk = 30 // Wear OS 3+
         targetSdk = 35
         versionCode = 1
@@ -43,6 +46,9 @@ dependencies {
     implementation("androidx.wear.compose:compose-material:1.4.0")
     implementation("androidx.wear.compose:compose-foundation:1.4.0")
     implementation("androidx.wear:wear:1.3.0")
+
+    // Ongoing-activity indicator on the watch face while a workout is live.
+    implementation("androidx.wear:wear-ongoing:1.0.0")
 
     // Data Layer client to talk to the phone app — no other networking on-watch.
     implementation("com.google.android.gms:play-services-wearable:18.2.0")

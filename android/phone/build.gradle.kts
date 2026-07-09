@@ -10,7 +10,10 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.lyftr.phone"
+        // Must be identical to :wear's applicationId — the Wearable Data
+        // Layer API only routes DataItems/Messages between apps that share
+        // the same package name (namespaces may differ, this may not).
+        applicationId = "com.lyftr"
         minSdk = 28
         targetSdk = 35
         versionCode = 1

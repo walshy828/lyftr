@@ -43,7 +43,6 @@ class SessionSyncService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "onCreate")
         tokenStore = TokenStore(this)
         apiClient = LyftrApiClient(tokenStore)
         wearBridge = WearBridge(this)
@@ -51,7 +50,6 @@ class SessionSyncService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand action=${intent?.action}")
         when (intent?.action) {
             ACTION_PUSH -> scope.launch { pushLocalChanges() }
             else -> startPolling()
@@ -62,17 +60,12 @@ class SessionSyncService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        Log.d(TAG, "onDestroy")
         scope.cancel()
         super.onDestroy()
     }
 
     private fun startPolling() {
-        if (pollJob?.isActive == true) {
-            Log.d(TAG, "startPolling: already running")
-            return
-        }
-        Log.d(TAG, "startPolling: launching poll loop, isLoggedIn=${tokenStore.isLoggedIn}")
+        if (pollJob?.isActive == true) return
         pollJob = scope.launch {
             while (true) {
                 if (tokenStore.isLoggedIn) pollOnce()
@@ -84,22 +77,18 @@ class SessionSyncService : Service() {
     private suspend fun pollOnce() {
         val serverJson = apiClient.getActiveSession()
         val localJson = SessionRepository.rawJsonString()
-        Log.d(TAG, "pollOnce: server=${serverJson?.take(80)} changed=${serverJson != localJson}")
         if (serverJson != localJson) {
             SessionRepository.setFromServerJson(serverJson)
-            val wearSession = SessionRepository.toWearSession()
-            Log.d(TAG, "pollOnce: publishing to watch, active=${wearSession != null}")
-            wearBridge.publish(wearSession)
+            wearBridge.publish(SessionRepository.toWearSession())
         }
     }
 
     /** Pushes SessionRepository's current (watch-mutated) state to the backend and watch. */
     private suspend fun pushLocalChanges() {
-        val sessionJson = SessionRepository.rawJsonString()
-        Log.d(TAG, "pushLocalChanges: sessionJson=${sessionJson?.take(80)}")
-        if (sessionJson == null) return
-        val putOk = apiClient.putActiveSession(sessionJson)
-        Log.d(TAG, "pushLocalChanges: PUT ok=$putOk")
+        val sessionJson = SessionRepository.rawJsonString() ?: return
+        if (!apiClient.putActiveSession(sessionJson)) {
+            Log.w(TAG, "pushLocalChanges: PUT active-session failed; will reconcile on next poll")
+        }
         wearBridge.publish(SessionRepository.toWearSession())
     }
 

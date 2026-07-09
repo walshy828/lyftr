@@ -3,6 +3,10 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:label="Lyftr"
         android:icon="@drawable/ic_launcher"
@@ -10,8 +14,8 @@
         android:allowBackup="false">
 
         <!-- Standalone=false: this app is only useful paired with the phone
-             companion (com.lyftr.phone), which owns auth and the network
-             connection — see android/phone/src/main/AndroidManifest.xml. -->
+             companion, which owns auth and the network connection — see
+             android/phone/src/main/AndroidManifest.xml. -->
         <meta-data
             android:name="com.google.android.wearable.standalone"
             android:value="false" />
@@ -28,6 +32,33 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Keeps the live workout sticky: ongoing-activity indicator on the
+             watch face + raised process priority. specialUse (rather than
+             the health FGS type) because this service does no sensor/health
+             tracking — it only anchors a notification. -->
+        <service
+            android:name=".OngoingWorkoutService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Anchors the in-progress workout session to the watch face ongoing-activity indicator for quick re-entry" />
+        </service>
+
+        <!-- Raises/clears the ongoing indicator even when the app process
+             isn't running (workout started from web while watch is idle). -->
+        <service
+            android:name=".data.SessionListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/lyftr/session" />
+            </intent-filter>
+        </service>
 
     </application>
 </manifest>

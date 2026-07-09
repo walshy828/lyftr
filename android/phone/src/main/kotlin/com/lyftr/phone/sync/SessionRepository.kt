@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -118,10 +119,30 @@ object SessionRepository {
             else -> exIdx to setIdx
         }
 
-        _raw.value = obj
+        var updated = obj
             .with("exercises", updatedExercises)
             .with("current_exercise_idx", JsonPrimitive(nextEx))
             .with("current_set_idx", JsonPrimitive(nextSet))
+
+        // Completing a set starts the exercise's rest countdown (again
+        // mirroring handleCompleteSetGym) so the watch shows "time until the
+        // next set" even when the completion happened on the watch itself —
+        // the web only starts rest for its own completions. Skips move on
+        // without resting.
+        if (action.type == WearActionType.COMPLETE_SET) {
+            val restSec = exercise["rest_seconds"]?.jsonPrimitive?.intOrNull ?: 0
+            updated = if (restSec > 0) {
+                updated
+                    .with("rest_ends_at", JsonPrimitive(System.currentTimeMillis() + restSec * 1000L))
+                    .with("rest_duration_sec", JsonPrimitive(restSec))
+            } else {
+                updated
+                    .with("rest_ends_at", JsonNull)
+                    .with("rest_duration_sec", JsonNull)
+            }
+        }
+
+        _raw.value = updated
         return true
     }
 

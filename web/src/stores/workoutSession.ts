@@ -84,6 +84,13 @@ interface WorkoutSessionStore {
 // can pick up mid-workout state. Debounced since most mutations (typing a
 // weight, nudging rest by a few seconds) fire in quick bursts.
 let _syncTimer: ReturnType<typeof setTimeout> | null = null
+// Serialized form of the last session this tab pushed (or adopted from the
+// server). Lets the poll in hydrateActiveSessionFromServer tell "our own
+// echo coming back" apart from a genuinely foreign update (e.g. a set
+// completed on the watch) — the server's updated_at alone can't, since a
+// debounced PUT lands after the local edit that produced it.
+let _lastSyncedJson: string | null = null
+
 function scheduleSync(immediate = false) {
   if (_syncTimer) {
     clearTimeout(_syncTimer)
@@ -100,7 +107,10 @@ function scheduleSync(immediate = false) {
       rest_ends_at: state.restEndsAt,
       rest_duration_sec: state.restDurationSec,
     }
-    activeSessionAPI.put(payload).catch(() => {
+    const json = JSON.stringify(payload)
+    activeSessionAPI.put(payload).then(() => {
+      _lastSyncedJson = json
+    }).catch(() => {
       // offline/unreachable — local state (source of truth for this device)
       // is unaffected; the next scheduled sync will retry.
     })
@@ -359,18 +369,29 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
 // Pulls the server's saved session (if any) and adopts it when it's newer
 // than what's stored locally — the path that lets a workout started on
 // another device (web, or the Android companion app relaying a watch) show
-// up here. Call once on app load/login; safe to call when logged out or
-// offline, in which case the local session (if any) is left untouched.
+// up here. Called on app load/login and then on an interval (see
+// startActiveSessionPolling) so watch-side edits appear without a reload;
+// safe to call when logged out or offline, in which case the local session
+// (if any) is left untouched.
 export async function hydrateActiveSessionFromServer() {
   try {
     const result = await activeSessionAPI.get()
     if (!result?.data) return
+    // Server holds exactly what this tab last pushed (or adopted) — our own
+    // echo, nothing foreign to pull and nothing missing to push.
+    if (result.data === _lastSyncedJson) return
     const remote: types.ActiveSession = JSON.parse(result.data)
     const remoteUpdatedMs = result.updated_at ? new Date(result.updated_at).getTime() : 0
     const localUpdatedMs = Number(localStorage.getItem(SESSION_UPDATED_KEY) ?? 0)
     const state = useWorkoutSession.getState()
 
     if (!state.session || remoteUpdatedMs > localUpdatedMs) {
+      // A queued debounced push holds pre-adoption state — cancel it or it
+      // would overwrite the newer remote session we're about to take.
+      if (_syncTimer) {
+        clearTimeout(_syncTimer)
+        _syncTimer = null
+      }
       const exIdx = remote.current_exercise_idx ?? 0
       const setIdx = remote.current_set_idx ?? 0
       saveLocal(remote)
@@ -385,6 +406,7 @@ export async function hydrateActiveSessionFromServer() {
         restSetIdx: remote.rest_ends_at != null ? setIdx : null,
         restPausedRemainingMs: null,
       })
+      _lastSyncedJson = result.data
     } else if (state.session) {
       // Local is newer (e.g. offline edits) — push it up so the server
       // (and any watch/phone reading from it) catches up.
@@ -394,6 +416,14 @@ export async function hydrateActiveSessionFromServer() {
     // Logged out, offline, or server doesn't support this yet — keep
     // whatever local session exists and don't block app startup on it.
   }
+}
+
+// Keeps this tab following watch/phone-side edits while logged in. Returns
+// a cleanup function for the caller's useEffect. 8s roughly matches the
+// phone companion's own poll cadence — watch action → phone PUT → here.
+export function startActiveSessionPolling(): () => void {
+  const id = setInterval(hydrateActiveSessionFromServer, 8000)
+  return () => clearInterval(id)
 }
 
 // Best-effort: writes the weights actually logged in a finished workout back

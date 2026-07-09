@@ -1,0 +1,30 @@
+# Gradle internal caches/state — regenerated on every build
+.gradle/
+build/
+
+# Machine-specific: SDK location, injected by Android Studio
+local.properties
+
+# Kotlin compiler session data
+.kotlin/
+
+# Android Studio project state (user-specific run configs, caches)
+.idea/
+*.iml
+captures/
+
+# Built artifacts
+*.apk
+*.aab
+
+# Signing keys — never commit these
+*.jks
+*.keystore
+
+# Lint/profiling output
+lint-report.*
+*.hprof
+
+# Native build intermediates (unused today, standard guard)
+.cxx/
+.externalNativeBuild/
