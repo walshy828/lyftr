@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { format, subDays, addDays } from 'date-fns'
 import {
-  ChevronLeft, ChevronRight, Flame, Plus, Trash2,
+  ChevronLeft, ChevronRight, ChevronDown, Flame, Plus, Trash2,
   AlertCircle, Coffee, Sun, Moon, Cookie, CalendarDays, Utensils,
 } from 'lucide-react'
 import IconButton from '../components/ui/IconButton'
@@ -32,33 +32,32 @@ const MEAL_COLORS: Record<string, string> = {
 const HISTORY_PERIODS = ['7d', '30d', '90d'] as const
 type HistoryPeriod = typeof HISTORY_PERIODS[number]
 
-// ─── MacroRing ────────────────────────────────────────────────────────────────
+// ─── MacroBar ─────────────────────────────────────────────────────────────────
+// Compact linear alternative to a ring: shows label, value/target, and a thin
+// progress bar. Colors escalate amber (over target) → red (way over, >125%)
+// with an explicit "+X over" readout, since a capped ring can't distinguish
+// "just over" from "way over."
 
-function MacroRing({
+function MacroBar({
   value, target, color, label, unit = 'g',
 }: { value: number; target: number; color: string; label: string; unit?: string }) {
-  const r = 30
-  const circ = 2 * Math.PI * r
-  const pct = Math.min(1, value / Math.max(target, 1))
+  const pct = target > 0 ? (value / target) * 100 : 0
+  const over = pct > 100
+  const wayOver = pct > 125
+  const barColor = wayOver ? '#ef4444' : over ? '#f59e0b' : color
+  const textColor = wayOver ? 'text-error-400' : over ? 'text-amber-400' : 'text-tx-primary'
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <div className="relative">
-        <svg width="72" height="72" className="-rotate-90">
-          <circle cx="36" cy="36" r={r} fill="none" stroke="currentColor" strokeWidth="5"
-            className="text-surface-muted" />
-          <circle cx="36" cy="36" r={r} fill="none" stroke={color} strokeWidth="5"
-            strokeDasharray={circ}
-            strokeDashoffset={circ * (1 - pct)}
-            strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xs font-bold tabular-nums" style={{ color }}>{Math.round(pct * 100)}%</span>
-        </div>
+    <div>
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-xs text-tx-muted">{label}</span>
+        <span className={`text-xs font-semibold tabular-nums ${textColor}`}>
+          {Math.round(value)}{unit}
+          <span className="text-tx-muted font-normal"> / {target}{unit}</span>
+          {over && <span className="ml-1">+{Math.round(value - target)}{unit} over</span>}
+        </span>
       </div>
-      <div className="text-center">
-        <p className="text-sm font-semibold tabular-nums text-tx-primary">{Math.round(value)}{unit}</p>
-        <p className="text-[10px] text-tx-muted">{label} / {target}{unit}</p>
+      <div className="progress-track">
+        <div className="progress-bar" style={{ width: `${Math.min(100, pct)}%`, background: barColor }} />
       </div>
     </div>
   )
@@ -84,6 +83,7 @@ export default function Food() {
   const dateInputRef = useRef<HTMLInputElement>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const hasLoadedRef = useRef(false)
+  const [showMoreNutrients, setShowMoreNutrients] = useState(false)
 
   const loadDay = useCallback(async (date: string) => {
     setLoading(true)
@@ -266,21 +266,21 @@ export default function Food() {
             </div>
           </div>
 
-          {/* Macro rings */}
-          <div className="grid grid-cols-3 gap-3">
-            <MacroRing
+          {/* Macro bars */}
+          <div className="space-y-3">
+            <MacroBar
               value={s?.total_protein ?? 0}
               target={settings.protein_target}
               color={MACRO_COLORS.protein}
               label="Protein"
             />
-            <MacroRing
+            <MacroBar
               value={s?.total_carbs ?? 0}
               target={settings.carb_target}
               color={MACRO_COLORS.carbs}
               label="Carbs"
             />
-            <MacroRing
+            <MacroBar
               value={s?.total_fat ?? 0}
               target={settings.fat_target}
               color={MACRO_COLORS.fat}
@@ -288,22 +288,34 @@ export default function Food() {
             />
           </div>
 
-          {/* Cholesterol / sodium rings */}
-          <div className="grid grid-cols-2 gap-3">
-            <MacroRing
-              value={s?.total_cholesterol ?? 0}
-              target={settings.cholesterol_target}
-              color={MACRO_COLORS.cholesterol}
-              label="Cholesterol"
-              unit="mg"
-            />
-            <MacroRing
-              value={s?.total_sodium ?? 0}
-              target={settings.sodium_target}
-              color={MACRO_COLORS.sodium}
-              label="Sodium"
-              unit="mg"
-            />
+          {/* Cholesterol / sodium — collapsed by default to keep the summary compact */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowMoreNutrients(v => !v)}
+              className="flex items-center gap-2 px-3 py-2 w-full text-xs text-tx-muted hover:text-tx-secondary rounded-lg hover:bg-surface-muted/40 transition-colors"
+            >
+              <span>Cholesterol & Sodium</span>
+              <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${showMoreNutrients ? 'rotate-180' : ''}`} />
+            </button>
+            {showMoreNutrients && (
+              <div className="space-y-3 pt-2 px-3">
+                <MacroBar
+                  value={s?.total_cholesterol ?? 0}
+                  target={settings.cholesterol_target}
+                  color={MACRO_COLORS.cholesterol}
+                  label="Cholesterol"
+                  unit="mg"
+                />
+                <MacroBar
+                  value={s?.total_sodium ?? 0}
+                  target={settings.sodium_target}
+                  color={MACRO_COLORS.sodium}
+                  label="Sodium"
+                  unit="mg"
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
