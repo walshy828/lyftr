@@ -8,6 +8,7 @@ import {
 import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore, weightShort, displayToLbs, displayWeight } from '../stores/settings'
 import WeightInput from '../components/WeightInput'
+import ExercisePicker from '../components/ExercisePicker'
 import { workoutAPI } from '../services/api'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
@@ -57,7 +58,7 @@ function formatElapsed(seconds: number) {
 
 export default function ActiveWorkout() {
   const navigate = useNavigate()
-  const { session, updateSet, updateExerciseNotes, completeSet, addSet, removeSet, removeExercise, buildPayload, cancelSession, openGym } =
+  const { session, updateSet, updateExerciseNotes, completeSet, addSet, removeSet, removeExercise, addExercise, buildPayload, cancelSession, openGym } =
     useWorkoutSession()
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
@@ -68,6 +69,7 @@ export default function ActiveWorkout() {
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
   const [activeExIdx, setActiveExIdx] = useState(0)
+  const [showAddExercise, setShowAddExercise] = useState(false)
 
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
 
@@ -442,7 +444,7 @@ export default function ActiveWorkout() {
       {/* ── Footer ─────────────────────────────────────────── */}
       <div className="mt-4 space-y-2">
         <button
-          onClick={() => navigate('/workout/active/add-exercise')}
+          onClick={() => setShowAddExercise(true)}
           className="w-full py-3.5 bg-surface-muted/60 hover:bg-surface-muted border border-surface-border hover:border-brand-500/40 rounded-2xl text-sm font-medium text-tx-secondary hover:text-brand-400 transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
@@ -513,6 +515,31 @@ export default function ActiveWorkout() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* ── Add exercise ───────────────────────────────────── */}
+      {showAddExercise && (
+        <ExercisePicker
+          selectedIds={session.exercises.map(e => e.exercise_id)}
+          onClose={() => setShowAddExercise(false)}
+          onSelect={ex => {
+            const newEx: types.ActiveSessionExercise = {
+              exercise_id: ex.id,
+              exercise: ex,
+              notes: '',
+              sets: [{
+                set_number: 1,
+                target_reps: 0,
+                target_weight: 0,
+                actual_reps: 0,
+                actual_weight: 0,
+                completed: false,
+              }],
+            }
+            addExercise(newEx)
+            setShowAddExercise(false)
+          }}
+        />
       )}
     </div>
   )
