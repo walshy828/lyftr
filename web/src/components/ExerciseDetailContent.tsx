@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Trophy } from 'lucide-react'
+import { Trophy, SquarePlay } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Model, { IExerciseData } from 'react-body-highlighter'
@@ -121,9 +121,20 @@ export default function ExerciseDetailContent({ exercise }: Props) {
           alt={exercise.name}
           loading="lazy"
           onError={() => setImgFailed(true)}
-          className="w-full h-52 object-cover rounded-2xl bg-surface-muted"
+          className="w-full h-64 object-contain rounded-2xl bg-surface-muted"
         />
       )}
+
+      {/* Watch on YouTube */}
+      <a
+        href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${exercise.name} exercise form`)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="w-full py-3 bg-surface-muted/60 hover:bg-surface-muted border border-surface-border hover:border-brand-500/40 rounded-2xl text-sm font-medium text-tx-secondary hover:text-brand-400 transition-colors flex items-center justify-center gap-2"
+      >
+        <SquarePlay className="w-4 h-4" />
+        Watch on YouTube
+      </a>
 
       {/* Tags */}
       <div className="flex flex-wrap gap-2">

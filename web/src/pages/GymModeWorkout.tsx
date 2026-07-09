@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, Plus, X, Dumbbell, Flag, ChevronRight, ChevronLeft, Play,
-  Minimize2, Trash2, Repeat, Check, Layers, Timer,
+  Minimize2, Trash2, Repeat, Check, Layers, Timer, SquarePlay,
 } from 'lucide-react'
 import Model, { IExerciseData } from 'react-body-highlighter'
 import * as types from '../types'
@@ -370,7 +370,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
               src={exercise.image_url}
               alt={exercise.name}
               onError={() => setImgFailed(true)}
-              className="w-full h-52 object-cover bg-surface-muted"
+              className="w-full h-64 object-contain bg-surface-muted"
             />
           )}
 
@@ -405,6 +405,17 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
                 </div>
               ))}
             </div>
+
+            {/* Watch on YouTube */}
+            <a
+              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${exercise.name} exercise form`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 bg-surface-muted/60 hover:bg-surface-muted border border-surface-border hover:border-brand-500/40 rounded-2xl text-sm font-medium text-tx-secondary hover:text-brand-400 transition-colors flex items-center justify-center gap-2"
+            >
+              <SquarePlay className="w-4 h-4" />
+              Watch on YouTube
+            </a>
 
             {/* Rest timer for this exercise */}
             <div className="card p-4">
