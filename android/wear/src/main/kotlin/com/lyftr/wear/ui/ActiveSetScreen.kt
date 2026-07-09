@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -25,6 +26,7 @@ import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
 import com.lyftr.shared.WearExercise
+import kotlinx.coroutines.delay
 import com.lyftr.shared.WearSession
 import com.lyftr.shared.WearSet
 import kotlin.math.roundToInt
@@ -48,15 +50,33 @@ fun ActiveSetScreen(
     onSkip: () -> Unit,
     onWeightChange: (Double) -> Unit,
     onRepsChange: (Int) -> Unit,
+    onSkipRest: () -> Unit,
+    onAdjustRest: (Int) -> Unit,
 ) {
     val restEndsAt = session.rest_ends_at
-    if (restEndsAt != null && restEndsAt > System.currentTimeMillis()) {
+    // Ticking state, not a plain comparison: when the countdown expires this
+    // must recompose back to the set view on its own — a one-shot check at
+    // composition time left the UI stranded on "0:00" until the next Data
+    // Layer update happened to arrive.
+    val resting by produceState(
+        initialValue = restEndsAt != null && restEndsAt > System.currentTimeMillis(),
+        restEndsAt,
+    ) {
+        while (restEndsAt != null && restEndsAt > System.currentTimeMillis()) {
+            value = true
+            delay(250)
+        }
+        value = false
+    }
+    if (resting && restEndsAt != null) {
         RestTimerScreen(
             endsAtMillis = restEndsAt,
             durationSec = session.rest_duration_sec,
             session = session,
             exercise = exercise,
             set = set,
+            onSkipRest = onSkipRest,
+            onAdjustRest = onAdjustRest,
         )
         return
     }

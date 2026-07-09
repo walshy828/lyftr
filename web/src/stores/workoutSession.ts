@@ -336,6 +336,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
       notes: '',
       duration: durationSec,
       started_at: session.started_at,
+      program_id: session.program_id,
       exercises: session.exercises.map(ex => ({
         exercise_id: ex.exercise_id,
         notes: ex.notes,

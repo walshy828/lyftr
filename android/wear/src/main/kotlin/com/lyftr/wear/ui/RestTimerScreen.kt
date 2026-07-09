@@ -3,8 +3,10 @@ package com.lyftr.wear.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -12,6 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.wear.compose.material.Button
+import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
@@ -20,12 +24,15 @@ import com.lyftr.shared.WearSession
 import com.lyftr.shared.WearSet
 import kotlinx.coroutines.delay
 
+private const val REST_ADJUST_STEP_SEC = 15
+
 /**
- * Full-screen rest countdown. The ring hugs the round bezel (a full-screen
- * CircularProgressIndicator is the canonical Wear pattern for "time until
- * the next thing") and drains as the rest elapses. Remaining time is
- * computed locally from the absolute end-stamp the phone relayed — no timer
- * ticks over the Data Layer, mirroring web/src/stores/workoutSession.ts.
+ * Full-screen rest countdown. The ring hugs the round bezel and drains as
+ * the rest elapses. Remaining time is computed locally from the absolute
+ * end-stamp the phone relayed — no timer ticks over the Data Layer,
+ * mirroring web/src/stores/workoutSession.ts. The −15/skip/+15 controls
+ * round-trip through the phone (ADJUST_REST/SKIP_REST actions) so every
+ * device's countdown stays in agreement.
  */
 @Composable
 fun RestTimerScreen(
@@ -34,6 +41,8 @@ fun RestTimerScreen(
     session: WearSession,
     exercise: WearExercise,
     set: WearSet,
+    onSkipRest: () -> Unit,
+    onAdjustRest: (Int) -> Unit,
 ) {
     val remainingMs by produceState(
         initialValue = (endsAtMillis - System.currentTimeMillis()).coerceAtLeast(0),
@@ -59,10 +68,10 @@ fun RestTimerScreen(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp),
-            modifier = Modifier.padding(horizontal = 28.dp),
+            modifier = Modifier.padding(horizontal = 24.dp),
         ) {
             Text(
-                text = "REST",
+                text = "REST · ⏱ $elapsed",
                 style = MaterialTheme.typography.caption2,
                 color = MaterialTheme.colors.secondary,
             )
@@ -78,11 +87,26 @@ fun RestTimerScreen(
                 textAlign = TextAlign.Center,
                 maxLines = 2,
             )
-            Text(
-                text = "⏱ $elapsed",
-                style = MaterialTheme.typography.caption2,
-                color = MaterialTheme.colors.secondary,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = { onAdjustRest(-REST_ADJUST_STEP_SEC) },
+                    colors = ButtonDefaults.secondaryButtonColors(),
+                    modifier = Modifier.size(ButtonDefaults.SmallButtonSize),
+                ) { Text("−15", style = MaterialTheme.typography.caption2) }
+                Button(
+                    onClick = onSkipRest,
+                    colors = ButtonDefaults.primaryButtonColors(),
+                    modifier = Modifier.size(ButtonDefaults.DefaultButtonSize),
+                ) { Text("Skip", style = MaterialTheme.typography.caption1) }
+                Button(
+                    onClick = { onAdjustRest(REST_ADJUST_STEP_SEC) },
+                    colors = ButtonDefaults.secondaryButtonColors(),
+                    modifier = Modifier.size(ButtonDefaults.SmallButtonSize),
+                ) { Text("+15", style = MaterialTheme.typography.caption2) }
+            }
         }
     }
 }

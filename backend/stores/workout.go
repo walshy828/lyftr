@@ -19,10 +19,10 @@ type WorkoutFilter struct {
 	Query         string
 }
 
-const workoutCols = `id, user_id, name, notes, duration, started_at, created_at`
+const workoutCols = `id, user_id, name, notes, duration, started_at, created_at, program_id`
 
 func scanWorkout(row interface{ Scan(...any) error }, w *models.Workout) error {
-	return row.Scan(&w.ID, &w.UserID, &w.Name, &w.Notes, &w.Duration, &w.StartedAt, &w.CreatedAt)
+	return row.Scan(&w.ID, &w.UserID, &w.Name, &w.Notes, &w.Duration, &w.StartedAt, &w.CreatedAt, &w.ProgramID)
 }
 
 func (s *WorkoutStore) List(uid int64, f WorkoutFilter) ([]models.Workout, error) {
@@ -100,8 +100,8 @@ func (s *WorkoutStore) get(id int64) (models.Workout, error) {
 func (s *WorkoutStore) Create(uid int64, req models.CreateWorkoutRequest) (models.Workout, error) {
 	wid, err := inTx(s.db, func(tx *sql.Tx) (int64, error) {
 		res, err := tx.Exec(
-			`INSERT INTO workouts (user_id, name, notes, duration, started_at) VALUES (?, ?, ?, ?, ?)`,
-			uid, req.Name, req.Notes, req.Duration, req.StartedAt,
+			`INSERT INTO workouts (user_id, name, notes, duration, started_at, program_id) VALUES (?, ?, ?, ?, ?, ?)`,
+			uid, req.Name, req.Notes, req.Duration, req.StartedAt, req.ProgramID,
 		)
 		if err != nil {
 			return 0, err

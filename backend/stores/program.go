@@ -12,29 +12,53 @@ type ProgramStore struct{ db *sql.DB }
 
 func NewProgramStore(db *sql.DB) *ProgramStore { return &ProgramStore{db: db} }
 
-// ProgramFilter holds list paging + optional name search.
+// ProgramFilter holds list paging + optional name search/sort.
 type ProgramFilter struct {
 	Limit, Offset int
 	Query         string
+	Sort          string // "name" | "created" | "smart" (default: last-used desc, then created desc)
 }
 
 const programCols = `id, user_id, name, notes, is_shared, created_at`
+
+// lastUsedJoin attaches each program's most recent workout start time (NULL if
+// the program has never been used), for "smart" sorting and display.
+const lastUsedJoin = `LEFT JOIN (
+	SELECT program_id, MAX(started_at) AS last_used_at FROM workouts WHERE program_id IS NOT NULL GROUP BY program_id
+) lu ON lu.program_id = p.id`
+
+// programOrderClause maps a ProgramFilter.Sort value to a whitelisted ORDER BY
+// fragment — never interpolate user input directly into ORDER BY.
+func programOrderClause(sort string) string {
+	switch sort {
+	case "name":
+		return `ORDER BY LOWER(p.name) ASC`
+	case "created":
+		return `ORDER BY p.created_at DESC`
+	default: // "smart": most-recently-used first, unused programs last, then newest first
+		return `ORDER BY (lu.last_used_at IS NULL) ASC, lu.last_used_at DESC, p.created_at DESC`
+	}
+}
 
 func scanProgram(row interface{ Scan(...any) error }, p *models.Program) error {
 	return row.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt)
 }
 
 func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error) {
+	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at, lu.last_used_at
+	         FROM programs p ` + lastUsedJoin + `
+	         WHERE p.user_id = ?`
+	order := programOrderClause(f.Sort)
 	var rows *sql.Rows
 	var err error
 	if f.Query != "" {
 		rows, err = s.db.Query(
-			`SELECT `+programCols+` FROM programs WHERE user_id = ? AND LOWER(name) LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			base+` AND LOWER(p.name) LIKE ? `+order+` LIMIT ? OFFSET ?`,
 			uid, "%"+strings.ToLower(f.Query)+"%", f.Limit, f.Offset,
 		)
 	} else {
 		rows, err = s.db.Query(
-			`SELECT `+programCols+` FROM programs WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			base+` `+order+` LIMIT ? OFFSET ?`,
 			uid, f.Limit, f.Offset,
 		)
 	}
@@ -44,9 +68,13 @@ func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error
 	programs := []models.Program{}
 	for rows.Next() {
 		var p models.Program
-		if err := scanProgram(rows, &p); err != nil {
+		var lastUsed sql.NullTime
+		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &lastUsed); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if lastUsed.Valid {
+			p.LastUsedAt = &lastUsed.Time
 		}
 		programs = append(programs, p)
 	}
@@ -99,14 +127,15 @@ func (s *ProgramStore) Get(uid, id int64) (models.Program, error) {
 func (s *ProgramStore) ListShared(uid int64, f ProgramFilter) ([]models.Program, error) {
 	var rows *sql.Rows
 	var err error
-	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at, u.email
-	         FROM programs p JOIN users u ON u.id = p.user_id
+	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at, u.email, lu.last_used_at
+	         FROM programs p JOIN users u ON u.id = p.user_id ` + lastUsedJoin + `
 	         WHERE p.is_shared = 1 AND p.user_id != ?`
+	order := programOrderClause(f.Sort)
 	if f.Query != "" {
-		rows, err = s.db.Query(base+` AND LOWER(p.name) LIKE ? ORDER BY p.created_at DESC LIMIT ? OFFSET ?`,
+		rows, err = s.db.Query(base+` AND LOWER(p.name) LIKE ? `+order+` LIMIT ? OFFSET ?`,
 			uid, "%"+strings.ToLower(f.Query)+"%", f.Limit, f.Offset)
 	} else {
-		rows, err = s.db.Query(base+` ORDER BY p.created_at DESC LIMIT ? OFFSET ?`, uid, f.Limit, f.Offset)
+		rows, err = s.db.Query(base+` `+order+` LIMIT ? OFFSET ?`, uid, f.Limit, f.Offset)
 	}
 	if err != nil {
 		return nil, err
@@ -115,11 +144,15 @@ func (s *ProgramStore) ListShared(uid int64, f ProgramFilter) ([]models.Program,
 	for rows.Next() {
 		var p models.Program
 		var ownerEmail string
-		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &ownerEmail); err != nil {
+		var lastUsed sql.NullTime
+		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &ownerEmail, &lastUsed); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		p.OwnerEmail = ownerEmail
+		if lastUsed.Valid {
+			p.LastUsedAt = &lastUsed.Time
+		}
 		programs = append(programs, p)
 	}
 	if err := rows.Err(); err != nil {

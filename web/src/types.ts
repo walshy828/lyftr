@@ -62,6 +62,7 @@ export interface Workout {
   duration: number
   started_at: string
   created_at: string
+  program_id?: number
   exercises: WorkoutExercise[]
 }
 
@@ -199,8 +200,11 @@ export interface Program {
   is_shared: boolean
   owner_email?: string
   created_at: string
+  last_used_at?: string
   exercises: ProgramExercise[]
 }
+
+export type ProgramSort = 'smart' | 'name' | 'created'
 
 export interface ActiveSessionSet {
   set_number: number

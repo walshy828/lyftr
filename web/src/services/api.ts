@@ -155,8 +155,8 @@ export const exerciseAPI = {
 
 
 export const programAPI = {
-  list:       (params?: { limit?: number; offset?: number; q?: string }) => api.get<{ data: types.Program[] }>('/programs', { params }).then(res => unwrap(res)),
-  listShared: (params?: { limit?: number; offset?: number; q?: string }) => api.get<{ data: types.Program[] }>('/programs/shared', { params }).then(res => unwrap(res)),
+  list:       (params?: { limit?: number; offset?: number; q?: string; sort?: types.ProgramSort }) => api.get<{ data: types.Program[] }>('/programs', { params }).then(res => unwrap(res)),
+  listShared: (params?: { limit?: number; offset?: number; q?: string; sort?: types.ProgramSort }) => api.get<{ data: types.Program[] }>('/programs/shared', { params }).then(res => unwrap(res)),
   get:    (id: number) => api.get<{ data: types.Program }>(`/programs/${id}`).then(res => unwrap(res)),
   create: (data: any) => api.post<{ data: types.Program }>('/programs', data).then(res => unwrap(res)),
   update: (id: number, data: any) => api.put<{ data: types.Program }>(`/programs/${id}`, data).then(res => unwrap(res)),

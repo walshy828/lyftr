@@ -75,6 +75,14 @@ func alterMigrations() {
 	ensureColumn("saved_foods", "cholesterol", `ALTER TABLE saved_foods ADD COLUMN cholesterol REAL NOT NULL DEFAULT 0`)
 	ensureColumn("user_settings", "cholesterol_target", `ALTER TABLE user_settings ADD COLUMN cholesterol_target INTEGER NOT NULL DEFAULT 300`)
 	ensureColumn("user_settings", "sodium_target", `ALTER TABLE user_settings ADD COLUMN sodium_target INTEGER NOT NULL DEFAULT 2300`)
+
+	// Link workouts back to the program they were started from (#programSort),
+	// so program lists can be sorted by last-used date. Nullable: existing
+	// workouts and quick-start workouts have no program.
+	ensureColumn("workouts", "program_id", `ALTER TABLE workouts ADD COLUMN program_id INTEGER REFERENCES programs(id) ON DELETE SET NULL`)
+	if _, err := DB.Exec(`CREATE INDEX IF NOT EXISTS idx_workouts_program ON workouts(program_id)`); err != nil {
+		log.Fatalf("create idx_workouts_program: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

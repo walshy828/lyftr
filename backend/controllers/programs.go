@@ -11,9 +11,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// programSort whitelists the sort query param — never pass raw user input to ORDER BY.
+func programSort(c *gin.Context) string {
+	switch c.Query("sort") {
+	case "name", "created":
+		return c.Query("sort")
+	default:
+		return "smart"
+	}
+}
+
 func (h *Handler) ListPrograms(c *gin.Context) {
 	uid := middleware.UserID(c)
-	f := stores.ProgramFilter{Limit: 20, Query: c.Query("q")}
+	f := stores.ProgramFilter{Limit: 20, Query: c.Query("q"), Sort: programSort(c)}
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
 		f.Limit = l
 	}
@@ -29,7 +39,7 @@ func (h *Handler) ListPrograms(c *gin.Context) {
 
 func (h *Handler) ListSharedPrograms(c *gin.Context) {
 	uid := middleware.UserID(c)
-	f := stores.ProgramFilter{Limit: 20, Query: c.Query("q")}
+	f := stores.ProgramFilter{Limit: 20, Query: c.Query("q"), Sort: programSort(c)}
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
 		f.Limit = l
 	}

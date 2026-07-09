@@ -57,6 +57,7 @@ type Workout struct {
 	Duration  int               `json:"duration" db:"duration"` // seconds
 	StartedAt time.Time         `json:"started_at" db:"started_at"`
 	CreatedAt time.Time         `json:"created_at" db:"created_at"`
+	ProgramID *int64            `json:"program_id,omitempty" db:"program_id"`
 	Exercises []WorkoutExercise `json:"exercises,omitempty"`
 }
 
@@ -184,6 +185,7 @@ type CreateWorkoutRequest struct {
 	Notes     string                     `json:"notes"`
 	Duration  int                        `json:"duration"`
 	StartedAt time.Time                  `json:"started_at"`
+	ProgramID *int64                     `json:"program_id"`
 	Exercises []CreateWorkoutExerciseReq `json:"exercises"`
 }
 
@@ -288,6 +290,7 @@ type Program struct {
 	IsShared   bool              `json:"is_shared"`
 	OwnerEmail string            `json:"owner_email,omitempty"`
 	CreatedAt  time.Time         `json:"created_at"`
+	LastUsedAt *time.Time        `json:"last_used_at,omitempty"`
 	Exercises  []ProgramExercise `json:"exercises"`
 }
 

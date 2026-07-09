@@ -26,4 +26,10 @@ enum class WearActionType {
     SKIP_SET,
     UPDATE_WEIGHT,
     UPDATE_REPS,
+
+    /** Clears the running rest countdown entirely; exercise/set indices unused. */
+    SKIP_REST,
+
+    /** Shifts the running rest countdown by `value` seconds (±); indices unused. */
+    ADJUST_REST,
 }

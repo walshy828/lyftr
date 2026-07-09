@@ -9,11 +9,18 @@ import { useServerInfiniteList } from '../hooks/useServerInfiniteList'
 import { programAPI } from '../services/api'
 import * as types from '../types'
 
+const SORT_OPTIONS: { value: types.ProgramSort; label: string }[] = [
+  { value: 'smart', label: 'Sort: Smart' },
+  { value: 'name', label: 'Sort: Alphabetical' },
+  { value: 'created', label: 'Sort: Date Created' },
+]
+
 export default function Programs() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<'mine' | 'shared'>('mine')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [sort, setSort] = useState<types.ProgramSort>('smart')
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -21,12 +28,12 @@ export default function Programs() {
   }, [search])
 
   const mine = useServerInfiniteList<types.Program>({
-    fetcher: (offset, limit) => programAPI.list({ offset, limit, q: debouncedSearch || undefined }),
-    deps: [debouncedSearch],
+    fetcher: (offset, limit) => programAPI.list({ offset, limit, q: debouncedSearch || undefined, sort }),
+    deps: [debouncedSearch, sort],
   })
   const shared = useServerInfiniteList<types.Program>({
-    fetcher: (offset, limit) => programAPI.listShared({ offset, limit, q: debouncedSearch || undefined }),
-    deps: [debouncedSearch],
+    fetcher: (offset, limit) => programAPI.listShared({ offset, limit, q: debouncedSearch || undefined, sort }),
+    deps: [debouncedSearch, sort],
   })
   const active = tab === 'mine' ? mine : shared
 
@@ -70,14 +77,26 @@ export default function Programs() {
         onChange={setTab}
       />
 
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-tx-muted pointer-events-none" />
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="input pl-10"
-          placeholder={tab === 'mine' ? 'Search programs…' : 'Search shared programs…'}
-        />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-tx-muted pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="input pl-10"
+            placeholder={tab === 'mine' ? 'Search programs…' : 'Search shared programs…'}
+          />
+        </div>
+        <select
+          value={sort}
+          onChange={e => setSort(e.target.value as types.ProgramSort)}
+          className="input w-auto shrink-0"
+          aria-label="Sort programs"
+        >
+          {SORT_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="space-y-2">

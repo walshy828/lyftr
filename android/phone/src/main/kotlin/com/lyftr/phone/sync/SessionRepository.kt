@@ -93,6 +93,31 @@ object SessionRepository {
      */
     fun applyAction(action: WearAction): Boolean {
         val obj = _raw.value ?: return false
+
+        // Rest-timer actions mutate session-level fields only — handled
+        // before the per-set index validation below, which doesn't apply.
+        when (action.type) {
+            WearActionType.SKIP_REST -> {
+                _raw.value = obj
+                    .with("rest_ends_at", JsonNull)
+                    .with("rest_duration_sec", JsonNull)
+                return true
+            }
+            WearActionType.ADJUST_REST -> {
+                val endsAt = obj["rest_ends_at"]?.jsonPrimitive?.longOrNull ?: return false
+                val deltaSec = (action.value ?: 0.0).toInt()
+                // Same clamps as the web's adjustRest (web/src/stores/workoutSession.ts):
+                // the end stamp never moves into the past, duration floors at 1s.
+                val newEndsAt = (endsAt + deltaSec * 1000L).coerceAtLeast(System.currentTimeMillis())
+                val newDuration = ((obj["rest_duration_sec"]?.jsonPrimitive?.intOrNull ?: 0) + deltaSec).coerceAtLeast(1)
+                _raw.value = obj
+                    .with("rest_ends_at", JsonPrimitive(newEndsAt))
+                    .with("rest_duration_sec", JsonPrimitive(newDuration))
+                return true
+            }
+            else -> {}
+        }
+
         val exercises = obj["exercises"]?.jsonArray ?: return false
         val exIdx = action.exercise_idx
         if (exIdx !in exercises.indices) return false
@@ -107,6 +132,8 @@ object SessionRepository {
             WearActionType.SKIP_SET -> set.with("completed", JsonPrimitive(false))
             WearActionType.UPDATE_WEIGHT -> set.with("actual_weight", JsonPrimitive(action.value ?: 0.0))
             WearActionType.UPDATE_REPS -> set.with("actual_reps", JsonPrimitive((action.value ?: 0.0).toInt()))
+            // Rest actions returned above; unreachable.
+            WearActionType.SKIP_REST, WearActionType.ADJUST_REST -> return false
         }
         val updatedSets = JsonArray(sets.mapIndexed { i, el -> if (i == setIdx) updatedSet else el })
         val updatedExercise = exercise.with("sets", updatedSets)

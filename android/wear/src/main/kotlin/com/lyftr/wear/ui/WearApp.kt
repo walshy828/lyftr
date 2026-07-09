@@ -53,5 +53,11 @@ fun WearApp(client: WearSessionClient) {
         onRepsChange = { newReps ->
             scope.launch { client.sendAction(WearAction(WearActionType.UPDATE_REPS, exIdx, setIdx, newReps.toDouble())) }
         },
+        onSkipRest = {
+            scope.launch { client.sendAction(WearAction(WearActionType.SKIP_REST, exIdx, setIdx)) }
+        },
+        onAdjustRest = { deltaSec ->
+            scope.launch { client.sendAction(WearAction(WearActionType.ADJUST_REST, exIdx, setIdx, deltaSec.toDouble())) }
+        },
     )
 }
