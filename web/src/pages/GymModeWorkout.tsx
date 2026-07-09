@@ -9,7 +9,7 @@ import Model, { IExerciseData } from 'react-body-highlighter'
 import * as types from '../types'
 import { muscleColor, muscleColorBordered, EQUIPMENT_LABEL, muscleToBodySlugs } from '../utils/exerciseUtils'
 import { useTheme } from '../hooks/useTheme'
-import { useWorkoutSession } from '../stores/workoutSession'
+import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore } from '../stores/settings'
 import RestPicker from '../components/RestPicker'
 import RestTimerBanner from '../components/RestTimerBanner'
@@ -94,6 +94,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
     try {
       const payload = buildPayload()
       await workoutAPI.create(payload)
+      if (session) await syncProgramWeights(session)
       cancelSession()
       minimizeGym()
       navigate('/workouts')

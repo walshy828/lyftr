@@ -5,7 +5,7 @@ import {
   Timer, CheckCircle2, Plus, Trash2, X, Dumbbell, Flag,
   AlertCircle, ChevronRight, ChevronLeft, Info,
 } from 'lucide-react'
-import { useWorkoutSession } from '../stores/workoutSession'
+import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore, weightShort, displayToLbs, displayWeight } from '../stores/settings'
 import WeightInput from '../components/WeightInput'
 import { workoutAPI } from '../services/api'
@@ -105,6 +105,7 @@ export default function ActiveWorkout() {
     try {
       const payload = buildPayload()
       await workoutAPI.create(payload)
+      if (session) await syncProgramWeights(session)
       cancelSession()
       navigate('/workouts')
     } catch (err: any) {

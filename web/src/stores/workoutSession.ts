@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import * as types from '../types'
+import { programAPI } from '../services/api'
 
 const SESSION_KEY = 'lyftr_active_session'
 const GYM_UI_KEY = 'lyftr_gym_ui'
@@ -144,12 +145,26 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
   updateSet: (exIdx, setIdx, field, val) => {
     const session = get().session
     if (!session) return
-    const exercises = session.exercises.map((ex, i) =>
-      i !== exIdx ? ex : {
-        ...ex,
-        sets: ex.sets.map((s, j) => j === setIdx ? { ...s, [field]: val } : s),
+    const exercises = session.exercises.map((ex, i) => {
+      if (i !== exIdx) return ex
+      const oldVal = ex.sets[setIdx][field]
+      let sets = ex.sets.map((s, j) => j === setIdx ? { ...s, [field]: val } : s)
+      // Predictive propagation: shifting a set's actual weight (up or down)
+      // carries the same delta forward onto later, not-yet-completed sets —
+      // this both fills in blank future sets (delta === new value when the
+      // edited set was 0) and preserves a pyramid's relative step size.
+      if (field === 'actual_weight') {
+        const delta = val - oldVal
+        if (delta !== 0) {
+          sets = sets.map((s, j) =>
+            j > setIdx && !s.completed
+              ? { ...s, actual_weight: Math.max(0, s.actual_weight + delta) }
+              : s
+          )
+        }
       }
-    )
+      return { ...ex, sets }
+    })
     const updated = { ...session, exercises }
     saveLocal(updated)
     set({ session: updated })
@@ -276,3 +291,35 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     })
   },
 }))
+
+// Best-effort: writes the weights actually logged in a finished workout back
+// onto the Program it came from (matched by exercise_id + set_number), so the
+// next time the program is started it seeds from the updated numbers. Only
+// touches target_weight — structure (notes, rest, order, untouched sets)
+// comes straight from the fetched program. Swallows errors since the workout
+// itself has already saved successfully by the time this runs.
+export async function syncProgramWeights(session: types.ActiveSession) {
+  if (!session.program_id) return
+  try {
+    const program = await programAPI.get(session.program_id)
+    const usedExIdx = new Set<number>()
+    const exercises = program.exercises.map(pex => {
+      const sessionEx = session.exercises.find((se, i) =>
+        se.exercise_id === pex.exercise_id && !usedExIdx.has(i) && usedExIdx.add(i)
+      )
+      return {
+        exercise_id: pex.exercise_id,
+        notes: pex.notes,
+        rest_seconds: pex.rest_seconds,
+        sets: pex.sets.map(pset => {
+          const sessionSet = sessionEx?.sets.find(s => s.set_number === pset.set_number)
+          const weight = sessionSet && sessionSet.actual_weight > 0 ? sessionSet.actual_weight : pset.target_weight
+          return { set_number: pset.set_number, target_reps: pset.target_reps, target_weight: weight }
+        }),
+      }
+    })
+    await programAPI.update(program.id, { name: program.name, notes: program.notes, exercises })
+  } catch {
+    // no-op — see comment above
+  }
+}
