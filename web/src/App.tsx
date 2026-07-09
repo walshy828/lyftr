@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuthStore } from './stores/auth'
 import { useSettingsStore } from './stores/settings'
+import { hydrateActiveSessionFromServer } from './stores/workoutSession'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Workouts from './pages/Workouts'
@@ -30,6 +31,7 @@ function App() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchSettings()
+      hydrateActiveSessionFromServer()
     } else {
       resetSettings()
     }

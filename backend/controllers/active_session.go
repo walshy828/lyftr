@@ -8,6 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GetActiveSession returns the caller's saved session blob. The store treats
+// "data" as an opaque, client-defined JSON string (e.g. an ActiveSession
+// object as serialized by the web app or Android phone companion) — the
+// backend never parses or validates its shape.
 func (h *Handler) GetActiveSession(c *gin.Context) {
 	uid := middleware.UserID(c)
 	data, updatedAt, err := h.s.ActiveSession.Get(uid)
@@ -18,7 +22,7 @@ func (h *Handler) GetActiveSession(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
-	c.JSON(200, gin.H{"data": gin.H{"data": data, "updated_at": updatedAt}})
+	utils.OK(c, gin.H{"data": data, "updated_at": updatedAt})
 }
 
 func (h *Handler) UpsertActiveSession(c *gin.Context) {

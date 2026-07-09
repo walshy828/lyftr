@@ -200,4 +200,10 @@ export const savedFoodsAPI = {
   delete: (id: number) => api.delete(`/food/saved/${id}`),
 }
 
+export const activeSessionAPI = {
+  get: () => api.get<{ data: { data: string | null; updated_at?: string } | null }>('/active-session').then(res => unwrap(res)),
+  put: (data: types.ActiveSession) => api.put('/active-session', { data: JSON.stringify(data) }),
+  delete: () => api.delete('/active-session'),
+}
+
 export default api

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature android:name="android.hardware.type.watch" />
+
+    <application
+        android:label="Lyftr"
+        android:icon="@drawable/ic_launcher"
+        android:theme="@style/Theme.Lyftr"
+        android:allowBackup="false">
+
+        <!-- Standalone=false: this app is only useful paired with the phone
+             companion (com.lyftr.phone), which owns auth and the network
+             connection — see android/phone/src/main/AndroidManifest.xml. -->
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="false" />
+        <uses-library
+            android:name="com.google.android.wearable"
+            android:required="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Lyftr">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

@@ -1,15 +1,18 @@
 import { create } from 'zustand'
 import * as types from '../types'
-import { programAPI } from '../services/api'
+import { programAPI, activeSessionAPI } from '../services/api'
 
 const SESSION_KEY = 'lyftr_active_session'
+const SESSION_UPDATED_KEY = 'lyftr_active_session_updated_at'
 const GYM_UI_KEY = 'lyftr_gym_ui'
 
 function saveLocal(session: types.ActiveSession | null) {
   if (session) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    localStorage.setItem(SESSION_UPDATED_KEY, String(Date.now()))
   } else {
     localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(SESSION_UPDATED_KEY)
   }
 }
 
@@ -76,6 +79,36 @@ interface WorkoutSessionStore {
   clearRest: () => void
 }
 
+// Pushes the full session (+ current position + rest timer) to the server so
+// other devices — notably a Wear OS watch via the Android companion app —
+// can pick up mid-workout state. Debounced since most mutations (typing a
+// weight, nudging rest by a few seconds) fire in quick bursts.
+let _syncTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleSync(immediate = false) {
+  if (_syncTimer) {
+    clearTimeout(_syncTimer)
+    _syncTimer = null
+  }
+  const flush = () => {
+    _syncTimer = null
+    const state = useWorkoutSession.getState()
+    if (!state.session) return
+    const payload: types.ActiveSession = {
+      ...state.session,
+      current_exercise_idx: state.gymExIdx,
+      current_set_idx: state.gymSetIdx,
+      rest_ends_at: state.restEndsAt,
+      rest_duration_sec: state.restDurationSec,
+    }
+    activeSessionAPI.put(payload).catch(() => {
+      // offline/unreachable — local state (source of truth for this device)
+      // is unaffected; the next scheduled sync will retry.
+    })
+  }
+  if (immediate) flush()
+  else _syncTimer = setTimeout(flush, 1500)
+}
+
 const _savedGymUi = loadGymUi()
 
 // All rest-timer fields nulled — the single "no active rest" state, reused wherever
@@ -93,42 +126,57 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
   gymSetIdx: _savedGymUi.setIdx,
   ...CLEARED_REST,
 
-  startRest: (durationSec, exIdx, setIdx) =>
-    set({ restEndsAt: Date.now() + durationSec * 1000, restDurationSec: durationSec, restExIdx: exIdx, restSetIdx: setIdx, restPausedRemainingMs: null }),
-  adjustRest: (deltaSec) => set(state => {
-    const nextDuration = Math.max(1, (state.restDurationSec ?? 0) + deltaSec)
-    // Adjusting while paused shifts the parked remaining time, not a live end stamp.
-    if (state.restPausedRemainingMs != null) {
-      const nextMs = state.restPausedRemainingMs + deltaSec * 1000
-      // Adjusted to zero while paused → finish it: unpause into the completed
-      // state (restEndsAt = now → countdown reads 0 → done → auto-dismiss), so it
-      // never sticks at "0:00 · paused" with no completion path.
-      if (nextMs <= 0) return { restPausedRemainingMs: null, restEndsAt: Date.now(), restDurationSec: nextDuration }
-      return { restPausedRemainingMs: nextMs, restDurationSec: nextDuration }
-    }
-    if (state.restEndsAt == null) return {}
-    return {
-      restEndsAt: Math.max(Date.now(), state.restEndsAt + deltaSec * 1000),
-      restDurationSec: nextDuration,
-    }
-  }),
+  startRest: (durationSec, exIdx, setIdx) => {
+    set({ restEndsAt: Date.now() + durationSec * 1000, restDurationSec: durationSec, restExIdx: exIdx, restSetIdx: setIdx, restPausedRemainingMs: null })
+    scheduleSync()
+  },
+  adjustRest: (deltaSec) => {
+    set(state => {
+      const nextDuration = Math.max(1, (state.restDurationSec ?? 0) + deltaSec)
+      // Adjusting while paused shifts the parked remaining time, not a live end stamp.
+      if (state.restPausedRemainingMs != null) {
+        const nextMs = state.restPausedRemainingMs + deltaSec * 1000
+        // Adjusted to zero while paused → finish it: unpause into the completed
+        // state (restEndsAt = now → countdown reads 0 → done → auto-dismiss), so it
+        // never sticks at "0:00 · paused" with no completion path.
+        if (nextMs <= 0) return { restPausedRemainingMs: null, restEndsAt: Date.now(), restDurationSec: nextDuration }
+        return { restPausedRemainingMs: nextMs, restDurationSec: nextDuration }
+      }
+      if (state.restEndsAt == null) return {}
+      return {
+        restEndsAt: Math.max(Date.now(), state.restEndsAt + deltaSec * 1000),
+        restDurationSec: nextDuration,
+      }
+    })
+    scheduleSync()
+  },
   // Freeze the countdown: park the remaining time and null the live end stamp so
   // useCountdown (here and in the minimized-gym mount) stops ticking.
-  pauseRest: () => set(state => {
-    if (state.restEndsAt == null || state.restPausedRemainingMs != null) return {}
-    return { restPausedRemainingMs: Math.max(0, state.restEndsAt - Date.now()), restEndsAt: null }
-  }),
-  resumeRest: () => set(state => {
-    if (state.restPausedRemainingMs == null) return {}
-    return { restEndsAt: Date.now() + state.restPausedRemainingMs, restPausedRemainingMs: null }
-  }),
-  clearRest: () => set({ ...CLEARED_REST }),
+  pauseRest: () => {
+    set(state => {
+      if (state.restEndsAt == null || state.restPausedRemainingMs != null) return {}
+      return { restPausedRemainingMs: Math.max(0, state.restEndsAt - Date.now()), restEndsAt: null }
+    })
+    scheduleSync()
+  },
+  resumeRest: () => {
+    set(state => {
+      if (state.restPausedRemainingMs == null) return {}
+      return { restEndsAt: Date.now() + state.restPausedRemainingMs, restPausedRemainingMs: null }
+    })
+    scheduleSync()
+  },
+  clearRest: () => {
+    set({ ...CLEARED_REST })
+    scheduleSync()
+  },
 
   openGym: () => set({ gymOpen: true }),
   minimizeGym: () => set({ gymOpen: false }),
   setGymState: (gymPhase, gymExIdx, gymSetIdx) => {
     saveGymUi({ phase: gymPhase, exIdx: gymExIdx, setIdx: gymSetIdx })
     set({ gymPhase, gymExIdx, gymSetIdx })
+    scheduleSync()
   },
 
   startSession: (name, exercises, programId) => {
@@ -140,6 +188,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     }
     saveLocal(session)
     set({ session })
+    scheduleSync(true)
   },
 
   updateSet: (exIdx, setIdx, field, val) => {
@@ -168,6 +217,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     const updated = { ...session, exercises }
     saveLocal(updated)
     set({ session: updated })
+    scheduleSync()
   },
 
   completeSet: (exIdx, setIdx) => {
@@ -182,6 +232,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     const updated = { ...session, exercises }
     saveLocal(updated)
     set({ session: updated })
+    scheduleSync(true)
   },
 
   updateExerciseNotes: (exIdx, notes) => {
@@ -191,6 +242,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     const updated = { ...session, exercises }
     saveLocal(updated)
     set({ session: updated })
+    scheduleSync()
   },
 
   setExerciseRest: (exIdx, secs) => {
@@ -200,6 +252,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     const updated = { ...session, exercises }
     saveLocal(updated)
     set({ session: updated })
+    scheduleSync()
   },
 
   addSet: (exIdx) => {
@@ -223,6 +276,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     const updated = { ...session, exercises }
     saveLocal(updated)
     set({ session: updated })
+    scheduleSync()
   },
 
   removeSet: (exIdx, setIdx) => {
@@ -240,6 +294,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     // Removing a set shifts set indices, invalidating the positional restSetIdx — cancel
     // the (ephemeral) rest rather than let it point at the wrong set.
     set({ session: updated, ...CLEARED_REST })
+    scheduleSync()
   },
 
   addExercise: (ex) => {
@@ -248,6 +303,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     const updated = { ...session, exercises: [...session.exercises, ex] }
     saveLocal(updated)
     set({ session: updated })
+    scheduleSync()
   },
 
   removeExercise: (exIdx) => {
@@ -258,6 +314,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     // filter() shifts exercise indices, invalidating the positional restExIdx — cancel
     // the (ephemeral) rest so it can't collapse controls on the wrong exercise.
     set({ session: updated, ...CLEARED_REST })
+    scheduleSync()
   },
 
   buildPayload: () => {
@@ -283,14 +340,61 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
   },
 
   cancelSession: () => {
+    if (_syncTimer) {
+      clearTimeout(_syncTimer)
+      _syncTimer = null
+    }
     saveLocal(null)
     localStorage.removeItem(GYM_UI_KEY)
     set({
       session: null, gymOpen: false, gymPhase: 'overview', gymExIdx: 0, gymSetIdx: 0,
       ...CLEARED_REST,
     })
+    // Covers both "finished" and "discarded" — either way nothing should be
+    // left mid-workout on the server for a watch/other device to pick up.
+    activeSessionAPI.delete().catch(() => {})
   },
 }))
+
+// Pulls the server's saved session (if any) and adopts it when it's newer
+// than what's stored locally — the path that lets a workout started on
+// another device (web, or the Android companion app relaying a watch) show
+// up here. Call once on app load/login; safe to call when logged out or
+// offline, in which case the local session (if any) is left untouched.
+export async function hydrateActiveSessionFromServer() {
+  try {
+    const result = await activeSessionAPI.get()
+    if (!result?.data) return
+    const remote: types.ActiveSession = JSON.parse(result.data)
+    const remoteUpdatedMs = result.updated_at ? new Date(result.updated_at).getTime() : 0
+    const localUpdatedMs = Number(localStorage.getItem(SESSION_UPDATED_KEY) ?? 0)
+    const state = useWorkoutSession.getState()
+
+    if (!state.session || remoteUpdatedMs > localUpdatedMs) {
+      const exIdx = remote.current_exercise_idx ?? 0
+      const setIdx = remote.current_set_idx ?? 0
+      saveLocal(remote)
+      saveGymUi({ phase: state.gymPhase, exIdx, setIdx })
+      useWorkoutSession.setState({
+        session: remote,
+        gymExIdx: exIdx,
+        gymSetIdx: setIdx,
+        restEndsAt: remote.rest_ends_at ?? null,
+        restDurationSec: remote.rest_duration_sec ?? null,
+        restExIdx: remote.rest_ends_at != null ? exIdx : null,
+        restSetIdx: remote.rest_ends_at != null ? setIdx : null,
+        restPausedRemainingMs: null,
+      })
+    } else if (state.session) {
+      // Local is newer (e.g. offline edits) — push it up so the server
+      // (and any watch/phone reading from it) catches up.
+      scheduleSync(true)
+    }
+  } catch {
+    // Logged out, offline, or server doesn't support this yet — keep
+    // whatever local session exists and don't block app startup on it.
+  }
+}
 
 // Best-effort: writes the weights actually logged in a finished workout back
 // onto the Program it came from (matched by exercise_id + set_number), so the

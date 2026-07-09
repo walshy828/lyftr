@@ -225,6 +225,13 @@ export interface ActiveSession {
   started_at: string
   exercises: ActiveSessionExercise[]
   device_id?: string
+  // Current position and rest-timer state, synced to the server so a
+  // Wear OS watch (via the Android companion app) can mirror what phase of
+  // the workout the session is in without its own copy of the gym-mode UI logic.
+  current_exercise_idx?: number
+  current_set_idx?: number
+  rest_ends_at?: number | null
+  rest_duration_sec?: number | null
 }
 
 export interface AuthResponse {
