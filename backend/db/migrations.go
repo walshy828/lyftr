@@ -62,6 +62,9 @@ func alterMigrations() {
 	// Broadcast program sharing (#shareProgram). is_shared=1 makes a program
 	// readable by any authenticated user, not just its owner.
 	ensureColumn("programs", "is_shared", `ALTER TABLE programs ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 0`)
+	if _, err := DB.Exec(`CREATE INDEX IF NOT EXISTS idx_programs_shared ON programs(is_shared) WHERE is_shared = 1`); err != nil {
+		log.Fatalf("create idx_programs_shared: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.
@@ -220,7 +223,6 @@ CREATE TABLE IF NOT EXISTS programs (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_programs_user ON programs(user_id);
-CREATE INDEX IF NOT EXISTS idx_programs_shared ON programs(is_shared) WHERE is_shared = 1;
 
 CREATE TABLE IF NOT EXISTS program_exercises (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
