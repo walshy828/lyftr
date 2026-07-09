@@ -1,5 +1,6 @@
 package com.lyftr.phone.auth
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -9,6 +10,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+
+private const val TAG = "LyftrSync"
 
 @Serializable private data class LoginRequest(val email: String, val password: String)
 @Serializable private data class RefreshRequest(val refresh_token: String)
@@ -96,11 +99,22 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
         var resp = http.newCall(buildRequest()).execute()
         if (resp.code == 401) {
             resp.close()
-            if (!refresh()) return null
+            Log.d(TAG, "executeWithRefresh: 401, attempting token refresh")
+            if (!refresh()) {
+                Log.w(TAG, "executeWithRefresh: refresh failed")
+                return null
+            }
             resp = http.newCall(buildRequest()).execute()
         }
-        resp.use { if (it.isSuccessful) it.body?.string() else null }
-    }.getOrNull()
+        resp.use {
+            if (it.isSuccessful) {
+                it.body?.string()
+            } else {
+                Log.w(TAG, "executeWithRefresh: HTTP ${it.code} for ${buildRequest().url}")
+                null
+            }
+        }
+    }.onFailure { Log.e(TAG, "executeWithRefresh: request failed", it) }.getOrNull()
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json".toMediaType()

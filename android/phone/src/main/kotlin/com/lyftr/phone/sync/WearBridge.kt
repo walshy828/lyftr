@@ -1,11 +1,14 @@
 package com.lyftr.phone.sync
 
 import android.content.Context
+import android.util.Log
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.lyftr.shared.WearPaths
 import com.lyftr.shared.WearSession
 import kotlinx.coroutines.tasks.await
+
+private const val TAG = "LyftrSync"
 
 private const val FIELD_ACTIVE = "active"
 private const val FIELD_SESSION_JSON = "session_json"
@@ -22,5 +25,7 @@ class WearBridge(context: Context) {
             dataMap.putLong(FIELD_UPDATED_AT, System.currentTimeMillis())
         }.asPutDataRequest().setUrgent()
         runCatching { dataClient.putDataItem(request).await() }
+            .onSuccess { Log.d(TAG, "WearBridge.publish: ok, active=${session != null}") }
+            .onFailure { Log.e(TAG, "WearBridge.publish: failed", it) }
     }
 }
