@@ -13,6 +13,7 @@ import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore } from '../stores/settings'
 import RestPicker from '../components/RestPicker'
 import RestTimerBanner from '../components/RestTimerBanner'
+import ExercisePicker from '../components/ExercisePicker'
 import { workoutAPI } from '../services/api'
 import StepperTile from '../components/ui/StepperTile'
 import NumberField from '../components/ui/NumberField'
@@ -68,7 +69,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
   const {
     session, minimizeGym,
     gymPhase: phase, gymExIdx: activeIdx, gymSetIdx: activeSetIdx, setGymState,
-    updateSet, completeSet, addSet, removeSet, removeExercise, updateExerciseNotes,
+    updateSet, completeSet, addSet, removeSet, removeExercise, updateExerciseNotes, addExercise,
     buildPayload, cancelSession,
     startRest, clearRest, restExIdx, restSetIdx, setExerciseRest,
   } = useWorkoutSession()
@@ -79,6 +80,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [showAddExercise, setShowAddExercise] = useState(false)
 
   const setPhase = (p: typeof phase) => setGymState(p, activeIdx, activeSetIdx)
   const onSetActiveIdx = (i: number) => setGymState(phase, i, 0)
@@ -270,7 +272,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
         {/* Bottom actions */}
         <div className="px-5 pb-6 pt-4 border-t border-surface-border flex-shrink-0 space-y-2">
           <button
-            onClick={() => navigate('/workout/active/add-exercise')}
+            onClick={() => setShowAddExercise(true)}
             className="w-full py-3 bg-surface-muted/60 hover:bg-surface-muted border border-surface-border hover:border-brand-500/40 rounded-2xl text-sm font-medium text-tx-secondary hover:text-brand-400 transition-colors flex items-center justify-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -305,6 +307,30 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
           document.body
         )}
         <DiscardConfirm open={confirmCancel} onKeep={() => setConfirmCancel(false)} onDiscard={() => { cancelSession(); handleMinimize() }} />
+
+        {showAddExercise && (
+          <ExercisePicker
+            selectedIds={session.exercises.map(e => e.exercise_id)}
+            onClose={() => setShowAddExercise(false)}
+            onSelect={exercise => {
+              const newEx: types.ActiveSessionExercise = {
+                exercise_id: exercise.id,
+                exercise,
+                notes: '',
+                sets: [{
+                  set_number: 1,
+                  target_reps: 0,
+                  target_weight: 0,
+                  actual_reps: 0,
+                  actual_weight: 0,
+                  completed: false,
+                }],
+              }
+              addExercise(newEx)
+              setShowAddExercise(false)
+            }}
+          />
+        )}
       </div>
     )
   }
