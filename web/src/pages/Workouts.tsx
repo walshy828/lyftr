@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { format } from 'date-fns'
-import { Dumbbell, Plus, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, ChevronRight, MoreVertical } from 'lucide-react'
+import { Dumbbell, Plus, Play, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, ChevronRight, MoreVertical } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Loading from '../components/Loading'
 import EmptyState from '../components/ui/EmptyState'
@@ -9,6 +9,7 @@ import PageHeader from '../components/ui/PageHeader'
 import { useServerInfiniteList } from '../hooks/useServerInfiniteList'
 import { workoutAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayVolume } from '../stores/settings'
+import { useWorkoutSession } from '../stores/workoutSession'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
 
@@ -201,6 +202,7 @@ function WorkoutCard({ workout, onEdit, onDelete }: { workout: types.Workout; on
 
 export default function Workouts() {
   const navigate = useNavigate()
+  const { session } = useWorkoutSession()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -233,9 +235,14 @@ export default function Workouts() {
         title="Workouts"
         subtitle="Track and review your training sessions"
         action={
-          <button onClick={() => navigate('/workouts/new')} className="btn-primary btn-sm">
-            <Plus className="w-4 h-4" /> Log Workout
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => navigate('/workouts/new')} className="btn-secondary btn-sm">
+              <Plus className="w-4 h-4" /> Log Workout
+            </button>
+            <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm">
+              <Play className="w-4 h-4" /> {session ? 'Resume' : 'Start'}
+            </button>
+          </div>
         }
       />
 
