@@ -12,6 +12,15 @@ object WearPaths {
 
     /** Message path prefix: watch -> phone, one of the [WearActionType] values. */
     const val ACTION = "/lyftr/action"
+
+    /**
+     * Temporary diagnostic path: phone -> watch, a plain MessageClient ping
+     * sent alongside every DataClient session publish. Used to isolate
+     * whether Data Layer messaging works at all between these two apps when
+     * DataItem sync doesn't appear to be arriving. Safe to delete once the
+     * sync issue is resolved.
+     */
+    const val PING = "/lyftr/ping"
 }
 
 enum class WearActionType {
