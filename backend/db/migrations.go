@@ -65,6 +65,16 @@ func alterMigrations() {
 	if _, err := DB.Exec(`CREATE INDEX IF NOT EXISTS idx_programs_shared ON programs(is_shared) WHERE is_shared = 1`); err != nil {
 		log.Fatalf("create idx_programs_shared: %v", err)
 	}
+
+	// Cholesterol tracking + closing the sugar/sodium gap on saved foods, plus
+	// daily cholesterol/sodium targets. Defaults mirror common AHA/FDA daily
+	// guideline values, matching the other targets' seed values.
+	ensureColumn("food_logs", "cholesterol", `ALTER TABLE food_logs ADD COLUMN cholesterol REAL NOT NULL DEFAULT 0`)
+	ensureColumn("saved_foods", "sugar", `ALTER TABLE saved_foods ADD COLUMN sugar REAL NOT NULL DEFAULT 0`)
+	ensureColumn("saved_foods", "sodium", `ALTER TABLE saved_foods ADD COLUMN sodium REAL NOT NULL DEFAULT 0`)
+	ensureColumn("saved_foods", "cholesterol", `ALTER TABLE saved_foods ADD COLUMN cholesterol REAL NOT NULL DEFAULT 0`)
+	ensureColumn("user_settings", "cholesterol_target", `ALTER TABLE user_settings ADD COLUMN cholesterol_target INTEGER NOT NULL DEFAULT 300`)
+	ensureColumn("user_settings", "sodium_target", `ALTER TABLE user_settings ADD COLUMN sodium_target INTEGER NOT NULL DEFAULT 2300`)
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

@@ -12,12 +12,12 @@ type FoodStore struct{ db *sql.DB }
 
 func NewFoodStore(db *sql.DB) *FoodStore { return &FoodStore{db: db} }
 
-const foodLogSelect = `SELECT id, user_id, name, meal, calories, protein, carbs, fat, fiber, sugar, sodium, servings, serving_size, barcode, image_url, source, logged_at, created_at FROM food_logs`
+const foodLogSelect = `SELECT id, user_id, name, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, barcode, image_url, source, logged_at, created_at FROM food_logs`
 
 func scanFoodLog(row interface{ Scan(...any) error }, f *models.FoodLog) error {
 	return row.Scan(
 		&f.ID, &f.UserID, &f.Name, &f.Meal,
-		&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber, &f.Sugar, &f.Sodium,
+		&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol,
 		&f.Servings, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.Source,
 		&f.LoggedAt, &f.CreatedAt,
 	)
@@ -52,9 +52,9 @@ func (s *FoodStore) Get(uid, id int64) (models.FoodLog, error) {
 
 func (s *FoodStore) Create(uid int64, req models.LogFoodRequest) (models.FoodLog, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO food_logs (user_id, name, meal, calories, protein, carbs, fat, fiber, sugar, sodium, servings, serving_size, barcode, image_url, source, logged_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		uid, req.Name, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium,
+		`INSERT INTO food_logs (user_id, name, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, barcode, image_url, source, logged_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uid, req.Name, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium, req.Cholesterol,
 		req.Servings, req.ServingSize, req.Barcode, req.ImageURL, req.Source, req.LoggedAt,
 	)
 	if err != nil {
@@ -66,10 +66,10 @@ func (s *FoodStore) Create(uid int64, req models.LogFoodRequest) (models.FoodLog
 
 func (s *FoodStore) Update(uid, id int64, req models.LogFoodRequest) (models.FoodLog, error) {
 	res, err := s.db.Exec(
-		`UPDATE food_logs SET name=?, meal=?, calories=?, protein=?, carbs=?, fat=?, fiber=?, sugar=?, sodium=?,
+		`UPDATE food_logs SET name=?, meal=?, calories=?, protein=?, carbs=?, fat=?, fiber=?, sugar=?, sodium=?, cholesterol=?,
 		 servings=?, serving_size=?, barcode=?, image_url=?, source=?, logged_at=?
 		 WHERE id=? AND user_id=?`,
-		req.Name, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium,
+		req.Name, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium, req.Cholesterol,
 		req.Servings, req.ServingSize, req.Barcode, req.ImageURL, req.Source, req.LoggedAt,
 		id, uid,
 	)
@@ -98,10 +98,12 @@ func (s *FoodStore) DailyMacros(uid int64, date string) (models.DailyStats, erro
 	var stats models.DailyStats
 	err := s.db.QueryRow(
 		`SELECT COALESCE(SUM(calories),0), COALESCE(SUM(protein),0),
-		        COALESCE(SUM(carbs),0), COALESCE(SUM(fat),0), COALESCE(SUM(fiber),0)
+		        COALESCE(SUM(carbs),0), COALESCE(SUM(fat),0), COALESCE(SUM(fiber),0),
+		        COALESCE(SUM(sodium),0), COALESCE(SUM(cholesterol),0)
 		 FROM food_logs WHERE user_id = ? AND substr(logged_at, 1, 10) = ?`,
 		uid, date,
-	).Scan(&stats.TotalCalories, &stats.TotalProtein, &stats.TotalCarbs, &stats.TotalFat, &stats.TotalFiber)
+	).Scan(&stats.TotalCalories, &stats.TotalProtein, &stats.TotalCarbs, &stats.TotalFat, &stats.TotalFiber,
+		&stats.TotalSodium, &stats.TotalCholesterol)
 	return stats, err
 }
 
@@ -130,11 +132,11 @@ func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, err
 	return points, rows.Err()
 }
 
-const savedFoodSelect = `SELECT id, user_id, name, brand, calories, protein, carbs, fat, fiber, serving_size, barcode, image_url, created_at FROM saved_foods`
+const savedFoodSelect = `SELECT id, user_id, name, brand, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, serving_size, barcode, image_url, created_at FROM saved_foods`
 
 func scanSavedFood(row interface{ Scan(...any) error }, f *models.SavedFood) error {
 	return row.Scan(&f.ID, &f.UserID, &f.Name, &f.Brand, &f.Calories, &f.Protein, &f.Carbs, &f.Fat,
-		&f.Fiber, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.CreatedAt)
+		&f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.CreatedAt)
 }
 
 func (s *FoodStore) ListSaved(uid int64) ([]models.SavedFood, error) {
@@ -156,9 +158,9 @@ func (s *FoodStore) ListSaved(uid int64) ([]models.SavedFood, error) {
 
 func (s *FoodStore) CreateSaved(uid int64, req models.SaveFoodRequest) (models.SavedFood, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO saved_foods (user_id, name, brand, calories, protein, carbs, fat, fiber, serving_size, barcode, image_url)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		uid, req.Name, req.Brand, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber,
+		`INSERT INTO saved_foods (user_id, name, brand, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, serving_size, barcode, image_url)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uid, req.Name, req.Brand, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium, req.Cholesterol,
 		req.ServingSize, req.Barcode, req.ImageURL,
 	)
 	if err != nil {
@@ -178,10 +180,10 @@ func (s *FoodStore) GetSaved(uid, id int64) (models.SavedFood, error) {
 
 func (s *FoodStore) UpdateSaved(uid, id int64, req models.UpdateSavedFoodRequest) (models.SavedFood, error) {
 	res, err := s.db.Exec(
-		`UPDATE saved_foods SET name=?, brand=?, calories=?, protein=?, carbs=?, fat=?, fiber=?,
+		`UPDATE saved_foods SET name=?, brand=?, calories=?, protein=?, carbs=?, fat=?, fiber=?, sugar=?, sodium=?, cholesterol=?,
 		 serving_size=?, barcode=?, image_url=?
 		 WHERE id=? AND user_id=?`,
-		req.Name, req.Brand, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber,
+		req.Name, req.Brand, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium, req.Cholesterol,
 		req.ServingSize, req.Barcode, req.ImageURL,
 		id, uid,
 	)

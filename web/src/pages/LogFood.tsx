@@ -42,6 +42,7 @@ function entryToResult(e: types.FoodLog): types.FoodSearchResult {
     fiber: (e.fiber ?? 0) / s,
     sugar: (e.sugar ?? 0) / s,
     sodium: (e.sodium ?? 0) / s,
+    cholesterol: (e.cholesterol ?? 0) / s,
     serving_size: e.serving_size ?? '',
     image_url: e.image_url,
     source: (e.source as types.FoodSearchResult['source']) || 'saved',
@@ -52,7 +53,8 @@ function savedToResult(s: types.SavedFood): types.FoodSearchResult {
   return {
     name: s.name, brand: s.brand,
     calories: s.calories, protein: s.protein, carbs: s.carbs,
-    fat: s.fat, fiber: s.fiber, serving_size: s.serving_size,
+    fat: s.fat, fiber: s.fiber, sugar: s.sugar, sodium: s.sodium, cholesterol: s.cholesterol,
+    serving_size: s.serving_size,
     image_url: s.image_url, source: 'saved',
   }
 }
@@ -186,7 +188,7 @@ export default function LogFood() {
       selectResult(await foodAPI.barcode(code))
     } catch (err: any) {
       if (err?.response?.status === 404) {
-        selectResult({ name: '', calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, serving_size: '1 serving', source: 'manual' })
+        selectResult({ name: '', calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0, serving_size: '1 serving', source: 'manual' })
       } else {
         setSearchError('Product not found — enter details manually')
       }
@@ -210,6 +212,7 @@ export default function LogFood() {
           fiber: extraction.fiber,
           sugar: extraction.sugar,
           sodium: extraction.sodium,
+          cholesterol: extraction.cholesterol,
           serving_size: extraction.serving_size ?? '1 serving',
           source: 'photo',
         }
@@ -225,6 +228,7 @@ export default function LogFood() {
         fiber: extraction.fiber,
         sugar: extraction.sugar,
         sodium: extraction.sodium,
+        cholesterol: extraction.cholesterol,
         serving_size: extraction.serving_size || prev.serving_size,
         source: 'photo',
       }
@@ -247,6 +251,7 @@ export default function LogFood() {
         fiber: +((selected.fiber ?? 0) * servings).toFixed(1),
         sugar: +((selected.sugar ?? 0) * servings).toFixed(1),
         sodium: +((selected.sodium ?? 0) * servings).toFixed(1),
+        cholesterol: +((selected.cholesterol ?? 0) * servings).toFixed(1),
         servings,
         serving_size: selected.serving_size ?? '',
         image_url: selected.image_url ?? '',
@@ -300,11 +305,12 @@ export default function LogFood() {
   const fib = selected ? +((selected.fiber ?? 0) * servings).toFixed(1) : 0
   const sug = selected ? +((selected.sugar ?? 0) * servings).toFixed(1) : 0
   const sod = selected ? +((selected.sodium ?? 0) * servings).toFixed(1) : 0
+  const chol = selected ? +((selected.cholesterol ?? 0) * servings).toFixed(1) : 0
   const quickAddCals = /^\d+(\.\d+)?$/.test(query.trim()) ? Number(query.trim()) : null
 
   // Macro inputs edit the displayed (servings-multiplied) total; back-solve the
   // per-serving base value stored on `selected` so the Servings stepper keeps working.
-  const setMacro = (field: 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sugar' | 'sodium', total: number) => {
+  const setMacro = (field: 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sugar' | 'sodium' | 'cholesterol', total: number) => {
     setSelected(s => s && ({ ...s, [field]: servings > 0 ? total / servings : total }))
   }
 
@@ -410,7 +416,7 @@ export default function LogFood() {
           <div className="card overflow-hidden">
             {tab === 'all' && quickAddCals !== null && (
               <button
-                onClick={() => selectResult({ name: `${quickAddCals} kcal`, calories: quickAddCals, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, serving_size: '1 serving', source: 'manual' })}
+                onClick={() => selectResult({ name: `${quickAddCals} kcal`, calories: quickAddCals, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0, serving_size: '1 serving', source: 'manual' })}
                 className="flex items-center gap-3 w-full px-4 py-3.5 hover:bg-surface-muted transition-colors border-b border-surface-border"
               >
                 <div className="w-11 h-11 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
@@ -497,7 +503,7 @@ export default function LogFood() {
                 <p className="text-sm text-tx-muted">No results for "{query}"</p>
                 <div className="flex items-center justify-center gap-2">
                   <button
-                    onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, serving_size: '1 serving', source: 'manual' })}
+                    onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0, serving_size: '1 serving', source: 'manual' })}
                     className="btn-secondary text-xs"
                   >
                     + Enter "{query.trim()}" manually
@@ -520,7 +526,7 @@ export default function LogFood() {
                 <p className="text-xs text-tx-muted">Not the right match?</p>
                 <div className="flex items-center justify-center gap-2">
                   <button
-                    onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, serving_size: '1 serving', source: 'manual' })}
+                    onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0, serving_size: '1 serving', source: 'manual' })}
                     className="btn-secondary text-xs"
                   >
                     + Enter "{query.trim()}" manually
@@ -642,6 +648,7 @@ export default function LogFood() {
                   { field: 'fiber' as const,   label: 'Fiber',   value: fib,  color: 'text-tx-secondary', bg: 'bg-surface-muted border-surface-border' },
                   { field: 'sugar' as const,   label: 'Sugar',   value: sug,  color: 'text-tx-secondary', bg: 'bg-surface-muted border-surface-border' },
                   { field: 'sodium' as const,  label: 'Sodium (mg)', value: sod, color: 'text-tx-secondary', bg: 'bg-surface-muted border-surface-border' },
+                  { field: 'cholesterol' as const, label: 'Cholesterol (mg)', value: chol, color: 'text-tx-secondary', bg: 'bg-surface-muted border-surface-border' },
                 ].map(m => (
                   <div key={m.label} className={`rounded-xl border p-2.5 text-center ${m.bg}`}>
                     <div className="flex items-baseline justify-center gap-0.5">
@@ -651,7 +658,7 @@ export default function LogFood() {
                         onChange={e => setMacro(m.field, Number(e.target.value) || 0)}
                         className={`text-sm font-bold tabular-nums bg-transparent border-0 outline-none w-10 text-center ${m.color}`}
                       />
-                      {m.field !== 'sodium' && <span className={`text-sm font-bold ${m.color}`}>g</span>}
+                      {m.field !== 'sodium' && m.field !== 'cholesterol' && <span className={`text-sm font-bold ${m.color}`}>g</span>}
                     </div>
                     <p className="text-[10px] text-tx-muted mt-0.5">{m.label}</p>
                   </div>

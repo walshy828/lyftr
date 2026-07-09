@@ -35,8 +35,8 @@ type HistoryPeriod = typeof HISTORY_PERIODS[number]
 // ─── MacroRing ────────────────────────────────────────────────────────────────
 
 function MacroRing({
-  value, target, color, label,
-}: { value: number; target: number; color: string; label: string }) {
+  value, target, color, label, unit = 'g',
+}: { value: number; target: number; color: string; label: string; unit?: string }) {
   const r = 30
   const circ = 2 * Math.PI * r
   const pct = Math.min(1, value / Math.max(target, 1))
@@ -57,8 +57,8 @@ function MacroRing({
         </div>
       </div>
       <div className="text-center">
-        <p className="text-sm font-semibold tabular-nums text-tx-primary">{Math.round(value)}g</p>
-        <p className="text-[10px] text-tx-muted">{label} / {target}g</p>
+        <p className="text-sm font-semibold tabular-nums text-tx-primary">{Math.round(value)}{unit}</p>
+        <p className="text-[10px] text-tx-muted">{label} / {target}{unit}</p>
       </div>
     </div>
   )
@@ -93,7 +93,7 @@ export default function Food() {
     try {
       const defaultStats: types.DailyStats = {
         date, total_calories: 0, total_protein: 0, total_carbs: 0,
-        total_fat: 0, total_fiber: 0, workout_count: 0,
+        total_fat: 0, total_fiber: 0, total_sodium: 0, total_cholesterol: 0, workout_count: 0,
       }
       const [logData, statsData, settingsData] = await Promise.all([
         foodAPI.list(date),
@@ -103,6 +103,7 @@ export default function Food() {
           : userAPI.getSettings().catch(() => ({
               user_id: 0, weight_unit: 'lbs' as const,
               calorie_target: 2000, protein_target: 150, carb_target: 250, fat_target: 65,
+              cholesterol_target: 300, sodium_target: 2300,
             })),
       ])
       setLogs(logData || [])
@@ -284,6 +285,24 @@ export default function Food() {
               target={settings.fat_target}
               color={MACRO_COLORS.fat}
               label="Fat"
+            />
+          </div>
+
+          {/* Cholesterol / sodium rings */}
+          <div className="grid grid-cols-2 gap-3">
+            <MacroRing
+              value={s?.total_cholesterol ?? 0}
+              target={settings.cholesterol_target}
+              color={MACRO_COLORS.cholesterol}
+              label="Cholesterol"
+              unit="mg"
+            />
+            <MacroRing
+              value={s?.total_sodium ?? 0}
+              target={settings.sodium_target}
+              color={MACRO_COLORS.sodium}
+              label="Sodium"
+              unit="mg"
             />
           </div>
         </div>

@@ -34,11 +34,13 @@ const calcVolume = (w: types.Workout) =>
 
 const DEFAULT_FOOD: types.DailyStats = {
   date: format(TODAY, 'yyyy-MM-dd'),
-  total_calories: 0, total_protein: 0, total_carbs: 0, total_fat: 0, total_fiber: 0, workout_count: 0,
+  total_calories: 0, total_protein: 0, total_carbs: 0, total_fat: 0, total_fiber: 0,
+  total_sodium: 0, total_cholesterol: 0, workout_count: 0,
 }
 const DEFAULT_SETTINGS: types.UserSettings = {
   user_id: 0, weight_unit: 'lbs', calorie_target: 2000,
   protein_target: 150, carb_target: 250, fat_target: 65,
+  cholesterol_target: 300, sodium_target: 2300,
 }
 
 // Hex colors for recharts (can't use Tailwind classes)
@@ -240,6 +242,8 @@ export default function Dashboard() {
   const protPct  = Math.min(100, (food.total_protein  / settings.protein_target)  * 100) || 0
   const carbsPct = Math.min(100, (food.total_carbs    / settings.carb_target)     * 100) || 0
   const fatPct   = Math.min(100, (food.total_fat      / settings.fat_target)      * 100) || 0
+  const cholPct   = Math.min(100, (food.total_cholesterol / settings.cholesterol_target) * 100) || 0
+  const sodiumPct = Math.min(100, (food.total_sodium      / settings.sodium_target)      * 100) || 0
 
   // Weight sparkline
   const sparkData = [...weightLogs].reverse().map(l => ({
@@ -570,16 +574,18 @@ export default function Dashboard() {
           {/* Macros */}
           <div className="space-y-2.5">
             {[
-              { label: 'Protein', val: food.total_protein, target: settings.protein_target, pct: protPct,  color: '#3b82f6' },
-              { label: 'Carbs',   val: food.total_carbs,   target: settings.carb_target,    pct: carbsPct, color: '#f59e0b' },
-              { label: 'Fat',     val: food.total_fat,     target: settings.fat_target,     pct: fatPct,   color: '#8b5cf6' },
+              { label: 'Protein',     val: food.total_protein,     target: settings.protein_target,     pct: protPct,   color: '#3b82f6', unit: 'g' },
+              { label: 'Carbs',       val: food.total_carbs,       target: settings.carb_target,        pct: carbsPct,  color: '#f59e0b', unit: 'g' },
+              { label: 'Fat',         val: food.total_fat,         target: settings.fat_target,         pct: fatPct,    color: '#8b5cf6', unit: 'g' },
+              { label: 'Cholesterol', val: food.total_cholesterol, target: settings.cholesterol_target, pct: cholPct,   color: '#f472b6', unit: 'mg' },
+              { label: 'Sodium',      val: food.total_sodium,      target: settings.sodium_target,      pct: sodiumPct, color: '#38bdf8', unit: 'mg' },
             ].map(m => (
               <div key={m.label}>
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-xs text-tx-muted">{m.label}</span>
                   <span className="text-xs font-semibold text-tx-primary tabular-nums">
-                    {Math.round(m.val)}g
-                    <span className="text-tx-muted font-normal"> / {m.target}g</span>
+                    {Math.round(m.val)}{m.unit}
+                    <span className="text-tx-muted font-normal"> / {m.target}{m.unit}</span>
                   </span>
                 </div>
                 <div className="progress-track">

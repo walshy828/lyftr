@@ -253,13 +253,24 @@ type offNutrients struct {
 	Carbohydrates100g float64 `json:"carbohydrates_100g"`
 	Fat100g           float64 `json:"fat_100g"`
 	Fiber100g         float64 `json:"fiber_100g"`
+	Sugars100g        float64 `json:"sugars_100g"`
+	Sodium100g        float64 `json:"sodium_100g"`      // grams, per OFF convention
+	Cholesterol100g   float64 `json:"cholesterol_100g"` // grams, per OFF convention
 
 	EnergyKcalServing    float64 `json:"energy-kcal_serving"`
 	ProteinsServing      float64 `json:"proteins_serving"`
 	CarbohydratesServing float64 `json:"carbohydrates_serving"`
 	FatServing           float64 `json:"fat_serving"`
 	FiberServing         float64 `json:"fiber_serving"`
+	SugarsServing        float64 `json:"sugars_serving"`
+	SodiumServing        float64 `json:"sodium_serving"`      // grams, per OFF convention
+	CholesterolServing   float64 `json:"cholesterol_serving"` // grams, per OFF convention
 }
+
+// offGramsToMg converts an OFF nutrient value, normalized in grams per its
+// convention, to the milligrams unit the rest of the app uses for sodium and
+// cholesterol.
+func offGramsToMg(grams float64) float64 { return grams * 1000 }
 
 func offProductToResult(p offProduct) models.FoodSearchResult {
 	brand := strings.Join(p.Brands, ", ")
@@ -271,7 +282,7 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 	// Prefer per-serving values when OFF provides them and a serving size label.
 	// Fall back to per-100g so the label always matches the numbers.
 	useServing := p.Nutriments.EnergyKcalServing > 0 && strings.TrimSpace(p.ServingSize) != ""
-	var cal, pro, carb, fat, fiber float64
+	var cal, pro, carb, fat, fiber, sugar, sodium, cholesterol float64
 	var servingLabel string
 	if useServing {
 		cal = p.Nutriments.EnergyKcalServing
@@ -279,6 +290,9 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		carb = p.Nutriments.CarbohydratesServing
 		fat = p.Nutriments.FatServing
 		fiber = p.Nutriments.FiberServing
+		sugar = p.Nutriments.SugarsServing
+		sodium = offGramsToMg(p.Nutriments.SodiumServing)
+		cholesterol = offGramsToMg(p.Nutriments.CholesterolServing)
 		servingLabel = p.ServingSize
 	} else {
 		cal = p.Nutriments.EnergyKcal100g
@@ -286,6 +300,9 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		carb = p.Nutriments.Carbohydrates100g
 		fat = p.Nutriments.Fat100g
 		fiber = p.Nutriments.Fiber100g
+		sugar = p.Nutriments.Sugars100g
+		sodium = offGramsToMg(p.Nutriments.Sodium100g)
+		cholesterol = offGramsToMg(p.Nutriments.Cholesterol100g)
 		servingLabel = "per 100g"
 	}
 
@@ -297,6 +314,9 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		Carbs:       carb,
 		Fat:         fat,
 		Fiber:       fiber,
+		Sugar:       sugar,
+		Sodium:      sodium,
+		Cholesterol: cholesterol,
 		ServingSize: servingLabel,
 		ImageURL:    imageURL,
 		Source:      "off",

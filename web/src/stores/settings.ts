@@ -34,6 +34,8 @@ const DEFAULTS: types.UserSettings = {
   protein_target: 150,
   carb_target: 250,
   fat_target: 65,
+  cholesterol_target: 300,
+  sodium_target: 2300,
   ...clientPrefs(),
 }
 

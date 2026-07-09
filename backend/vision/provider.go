@@ -23,6 +23,7 @@ type NutritionExtraction struct {
 	Fiber       float64 `json:"fiber"`
 	Sugar       float64 `json:"sugar"`
 	Sodium      float64 `json:"sodium"`
+	Cholesterol float64 `json:"cholesterol"`
 	ServingSize string  `json:"serving_size,omitempty"`
 }
 
@@ -54,7 +55,7 @@ type Config struct {
 // extractionPrompt is shared across all three providers so their prompts
 // and schemas can't drift apart — every implementation must request exactly
 // this field set.
-const extractionPrompt = `Look at this photo of a nutrition facts label and extract the following fields as JSON: name (the product name, if visible), brand (if visible), calories, protein (grams), carbs (grams), fat (grams), fiber (grams), sugar (grams), sodium (milligrams), serving_size (as printed on the label, e.g. "1 cup (240ml)").
+const extractionPrompt = `Look at this photo of a nutrition facts label and extract the following fields as JSON: name (the product name, if visible), brand (if visible), calories, protein (grams), carbs (grams), fat (grams), fiber (grams), sugar (grams), sodium (milligrams), cholesterol (milligrams), serving_size (as printed on the label, e.g. "1 cup (240ml)").
 
 Use the per-serving values as printed on the label. If a field isn't visible or the label can't be read, use 0 for numeric fields and omit name/brand/serving_size rather than guessing.`
 
@@ -105,6 +106,7 @@ func nutritionJSONSchema() map[string]any {
 			"fiber":        map[string]any{"type": "number"},
 			"sugar":        map[string]any{"type": "number"},
 			"sodium":       map[string]any{"type": "number"},
+			"cholesterol":  map[string]any{"type": "number"},
 			"serving_size": map[string]any{"type": "string"},
 		},
 		"required":             []string{"calories", "protein", "carbs", "fat"},

@@ -20,11 +20,14 @@ interface Props {
 type CameraMode = 'none' | 'food-photo' | 'label-scan'
 
 const MACRO_FIELDS = [
-  { key: 'calories' as const, label: 'Calories', unit: 'kcal', color: 'text-tx-primary' },
-  { key: 'protein'  as const, label: 'Protein',  unit: 'g',    color: 'text-emerald-400' },
-  { key: 'carbs'    as const, label: 'Carbs',    unit: 'g',    color: 'text-amber-400' },
-  { key: 'fat'      as const, label: 'Fat',       unit: 'g',    color: 'text-violet-400' },
-  { key: 'fiber'    as const, label: 'Fiber',     unit: 'g',    color: 'text-tx-secondary' },
+  { key: 'calories'    as const, label: 'Calories',    unit: 'kcal', color: 'text-tx-primary' },
+  { key: 'protein'     as const, label: 'Protein',     unit: 'g',    color: 'text-emerald-400' },
+  { key: 'carbs'       as const, label: 'Carbs',       unit: 'g',    color: 'text-amber-400' },
+  { key: 'fat'         as const, label: 'Fat',         unit: 'g',    color: 'text-violet-400' },
+  { key: 'fiber'       as const, label: 'Fiber',       unit: 'g',    color: 'text-tx-secondary' },
+  { key: 'sugar'       as const, label: 'Sugar',       unit: 'g',    color: 'text-tx-secondary' },
+  { key: 'sodium'      as const, label: 'Sodium',      unit: 'mg',   color: 'text-tx-secondary' },
+  { key: 'cholesterol' as const, label: 'Cholesterol', unit: 'mg',   color: 'text-tx-secondary' },
 ]
 
 export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDeleted }: Props) {
@@ -38,6 +41,9 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
   const [carbs, setCarbs]             = useState(food.carbs)
   const [fat, setFat]                 = useState(food.fat)
   const [fiber, setFiber]             = useState(food.fiber)
+  const [sugar, setSugar]             = useState(food.sugar ?? 0)
+  const [sodium, setSodium]           = useState(food.sodium ?? 0)
+  const [cholesterol, setCholesterol] = useState(food.cholesterol ?? 0)
   const [servingSize, setServingSize] = useState(food.serving_size)
   const [imageUrl, setImageUrl]       = useState(food.image_url ?? '')
   const [cameraMode, setCameraMode]   = useState<CameraMode>('none')
@@ -57,6 +63,9 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
     setCarbs(food.carbs)
     setFat(food.fat)
     setFiber(food.fiber)
+    setSugar(food.sugar ?? 0)
+    setSodium(food.sodium ?? 0)
+    setCholesterol(food.cholesterol ?? 0)
     setServingSize(food.serving_size)
     setImageUrl(food.image_url ?? '')
     setError(null)
@@ -86,6 +95,9 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
         carbs,
         fat,
         fiber,
+        sugar,
+        sodium,
+        cholesterol,
         serving_size: servingSize.trim(),
         barcode: food.barcode ?? '',
         image_url: imageUrl,
@@ -146,6 +158,9 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
           if (extraction.carbs)        setCarbs(extraction.carbs)
           if (extraction.fat)          setFat(extraction.fat)
           if (extraction.fiber)        setFiber(extraction.fiber)
+          if (extraction.sugar)        setSugar(extraction.sugar)
+          if (extraction.sodium)       setSodium(extraction.sodium)
+          if (extraction.cholesterol)  setCholesterol(extraction.cholesterol)
           if (extraction.name)         setName(extraction.name)
           if (extraction.brand)        setBrand(extraction.brand)
           if (extraction.serving_size) setServingSize(extraction.serving_size)
@@ -249,8 +264,10 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
               <p className="label">Nutrition (per serving)</p>
               <div className="grid grid-cols-2 gap-2.5">
                 {MACRO_FIELDS.map(f => {
-                  const val = f.key === 'calories' ? calories : f.key === 'protein' ? protein : f.key === 'carbs' ? carbs : f.key === 'fat' ? fat : fiber
-                  const setter = f.key === 'calories' ? setCalories : f.key === 'protein' ? setProtein : f.key === 'carbs' ? setCarbs : f.key === 'fat' ? setFat : setFiber
+                  const val = f.key === 'calories' ? calories : f.key === 'protein' ? protein : f.key === 'carbs' ? carbs : f.key === 'fat' ? fat
+                    : f.key === 'fiber' ? fiber : f.key === 'sugar' ? sugar : f.key === 'sodium' ? sodium : cholesterol
+                  const setter = f.key === 'calories' ? setCalories : f.key === 'protein' ? setProtein : f.key === 'carbs' ? setCarbs : f.key === 'fat' ? setFat
+                    : f.key === 'fiber' ? setFiber : f.key === 'sugar' ? setSugar : f.key === 'sodium' ? setSodium : setCholesterol
                   return (
                     <div key={f.key} className="space-y-1">
                       <label className={`text-xs font-medium ${f.color}`}>{f.label}</label>

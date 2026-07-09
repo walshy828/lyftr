@@ -11,12 +11,14 @@ type User struct {
 }
 
 type UserSettings struct {
-	UserID        int64  `json:"user_id" db:"user_id"`
-	WeightUnit    string `json:"weight_unit" db:"weight_unit"` // "lbs" or "kg"
-	CalorieTarget int    `json:"calorie_target" db:"calorie_target"`
-	ProteinTarget int    `json:"protein_target" db:"protein_target"`
-	CarbTarget    int    `json:"carb_target" db:"carb_target"`
-	FatTarget     int    `json:"fat_target" db:"fat_target"`
+	UserID            int64  `json:"user_id" db:"user_id"`
+	WeightUnit        string `json:"weight_unit" db:"weight_unit"` // "lbs" or "kg"
+	CalorieTarget     int    `json:"calorie_target" db:"calorie_target"`
+	ProteinTarget     int    `json:"protein_target" db:"protein_target"`
+	CarbTarget        int    `json:"carb_target" db:"carb_target"`
+	FatTarget         int    `json:"fat_target" db:"fat_target"`
+	CholesterolTarget int    `json:"cholesterol_target" db:"cholesterol_target"` // mg
+	SodiumTarget      int    `json:"sodium_target" db:"sodium_target"`           // mg
 }
 
 // DefaultUserSettings is the single source of truth for a brand-new user's
@@ -24,12 +26,14 @@ type UserSettings struct {
 // update merges onto. Must stay in sync with the user_settings column defaults.
 func DefaultUserSettings(uid int64) UserSettings {
 	return UserSettings{
-		UserID:        uid,
-		WeightUnit:    "lbs",
-		CalorieTarget: 2000,
-		ProteinTarget: 150,
-		CarbTarget:    250,
-		FatTarget:     65,
+		UserID:            uid,
+		WeightUnit:        "lbs",
+		CalorieTarget:     2000,
+		ProteinTarget:     150,
+		CarbTarget:        250,
+		FatTarget:         65,
+		CholesterolTarget: 300,
+		SodiumTarget:      2300,
 	}
 }
 
@@ -100,6 +104,7 @@ type FoodLog struct {
 	Fiber       float64   `json:"fiber" db:"fiber"`
 	Sugar       float64   `json:"sugar" db:"sugar"`
 	Sodium      float64   `json:"sodium" db:"sodium"`
+	Cholesterol float64   `json:"cholesterol" db:"cholesterol"`
 	Servings    float64   `json:"servings" db:"servings"`
 	ServingSize string    `json:"serving_size" db:"serving_size"`
 	Barcode     string    `json:"barcode,omitempty" db:"barcode"`
@@ -119,6 +124,9 @@ type SavedFood struct {
 	Carbs       float64   `json:"carbs" db:"carbs"`
 	Fat         float64   `json:"fat" db:"fat"`
 	Fiber       float64   `json:"fiber" db:"fiber"`
+	Sugar       float64   `json:"sugar" db:"sugar"`
+	Sodium      float64   `json:"sodium" db:"sodium"`
+	Cholesterol float64   `json:"cholesterol" db:"cholesterol"`
 	ServingSize string    `json:"serving_size" db:"serving_size"`
 	Barcode     string    `json:"barcode,omitempty" db:"barcode"`
 	ImageURL    string    `json:"image_url,omitempty" db:"image_url"`
@@ -135,6 +143,7 @@ type FoodSearchResult struct {
 	Fiber       float64 `json:"fiber"`
 	Sugar       float64 `json:"sugar"`
 	Sodium      float64 `json:"sodium"`
+	Cholesterol float64 `json:"cholesterol"`
 	ServingSize string  `json:"serving_size"`
 	ImageURL    string  `json:"image_url,omitempty"`
 	Source      string  `json:"source"` // "off" | "saved" | "manual" | "photo"
@@ -212,6 +221,7 @@ type LogFoodRequest struct {
 	Fiber       float64   `json:"fiber" validate:"gte=0"`
 	Sugar       float64   `json:"sugar" validate:"gte=0"`
 	Sodium      float64   `json:"sodium" validate:"gte=0"`
+	Cholesterol float64   `json:"cholesterol" validate:"gte=0"`
 	Servings    float64   `json:"servings" validate:"gte=0"`
 	ServingSize string    `json:"serving_size"`
 	Barcode     string    `json:"barcode"`
@@ -233,6 +243,9 @@ type SaveFoodRequest struct {
 	Carbs       float64 `json:"carbs" validate:"gte=0"`
 	Fat         float64 `json:"fat" validate:"gte=0"`
 	Fiber       float64 `json:"fiber" validate:"gte=0"`
+	Sugar       float64 `json:"sugar" validate:"gte=0"`
+	Sodium      float64 `json:"sodium" validate:"gte=0"`
+	Cholesterol float64 `json:"cholesterol" validate:"gte=0"`
 	ServingSize string  `json:"serving_size"`
 	Barcode     string  `json:"barcode"`
 	ImageURL    string  `json:"image_url"`
@@ -246,6 +259,9 @@ type UpdateSavedFoodRequest struct {
 	Carbs       float64 `json:"carbs" validate:"gte=0"`
 	Fat         float64 `json:"fat" validate:"gte=0"`
 	Fiber       float64 `json:"fiber" validate:"gte=0"`
+	Sugar       float64 `json:"sugar" validate:"gte=0"`
+	Sodium      float64 `json:"sodium" validate:"gte=0"`
+	Cholesterol float64 `json:"cholesterol" validate:"gte=0"`
 	ServingSize string  `json:"serving_size"`
 	Barcode     string  `json:"barcode"`
 	ImageURL    string  `json:"image_url"`
@@ -255,11 +271,13 @@ type UpdateSavedFoodRequest struct {
 // from the JSON) is distinguishable from an intentional 0. Only non-nil fields
 // are applied — a partial update never zeroes the fields it omits (#37).
 type UpdateSettingsRequest struct {
-	WeightUnit    *string `json:"weight_unit" validate:"omitempty,oneof=lbs kg"`
-	CalorieTarget *int    `json:"calorie_target" validate:"omitempty,gte=0"`
-	ProteinTarget *int    `json:"protein_target" validate:"omitempty,gte=0"`
-	CarbTarget    *int    `json:"carb_target" validate:"omitempty,gte=0"`
-	FatTarget     *int    `json:"fat_target" validate:"omitempty,gte=0"`
+	WeightUnit        *string `json:"weight_unit" validate:"omitempty,oneof=lbs kg"`
+	CalorieTarget     *int    `json:"calorie_target" validate:"omitempty,gte=0"`
+	ProteinTarget     *int    `json:"protein_target" validate:"omitempty,gte=0"`
+	CarbTarget        *int    `json:"carb_target" validate:"omitempty,gte=0"`
+	FatTarget         *int    `json:"fat_target" validate:"omitempty,gte=0"`
+	CholesterolTarget *int    `json:"cholesterol_target" validate:"omitempty,gte=0"`
+	SodiumTarget      *int    `json:"sodium_target" validate:"omitempty,gte=0"`
 }
 
 type Program struct {
@@ -312,11 +330,13 @@ type CreateProgramSetReq struct {
 }
 
 type DailyStats struct {
-	Date          string  `json:"date"`
-	TotalCalories float64 `json:"total_calories"`
-	TotalProtein  float64 `json:"total_protein"`
-	TotalCarbs    float64 `json:"total_carbs"`
-	TotalFat      float64 `json:"total_fat"`
-	TotalFiber    float64 `json:"total_fiber"`
-	WorkoutCount  int     `json:"workout_count"`
+	Date             string  `json:"date"`
+	TotalCalories    float64 `json:"total_calories"`
+	TotalProtein     float64 `json:"total_protein"`
+	TotalCarbs       float64 `json:"total_carbs"`
+	TotalFat         float64 `json:"total_fat"`
+	TotalFiber       float64 `json:"total_fiber"`
+	TotalSodium      float64 `json:"total_sodium"`
+	TotalCholesterol float64 `json:"total_cholesterol"`
+	WorkoutCount     int     `json:"workout_count"`
 }

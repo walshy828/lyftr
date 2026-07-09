@@ -61,6 +61,8 @@ export default function Settings() {
     protein_target: storedSettings.protein_target,
     carb_target: storedSettings.carb_target,
     fat_target: storedSettings.fat_target,
+    cholesterol_target: storedSettings.cholesterol_target,
+    sodium_target: storedSettings.sodium_target,
   })
 
   const loadSeedStatus = useCallback(async () => {
@@ -82,6 +84,8 @@ export default function Settings() {
           protein_target: s.protein_target,
           carb_target: s.carb_target,
           fat_target: s.fat_target,
+          cholesterol_target: s.cholesterol_target,
+          sodium_target: s.sodium_target,
         })
       } catch (err: any) {
         setError(err.message || 'Failed to load settings')
@@ -351,6 +355,30 @@ export default function Settings() {
               className="input w-24 text-right"
             />
             <span className="text-xs text-tx-muted">g</span>
+          </div>
+        </SettingRow>
+
+        <SettingRow label="Cholesterol target" description="Daily cholesterol goal">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={formData.cholesterol_target}
+              onChange={e => setFormData({ ...formData, cholesterol_target: parseInt(e.target.value) || 0 })}
+              className="input w-24 text-right"
+            />
+            <span className="text-xs text-tx-muted">mg</span>
+          </div>
+        </SettingRow>
+
+        <SettingRow label="Sodium target" description="Daily sodium goal">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={formData.sodium_target}
+              onChange={e => setFormData({ ...formData, sodium_target: parseInt(e.target.value) || 0 })}
+              className="input w-24 text-right"
+            />
+            <span className="text-xs text-tx-muted">mg</span>
           </div>
         </SettingRow>
 

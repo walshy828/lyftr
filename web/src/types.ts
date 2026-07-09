@@ -12,6 +12,8 @@ export interface UserSettings {
   protein_target: number
   carb_target: number
   fat_target: number
+  cholesterol_target: number
+  sodium_target: number
   workout_layout?: 'list' | 'gym'
   // Client-only (localStorage, not persisted server-side):
   rest_enabled?: boolean        // master rest-timer on/off
@@ -84,6 +86,7 @@ export interface FoodLog {
   fiber?: number
   sugar?: number
   sodium?: number
+  cholesterol?: number
   servings: number
   serving_size?: string
   barcode?: string
@@ -100,6 +103,8 @@ export interface DailyStats {
   total_carbs: number
   total_fat: number
   total_fiber: number
+  total_sodium: number
+  total_cholesterol: number
   workout_count: number
 }
 
@@ -113,6 +118,7 @@ export interface FoodSearchResult {
   fiber: number
   sugar?: number
   sodium?: number
+  cholesterol?: number
   serving_size: string
   image_url?: string
   source: 'off' | 'saved' | 'manual' | 'photo'
@@ -128,6 +134,7 @@ export interface NutritionExtraction {
   fiber: number
   sugar: number
   sodium: number
+  cholesterol: number
   serving_size?: string
 }
 
@@ -140,6 +147,9 @@ export interface SavedFood {
   carbs: number
   fat: number
   fiber: number
+  sugar?: number
+  sodium?: number
+  cholesterol?: number
   serving_size: string
   barcode?: string
   image_url?: string
