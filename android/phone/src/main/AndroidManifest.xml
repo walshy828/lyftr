@@ -47,6 +47,10 @@
                     android:scheme="wear"
                     android:host="*"
                     android:pathPrefix="/lyftr/action" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:path="/lyftr/request-session" />
             </intent-filter>
         </service>
 

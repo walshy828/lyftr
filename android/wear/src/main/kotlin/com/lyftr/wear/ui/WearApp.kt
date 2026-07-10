@@ -3,10 +3,14 @@ package com.lyftr.wear.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import com.lyftr.shared.WearAction
 import com.lyftr.shared.WearActionType
 import com.lyftr.wear.data.WearSessionClient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -22,7 +26,20 @@ fun WearApp(client: WearSessionClient) {
 
     val s = session
     if (s == null) {
-        NoSessionScreen()
+        var checking by remember { mutableStateOf(false) }
+        NoSessionScreen(
+            checking = checking,
+            onRefresh = {
+                checking = true
+                scope.launch {
+                    client.requestSession()
+                    // The phone's answer arrives via the session DataItem; the
+                    // pause is only UI feedback so the tap visibly did something.
+                    delay(2_000)
+                    checking = false
+                }
+            },
+        )
         return
     }
 

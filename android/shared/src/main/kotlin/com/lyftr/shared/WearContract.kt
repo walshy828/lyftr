@@ -12,6 +12,15 @@ object WearPaths {
 
     /** Message path prefix: watch -> phone, one of the [WearActionType] values. */
     const val ACTION = "/lyftr/action"
+
+    /**
+     * Message path: watch -> phone, empty payload. Asks the phone to do a
+     * one-shot fetch of the backend's active session and republish
+     * [SESSION]. Sent when the watch app opens (or the user taps refresh) —
+     * this is what wakes the otherwise-inert phone bridge, which only runs
+     * its sync service while a workout is actually active.
+     */
+    const val REQUEST_SESSION = "/lyftr/request-session"
 }
 
 /** Keys inside the [WearPaths.SESSION] DataMap. */

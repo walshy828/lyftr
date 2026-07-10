@@ -15,9 +15,12 @@ import com.lyftr.phone.sync.SessionSyncService
 /**
  * This app's UI is deliberately thin — most workout management stays on the
  * web app (see plan: android/README or the repo's top-level CLAUDE.md). Its
- * job is auth + being the always-on bridge between the backend and the
- * watch; the phone UI is just enough to log in and see that the bridge is
- * connected.
+ * job is auth + bridging the backend to the watch *while a workout is
+ * active*; when nothing is active the app runs no services and makes no
+ * network calls. The bridge is brought up on demand by
+ * [SessionSyncService.checkAndStart] — from here when the app opens, from
+ * the status screen's "Sync now", or from the watch app opening
+ * (WearListenerService).
  */
 @Composable
 fun LyftrPhoneApp() {
@@ -26,15 +29,14 @@ fun LyftrPhoneApp() {
     val apiClient = remember { LyftrApiClient(tokenStore) }
     var loggedIn by remember { mutableStateOf(tokenStore.isLoggedIn) }
 
-    // Runs whenever `loggedIn` becomes/is true — covers both the moment login
-    // succeeds *and* every app relaunch where a prior session is already
-    // stored (SessionSyncService is a foreground service tied to the process,
-    // so it does not survive the process being killed and must be
-    // re-started here rather than only from the login button's callback).
+    // Runs whenever `loggedIn` becomes/is true — the moment login succeeds
+    // and every app launch with a stored session: keep the daily token
+    // refresh scheduled and do a single active-session check (which starts
+    // the sync service only if a workout is in progress).
     LaunchedEffect(loggedIn) {
         if (loggedIn) {
             TokenRefreshWorker.schedule(context)
-            SessionSyncService.start(context)
+            SessionSyncService.checkAndStart(context)
         }
     }
 
@@ -42,6 +44,7 @@ fun LyftrPhoneApp() {
         StatusScreen(
             tokenStore = tokenStore,
             onLogout = {
+                TokenRefreshWorker.cancel(context)
                 tokenStore.clear()
                 loggedIn = false
             },

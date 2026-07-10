@@ -33,6 +33,13 @@ class MainActivity : ComponentActivity() {
                 client.start()
                 onDispose { client.stop() }
             }
+            // Opening the watch app is the sync trigger: ask the phone to
+            // check the backend once. The phone bridge runs nothing while
+            // idle, so without this nudge a web-started workout would never
+            // reach the watch.
+            LaunchedEffect(client) {
+                client.requestSession()
+            }
 
             val session by client.session.collectAsState()
             // While a workout is live: hold the screen awake so the system

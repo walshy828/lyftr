@@ -10,13 +10,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 
 @Composable
-fun NoSessionScreen() {
+fun NoSessionScreen(checking: Boolean, onRefresh: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = "No active workout",
                 style = MaterialTheme.typography.title3,
@@ -26,6 +28,17 @@ fun NoSessionScreen() {
                 text = "Start one on your phone or web",
                 style = MaterialTheme.typography.caption2,
                 textAlign = TextAlign.Center,
+            )
+            Chip(
+                onClick = onRefresh,
+                enabled = !checking,
+                colors = ChipDefaults.secondaryChipColors(),
+                label = {
+                    Text(
+                        text = if (checking) "Checking…" else "Check again",
+                        style = MaterialTheme.typography.caption1,
+                    )
+                },
             )
         }
     }
