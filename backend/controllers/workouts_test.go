@@ -256,3 +256,76 @@ func TestListWorkouts_filtersBySearchQuery(t *testing.T) {
 		t.Errorf("expected 'Morning Push', got %v", name)
 	}
 }
+
+// Guards the batched child loading in WorkoutStore.List (loadExercisesFor):
+// children fetched with IN(...) queries must land on the right workout, in
+// order_index / set_number order.
+func TestListWorkouts_batchedChildrenGroupedCorrectly(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	exID := createTestExercise(t)
+
+	for i := 1; i <= 2; i++ {
+		body := map[string]any{
+			"name": fmt.Sprintf("Workout %d", i),
+			"exercises": []map[string]any{
+				{
+					"exercise_id": exID,
+					"sets": []map[string]any{
+						{"set_number": 1, "reps": 5, "weight": float64(100 * i)},
+						{"set_number": 2, "reps": 5, "weight": float64(100*i + 5)},
+					},
+				},
+				{
+					"exercise_id": exID,
+					"sets": []map[string]any{
+						{"set_number": 1, "reps": 8, "weight": float64(50 * i)},
+					},
+				},
+			},
+		}
+		c, w := newContext(uid, http.MethodPost, "/api/v1/workouts", body)
+		th.CreateWorkout(c)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("create workout %d: got %d: %s", i, w.Code, w.Body.String())
+		}
+	}
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/workouts", nil)
+	th.ListWorkouts(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list: got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != 2 {
+		t.Fatalf("expected 2 workouts, got %d", len(data))
+	}
+
+	for _, item := range data {
+		workout := item.(map[string]any)
+		name := workout["name"].(string)
+		i := 1
+		if name == "Workout 2" {
+			i = 2
+		}
+		exercises := workout["exercises"].([]any)
+		if len(exercises) != 2 {
+			t.Fatalf("%s: expected 2 exercises, got %d", name, len(exercises))
+		}
+		first := exercises[0].(map[string]any)
+		sets := first["sets"].([]any)
+		if len(sets) != 2 {
+			t.Fatalf("%s: expected 2 sets on first exercise, got %d", name, len(sets))
+		}
+		if got := sets[0].(map[string]any)["weight"].(float64); got != float64(100*i) {
+			t.Errorf("%s set 1: expected weight %d, got %v", name, 100*i, got)
+		}
+		if got := sets[1].(map[string]any)["weight"].(float64); got != float64(100*i+5) {
+			t.Errorf("%s set 2: expected weight %d, got %v", name, 100*i+5, got)
+		}
+		second := exercises[1].(map[string]any)
+		if got := len(second["sets"].([]any)); got != 1 {
+			t.Errorf("%s: expected 1 set on second exercise, got %d", name, got)
+		}
+	}
+}

@@ -84,12 +84,8 @@ func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error
 	}
 	rows.Close() // close the parent cursor BEFORE loading children (#36)
 
-	for i := range programs {
-		ex, err := s.loadExercises(programs[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		programs[i].Exercises = ex
+	if err := s.attachExercises(programs); err != nil {
+		return nil, err
 	}
 	return programs, nil
 }
@@ -161,12 +157,8 @@ func (s *ProgramStore) ListShared(uid int64, f ProgramFilter) ([]models.Program,
 	}
 	rows.Close()
 
-	for i := range programs {
-		ex, err := s.loadExercises(programs[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		programs[i].Exercises = ex
+	if err := s.attachExercises(programs); err != nil {
+		return nil, err
 	}
 	return programs, nil
 }
@@ -312,16 +304,50 @@ func insertProgramExercises(tx *sql.Tx, pid int64, exercises []models.CreateProg
 	return nil
 }
 
-// loadExercises scans + closes the parent cursor BEFORE loading each exercise's
-// sets (#36), and surfaces scan errors.
+// loadExercises loads one program's exercises + sets (single-item Get paths).
 func (s *ProgramStore) loadExercises(programID int64) ([]models.ProgramExercise, error) {
+	byProgram, err := s.loadExercisesFor([]int64{programID})
+	if err != nil {
+		return nil, err
+	}
+	return byProgram[programID], nil
+}
+
+// attachExercises batch-loads exercises + sets for a page of programs.
+func (s *ProgramStore) attachExercises(programs []models.Program) error {
+	ids := make([]int64, len(programs))
+	for i := range programs {
+		ids[i] = programs[i].ID
+	}
+	exByProgram, err := s.loadExercisesFor(ids)
+	if err != nil {
+		return err
+	}
+	for i := range programs {
+		programs[i].Exercises = exByProgram[programs[i].ID]
+	}
+	return nil
+}
+
+// loadExercisesFor loads the exercises (JOIN exercises for display) and their
+// sets for every given program in two queries total, instead of one per
+// program plus one per exercise — every query is serialized through the
+// single SQLite connection, so query count is latency. The parent cursor is
+// fully scanned + closed BEFORE the sets query (#36) so a request never holds
+// two pool connections at once.
+func (s *ProgramStore) loadExercisesFor(programIDs []int64) (map[int64][]models.ProgramExercise, error) {
+	byProgram := make(map[int64][]models.ProgramExercise, len(programIDs))
+	if len(programIDs) == 0 {
+		return byProgram, nil
+	}
+	placeholders, args := inArgs(programIDs)
 	rows, err := s.db.Query(
 		`SELECT pe.id, pe.program_id, pe.exercise_id, pe.order_index, pe.notes, pe.rest_seconds,
 		        e.name, e.muscle_group, e.category, e.equipment, e.image_url
 		 FROM program_exercises pe
 		 JOIN exercises e ON e.id = pe.exercise_id
-		 WHERE pe.program_id = ? ORDER BY pe.order_index`,
-		programID,
+		 WHERE pe.program_id IN (`+placeholders+`) ORDER BY pe.program_id, pe.order_index`,
+		args...,
 	)
 	if err != nil {
 		return nil, err
@@ -346,33 +372,44 @@ func (s *ProgramStore) loadExercises(programID int64) ([]models.ProgramExercise,
 	}
 	rows.Close()
 
-	for i := range exercises {
-		sets, err := s.loadSets(exercises[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		exercises[i].Sets = sets
+	setsByExercise, err := s.loadSetsFor(exercises)
+	if err != nil {
+		return nil, err
 	}
-	return exercises, nil
+	for _, pe := range exercises {
+		pe.Sets = setsByExercise[pe.ID]
+		byProgram[pe.ProgramID] = append(byProgram[pe.ProgramID], pe)
+	}
+	return byProgram, nil
 }
 
-func (s *ProgramStore) loadSets(programExerciseID int64) ([]models.ProgramSet, error) {
+// loadSetsFor fetches the sets for all given program exercises in one query,
+// grouped by program_exercise_id.
+func (s *ProgramStore) loadSetsFor(exercises []models.ProgramExercise) (map[int64][]models.ProgramSet, error) {
+	bySet := make(map[int64][]models.ProgramSet, len(exercises))
+	if len(exercises) == 0 {
+		return bySet, nil
+	}
+	ids := make([]int64, len(exercises))
+	for i := range exercises {
+		ids[i] = exercises[i].ID
+	}
+	placeholders, args := inArgs(ids)
 	rows, err := s.db.Query(
 		`SELECT id, program_exercise_id, set_number, target_reps, target_weight
-		 FROM program_sets WHERE program_exercise_id = ? ORDER BY set_number`,
-		programExerciseID,
+		 FROM program_sets WHERE program_exercise_id IN (`+placeholders+`) ORDER BY program_exercise_id, set_number`,
+		args...,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var sets []models.ProgramSet
 	for rows.Next() {
 		var st models.ProgramSet
 		if err := rows.Scan(&st.ID, &st.ProgramExerciseID, &st.SetNumber, &st.TargetReps, &st.TargetWeight); err != nil {
 			return nil, err
 		}
-		sets = append(sets, st)
+		bySet[st.ProgramExerciseID] = append(bySet[st.ProgramExerciseID], st)
 	}
-	return sets, rows.Err()
+	return bySet, rows.Err()
 }

@@ -4,7 +4,10 @@
 // return models + raw errors and import neither gin nor the utils HTTP helpers.
 package stores
 
-import "database/sql"
+import (
+	"database/sql"
+	"strings"
+)
 
 // Stores aggregates every per-entity store, constructed once from the DB handle
 // and injected into the HTTP handlers.
@@ -57,4 +60,15 @@ func inTxDo(db *sql.DB, fn func(*sql.Tx) error) error {
 		return struct{}{}, fn(tx)
 	})
 	return err
+}
+
+// inArgs builds the placeholder list + args for a `WHERE col IN (...)` clause
+// over the given ids. Callers must handle len(ids) == 0 themselves.
+func inArgs(ids []int64) (string, []any) {
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	return placeholders, args
 }

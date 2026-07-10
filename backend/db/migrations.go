@@ -83,6 +83,20 @@ func alterMigrations() {
 	if _, err := DB.Exec(`CREATE INDEX IF NOT EXISTS idx_workouts_program ON workouts(program_id)`); err != nil {
 		log.Fatalf("create idx_workouts_program: %v", err)
 	}
+
+	// Child-table lookup indexes: every workout/program load fetches children
+	// by these foreign keys (and the exercise PR/history analytics join
+	// through workout_exercises.exercise_id) — without them each lookup is a
+	// full scan of tables that only ever grow.
+	childIndexes := `
+CREATE INDEX IF NOT EXISTS idx_workout_exercises_workout ON workout_exercises(workout_id);
+CREATE INDEX IF NOT EXISTS idx_workout_exercises_exercise ON workout_exercises(exercise_id);
+CREATE INDEX IF NOT EXISTS idx_sets_workout_exercise ON sets(workout_exercise_id);
+CREATE INDEX IF NOT EXISTS idx_program_exercises_program ON program_exercises(program_id);
+CREATE INDEX IF NOT EXISTS idx_program_sets_program_exercise ON program_sets(program_exercise_id);`
+	if _, err := DB.Exec(childIndexes); err != nil {
+		log.Fatalf("create child-table indexes: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

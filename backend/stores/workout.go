@@ -57,12 +57,16 @@ func (s *WorkoutStore) List(uid int64, f WorkoutFilter) ([]models.Workout, error
 	}
 	rows.Close() // close the parent cursor BEFORE loading children (#36: avoid holding 2 pool connections per request)
 
+	ids := make([]int64, len(workouts))
 	for i := range workouts {
-		ex, err := s.loadExercises(workouts[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		workouts[i].Exercises = ex
+		ids[i] = workouts[i].ID
+	}
+	exByWorkout, err := s.loadExercisesFor(ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range workouts {
+		workouts[i].Exercises = exByWorkout[workouts[i].ID]
 	}
 	return workouts, nil
 }
@@ -183,17 +187,34 @@ func insertWorkoutExercises(tx *sql.Tx, wid int64, exercises []models.CreateWork
 	return nil
 }
 
-// loadExercises loads a workout's exercises (JOIN exercises for display) then
-// their sets. Scans + closes the parent cursor fully BEFORE the per-exercise set
-// queries (#36) so a request never holds two pool connections at once.
+// loadExercises loads one workout's exercises + sets (single-item Get paths).
 func (s *WorkoutStore) loadExercises(workoutID int64) ([]models.WorkoutExercise, error) {
+	byWorkout, err := s.loadExercisesFor([]int64{workoutID})
+	if err != nil {
+		return nil, err
+	}
+	return byWorkout[workoutID], nil
+}
+
+// loadExercisesFor loads the exercises (JOIN exercises for display) and their
+// sets for every given workout in two queries total, instead of one per
+// workout plus one per exercise — every query is serialized through the
+// single SQLite connection, so query count is latency. The parent cursor is
+// fully scanned + closed BEFORE the sets query (#36) so a request never holds
+// two pool connections at once.
+func (s *WorkoutStore) loadExercisesFor(workoutIDs []int64) (map[int64][]models.WorkoutExercise, error) {
+	byWorkout := make(map[int64][]models.WorkoutExercise, len(workoutIDs))
+	if len(workoutIDs) == 0 {
+		return byWorkout, nil
+	}
+	placeholders, args := inArgs(workoutIDs)
 	rows, err := s.db.Query(
 		`SELECT we.id, we.workout_id, we.exercise_id, we.order_index, we.notes, we.rest_seconds,
 		        e.name, e.muscle_group, e.category, e.equipment, e.image_url
 		 FROM workout_exercises we
 		 JOIN exercises e ON e.id = we.exercise_id
-		 WHERE we.workout_id = ? ORDER BY we.order_index`,
-		workoutID,
+		 WHERE we.workout_id IN (`+placeholders+`) ORDER BY we.workout_id, we.order_index`,
+		args...,
 	)
 	if err != nil {
 		return nil, err
@@ -218,35 +239,46 @@ func (s *WorkoutStore) loadExercises(workoutID int64) ([]models.WorkoutExercise,
 	}
 	rows.Close()
 
-	for i := range exercises {
-		sets, err := s.loadSets(exercises[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		exercises[i].Sets = sets
+	setsByExercise, err := s.loadSetsFor(exercises)
+	if err != nil {
+		return nil, err
 	}
-	return exercises, nil
+	for _, we := range exercises {
+		we.Sets = setsByExercise[we.ID]
+		byWorkout[we.WorkoutID] = append(byWorkout[we.WorkoutID], we)
+	}
+	return byWorkout, nil
 }
 
-func (s *WorkoutStore) loadSets(workoutExerciseID int64) ([]models.Set, error) {
+// loadSetsFor fetches the sets for all given workout exercises in one query,
+// grouped by workout_exercise_id.
+func (s *WorkoutStore) loadSetsFor(exercises []models.WorkoutExercise) (map[int64][]models.Set, error) {
+	bySet := make(map[int64][]models.Set, len(exercises))
+	if len(exercises) == 0 {
+		return bySet, nil
+	}
+	ids := make([]int64, len(exercises))
+	for i := range exercises {
+		ids[i] = exercises[i].ID
+	}
+	placeholders, args := inArgs(ids)
 	rows, err := s.db.Query(
 		`SELECT id, workout_exercise_id, set_number, reps, weight, duration, distance, rpe, is_warmup
-		 FROM sets WHERE workout_exercise_id = ? ORDER BY set_number`,
-		workoutExerciseID,
+		 FROM sets WHERE workout_exercise_id IN (`+placeholders+`) ORDER BY workout_exercise_id, set_number`,
+		args...,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var sets []models.Set
 	for rows.Next() {
 		var st models.Set
 		if err := rows.Scan(&st.ID, &st.WorkoutExerciseID, &st.SetNumber, &st.Reps, &st.Weight, &st.Duration, &st.Distance, &st.RPE, &st.IsWarmup); err != nil {
 			return nil, err
 		}
-		sets = append(sets, st)
+		bySet[st.WorkoutExerciseID] = append(bySet[st.WorkoutExerciseID], st)
 	}
-	return sets, rows.Err()
+	return bySet, rows.Err()
 }
 
 // CountOn returns how many workouts the user started on the given calendar day
