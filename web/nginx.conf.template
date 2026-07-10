@@ -37,6 +37,13 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    # Service worker must always be revalidated — never cached — so
+    # clients pick up new deployments immediately.
+    location = /sw.js {
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
+
     # Cache static assets aggressively
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
         expires 1y;

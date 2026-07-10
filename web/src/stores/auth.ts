@@ -68,6 +68,12 @@ export const useAuthStore = create<AuthStore>((set) => {
       // into a different account's session on the same browser. Server-side
       // state is left alone — the workout may still be live on the watch.
       clearLocalSession()
+      // Defense in depth: the service worker never caches /api/*, but purge
+      // Cache Storage anyway so no stale app-shell entry survives a user
+      // switch on a shared device. Re-fetched/re-cached on next load.
+      if ('caches' in window) {
+        caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)))
+      }
       set({ user: null, isAuthenticated: false, error: null })
     },
 

@@ -5,6 +5,8 @@ Three Gradle modules:
 - `phone/` — minimal Android app. Owns login + JWT storage/refresh, polls/pushes `/api/v1/active-session`, bridges to the watch over the Wear Data Layer API. This is what needs to be installed on your phone for the watch app to do anything.
 - `wear/` — Wear OS app. No network/auth of its own — pure Data Layer client that renders whatever the phone last published and sends set actions back to it.
 
+**Do you need `phone/` at all?** The web app is installable as a PWA (Add to Home Screen / standalone display) and covers everything `phone/`'s read-only status screen offers, with full workout CRUD besides. If you don't have a paired Wear OS watch, just use the PWA — you don't need to install anything from this directory. `phone/` is only necessary if you want the watch-based rest-timer/set display, since the watch has no independent auth or network access and depends on `phone/` as its bridge to the backend.
+
 ## Prerequisites
 - Android Studio (Koala or newer) with the Wear OS emulator/SDK components installed, or a real Pixel Watch paired to a real Android phone via the Wear OS app.
 - This directory has no Gradle wrapper checked in yet — open it in Android Studio once and let it generate one (or run `gradle wrapper` if you have a local Gradle install), then commit `gradlew`/`gradlew.bat`/`gradle/wrapper/*`.
