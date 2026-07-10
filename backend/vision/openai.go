@@ -74,3 +74,35 @@ func (p *openAIProvider) AnalyzeLabel(ctx context.Context, imageBase64, mediaTyp
 	}
 	return out, nil
 }
+
+func (p *openAIProvider) ParseMeal(ctx context.Context, description string) ([]MealItem, error) {
+	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: p.model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(mealParsePrompt + description),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+				JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:   "meal_parse",
+					Schema: mealParseJSONSchema(),
+					Strict: openai.Bool(true),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("openai meal parse call: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("openai meal parse call: no choices in response")
+	}
+
+	var out struct {
+		Items []MealItem `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &out); err != nil {
+		return nil, fmt.Errorf("openai meal parse call: unmarshal structured output: %w", err)
+	}
+	return out.Items, nil
+}

@@ -1017,12 +1017,18 @@ func TestUpdateFoodLog_overwritesNutrition(t *testing.T) {
 // ─── AnalyzeFoodLabel ──────────────────────────────────────────────────────────
 
 type fakeVisionProvider struct {
-	result vision.NutritionExtraction
-	err    error
+	result    vision.NutritionExtraction
+	err       error
+	mealItems []vision.MealItem
+	mealErr   error
 }
 
 func (f *fakeVisionProvider) AnalyzeLabel(_ context.Context, _, _ string) (vision.NutritionExtraction, error) {
 	return f.result, f.err
+}
+
+func (f *fakeVisionProvider) ParseMeal(_ context.Context, _ string) ([]vision.MealItem, error) {
+	return f.mealItems, f.mealErr
 }
 
 func TestAnalyzeFoodLabel_success(t *testing.T) {
@@ -1101,6 +1107,82 @@ func TestAnalyzeFoodLabel_providerError(t *testing.T) {
 	body := map[string]any{"image_base64": "Zm9vZA==", "media_type": "image/jpeg"}
 	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-label", body)
 	h.AnalyzeFoodLabel(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 on provider error, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ─── ParseMeal ──────────────────────────────────────────────────────────
+
+func TestParseMeal_success(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{
+		mealItems: []vision.MealItem{
+			{Name: "Turkey sandwich", Quantity: "1 sandwich", Calories: 350, Protein: 20, Carbs: 30, Fat: 12},
+			{Name: "Ginger ale", Quantity: "1 can", Calories: 140, Protein: 0, Carbs: 35, Fat: 0},
+		},
+	})
+
+	body := map[string]any{"description": "turkey sandwich with 2 pieces of turkey, honey wheat bread, and mayonnaise with a can of ginger ale"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/parse-meal", body)
+	h.ParseMeal(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].(map[string]any)
+	items := data["items"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	first := items[0].(map[string]any)
+	if first["name"].(string) != "Turkey sandwich" {
+		t.Errorf("expected name 'Turkey sandwich', got %v", first["name"])
+	}
+	if first["calories"].(float64) != 350 {
+		t.Errorf("expected calories 350, got %v", first["calories"])
+	}
+}
+
+func TestParseMeal_notConfigured(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), nil)
+
+	body := map[string]any{"description": "turkey sandwich"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/parse-meal", body)
+	h.ParseMeal(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when vision provider is nil, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestParseMeal_missingDescription(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	body := map[string]any{"description": ""}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/parse-meal", body)
+	h.ParseMeal(c)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for empty description, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestParseMeal_providerError(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{mealErr: fmt.Errorf("upstream boom")})
+
+	body := map[string]any{"description": "turkey sandwich"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/parse-meal", body)
+	h.ParseMeal(c)
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 on provider error, got %d: %s", w.Code, w.Body.String())

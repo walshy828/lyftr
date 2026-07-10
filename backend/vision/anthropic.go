@@ -63,3 +63,43 @@ func (p *anthropicProvider) AnalyzeLabel(ctx context.Context, imageBase64, media
 	}
 	return out, nil
 }
+
+func (p *anthropicProvider) ParseMeal(ctx context.Context, description string) ([]MealItem, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     p.model,
+		MaxTokens: 1024,
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortLow,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: mealParseJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(mealParsePrompt + description),
+			),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("anthropic meal parse call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return nil, fmt.Errorf("anthropic meal parse call: no text content in response")
+	}
+
+	var out struct {
+		Items []MealItem `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return nil, fmt.Errorf("anthropic meal parse call: unmarshal structured output: %w", err)
+	}
+	return out.Items, nil
+}

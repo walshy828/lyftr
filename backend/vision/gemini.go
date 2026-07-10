@@ -77,3 +77,40 @@ func (p *geminiProvider) AnalyzeLabel(ctx context.Context, imageBase64Data, medi
 	}
 	return out, nil
 }
+
+func (p *geminiProvider) ParseMeal(ctx context.Context, description string) ([]MealItem, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gemini client: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromText(mealParsePrompt + description),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType: "application/json",
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gemini meal parse call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return nil, fmt.Errorf("gemini meal parse call: empty response text")
+	}
+
+	var out struct {
+		Items []MealItem `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return nil, fmt.Errorf("gemini meal parse call: unmarshal structured output: %w", err)
+	}
+	return out.Items, nil
+}

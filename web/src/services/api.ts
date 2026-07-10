@@ -208,6 +208,8 @@ export const foodAPI = {
   barcode: (code: string) => api.get<{ data: types.FoodSearchResult }>(`/food/barcode/${code}`).then(res => unwrap(res)),
   analyzeLabel: (imageBase64: string, mediaType: string) =>
     api.post<{ data: types.NutritionExtraction }>('/food/analyze-label', { image_base64: imageBase64, media_type: mediaType }).then(res => unwrap(res)),
+  parseMeal: (description: string) =>
+    api.post<{ data: { items: types.MealItem[] } }>('/food/parse-meal', { description }).then(res => unwrap(res)),
 }
 
 export const savedFoodsAPI = {

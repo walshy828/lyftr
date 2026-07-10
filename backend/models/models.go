@@ -228,13 +228,17 @@ type LogFoodRequest struct {
 	ServingSize string    `json:"serving_size"`
 	Barcode     string    `json:"barcode"`
 	ImageURL    string    `json:"image_url"`
-	Source      string    `json:"source" validate:"omitempty,oneof=off manual photo saved"`
+	Source      string    `json:"source" validate:"omitempty,oneof=off manual photo saved ai"`
 	LoggedAt    time.Time `json:"logged_at"`
 }
 
 type AnalyzeLabelRequest struct {
 	ImageBase64 string `json:"image_base64" validate:"required"`
 	MediaType   string `json:"media_type" validate:"required,oneof=image/jpeg image/png image/webp"`
+}
+
+type ParseMealRequest struct {
+	Description string `json:"description" validate:"required,max=1000"`
 }
 
 type SaveFoodRequest struct {

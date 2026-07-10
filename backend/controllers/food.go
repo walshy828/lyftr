@@ -653,3 +653,38 @@ func (h *Handler) AnalyzeFoodLabel(c *gin.Context) {
 	}
 	utils.OK(c, result)
 }
+
+// ParseMeal takes a free-text meal description and returns a best-effort
+// split into discrete food items with estimated nutrition, via the same
+// configured vision/AI provider as AnalyzeFoodLabel. The result is always a
+// suggestion: nothing is written to food_logs here.
+func (h *Handler) ParseMeal(c *gin.Context) {
+	var req models.ParseMealRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	if h.vision == nil {
+		utils.ServiceUnavailable(c, "smart food entry is not configured on this server")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	defer cancel()
+
+	items, err := h.vision.ParseMeal(ctx, req.Description)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			utils.ServiceUnavailable(c, "meal parsing timed out — try again or enter manually")
+			return
+		}
+		log.Printf("[food/parse-meal] vision error: %v", err)
+		utils.ServiceUnavailable(c, "could not parse that meal — try again or enter manually")
+		return
+	}
+	utils.OK(c, gin.H{"items": items})
+}

@@ -92,7 +92,7 @@ export interface FoodLog {
   serving_size?: string
   barcode?: string
   image_url?: string
-  source?: 'off' | 'saved' | 'manual' | 'photo'
+  source?: 'off' | 'saved' | 'manual' | 'photo' | 'ai'
   logged_at: string
   created_at?: string
 }
@@ -122,12 +122,26 @@ export interface FoodSearchResult {
   cholesterol?: number
   serving_size: string
   image_url?: string
-  source: 'off' | 'saved' | 'manual' | 'photo'
+  source: 'off' | 'saved' | 'manual' | 'photo' | 'ai'
 }
 
 export interface NutritionExtraction {
   name?: string
   brand?: string
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  fiber: number
+  sugar: number
+  sodium: number
+  cholesterol: number
+  serving_size?: string
+}
+
+export interface MealItem {
+  name: string
+  quantity?: string
   calories: number
   protein: number
   carbs: number
