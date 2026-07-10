@@ -73,6 +73,30 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Single in-flight refresh shared by every 401 — when a burst of parallel
+// requests all expire together, only the first triggers POST /auth/refresh
+// and the rest await the same promise (the backend also rate-limits /auth/*,
+// so a refresh stampede would get itself 429'd).
+let _refreshPromise: Promise<string> | null = null
+
+export const refreshAccessToken = (): Promise<string> => {
+  _refreshPromise ??= (async () => {
+    try {
+      const refreshToken = localStorage.getItem('refresh_token')
+      const res = await axios.post(`${resolveAPIBase()}/auth/refresh`, { refresh_token: refreshToken })
+      const newToken = res.data.data.token
+      localStorage.setItem('access_token', newToken)
+      if (res.data.data.refresh_token) {
+        localStorage.setItem('refresh_token', res.data.data.refresh_token)
+      }
+      return newToken
+    } finally {
+      _refreshPromise = null
+    }
+  })()
+  return _refreshPromise
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -84,14 +108,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry && !isAuthRequest) {
       original._retry = true
       try {
-        const refreshToken = localStorage.getItem('refresh_token')
-        const res = await axios.post(`${resolveAPIBase()}/auth/refresh`, { refresh_token: refreshToken })
-        const newToken = res.data.data.token
-        localStorage.setItem('access_token', newToken)
+        const newToken = await refreshAccessToken()
         original.headers.Authorization = `Bearer ${newToken}`
-        if (res.data.data.refresh_token) {
-          localStorage.setItem('refresh_token', res.data.data.refresh_token)
-        }
         return api(original)
       } catch {
         localStorage.removeItem('access_token')

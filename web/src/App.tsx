@@ -1,28 +1,33 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useAuthStore } from './stores/auth'
 import { useSettingsStore } from './stores/settings'
 import { hydrateActiveSessionFromServer, startActiveSessionPolling } from './stores/workoutSession'
 import Layout from './components/Layout'
-import Dashboard from './pages/Dashboard'
-import Workouts from './pages/Workouts'
-import Programs from './pages/Programs'
+// Eager: the login gate and the in-gym workout path, which must render
+// instantly with no chunk fetch (gym wifi is not to be trusted mid-set).
 import ActiveWorkout from './pages/ActiveWorkout'
 import StartWorkout from './pages/StartWorkout'
-import ExerciseDetail from './pages/ExerciseDetail'
-import AddProgram from './pages/AddProgram'
-import EditProgram from './pages/EditProgram'
-import AddWorkout from './pages/AddWorkout'
-import EditWorkout from './pages/EditWorkout'
-import WorkoutDetail from './pages/WorkoutDetail'
-import ProgramDetail from './pages/ProgramDetail'
-import Food from './pages/Food'
-import LogFood from './pages/LogFood'
-import Weight from './pages/Weight'
-import WeightDetail from './pages/WeightDetail'
-import Settings from './pages/Settings'
 import Login from './pages/Login'
-import Register from './pages/Register'
+// Everything else is route-split so heavy deps (recharts on the chart pages,
+// react-zxing/react-body-highlighter on the food/exercise flows) stay out of
+// the initial bundle.
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Workouts = lazy(() => import('./pages/Workouts'))
+const Programs = lazy(() => import('./pages/Programs'))
+const ExerciseDetail = lazy(() => import('./pages/ExerciseDetail'))
+const AddProgram = lazy(() => import('./pages/AddProgram'))
+const EditProgram = lazy(() => import('./pages/EditProgram'))
+const AddWorkout = lazy(() => import('./pages/AddWorkout'))
+const EditWorkout = lazy(() => import('./pages/EditWorkout'))
+const WorkoutDetail = lazy(() => import('./pages/WorkoutDetail'))
+const ProgramDetail = lazy(() => import('./pages/ProgramDetail'))
+const Food = lazy(() => import('./pages/Food'))
+const LogFood = lazy(() => import('./pages/LogFood'))
+const Weight = lazy(() => import('./pages/Weight'))
+const WeightDetail = lazy(() => import('./pages/WeightDetail'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Register = lazy(() => import('./pages/Register'))
 
 function App() {
   const { isAuthenticated } = useAuthStore()
@@ -40,6 +45,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <Suspense fallback={<div className="flex justify-center pt-24 text-gray-400">Loading…</div>}>
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login />} />
@@ -71,6 +77,7 @@ function App() {
           <Route path="*" element={<Navigate to="/login" />} />
         )}
       </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

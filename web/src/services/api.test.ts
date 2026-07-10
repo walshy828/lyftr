@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { apiUrl, apiErrorMessage } from './api'
 
 describe('apiUrl', () => {
@@ -36,5 +36,34 @@ describe('apiErrorMessage', () => {
   it('reports a connectivity problem when there is no response', () => {
     expect(apiErrorMessage({ request: {} }, 'fallback')).toMatch(/can't reach the server/i)
     expect(apiErrorMessage(new Error('Network Error'), 'fallback')).toMatch(/can't reach the server/i)
+  })
+})
+
+describe('refreshAccessToken', () => {
+  it('shares one in-flight refresh across concurrent 401s', async () => {
+    const { default: axios } = await import('axios')
+    const { refreshAccessToken } = await import('./api')
+    localStorage.setItem('refresh_token', 'old-refresh')
+    const post = vi.spyOn(axios, 'post').mockResolvedValue({
+      data: { data: { token: 'new-access', refresh_token: 'new-refresh' } },
+    })
+
+    const [a, b, c] = await Promise.all([
+      refreshAccessToken(), refreshAccessToken(), refreshAccessToken(),
+    ])
+
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(a).toBe('new-access')
+    expect(b).toBe('new-access')
+    expect(c).toBe('new-access')
+    expect(localStorage.getItem('access_token')).toBe('new-access')
+    expect(localStorage.getItem('refresh_token')).toBe('new-refresh')
+
+    // Once settled, the next expiry starts a fresh refresh.
+    await refreshAccessToken()
+    expect(post).toHaveBeenCalledTimes(2)
+
+    post.mockRestore()
+    localStorage.clear()
   })
 })

@@ -419,6 +419,25 @@ export async function hydrateActiveSessionFromServer() {
   }
 }
 
+// Clears this device's copy of the active session (localStorage + store)
+// WITHOUT deleting it on the server — used on logout, where the workout may
+// legitimately still be running on another device or account session. The
+// next login on this browser starts from whatever the server holds.
+export function clearLocalSession() {
+  if (_syncTimer) {
+    clearTimeout(_syncTimer)
+    _syncTimer = null
+  }
+  _lastSyncedJson = null
+  localStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem(SESSION_UPDATED_KEY)
+  localStorage.removeItem(GYM_UI_KEY)
+  useWorkoutSession.setState({
+    session: null, gymOpen: false, gymPhase: 'overview', gymExIdx: 0, gymSetIdx: 0,
+    ...CLEARED_REST,
+  })
+}
+
 // Poll cadences: 8s during an active workout roughly matches the phone
 // companion's own loop (watch action → phone PUT → here); 45s with no
 // session is only there so a workout started on the watch/phone eventually

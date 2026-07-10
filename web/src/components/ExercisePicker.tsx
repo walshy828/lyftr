@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, Search, Dumbbell, Plus } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { exerciseAPI } from '../services/api'
-import ExerciseDetailContent from './ExerciseDetailContent'
 import * as types from '../types'
+
+// Lazy: the detail view drags in recharts (history chart), and the picker is
+// reachable from the always-mounted gym overlay — loading it eagerly would
+// put the whole charting library back into the initial bundle.
+const ExerciseDetailContent = lazy(() => import('./ExerciseDetailContent'))
 import { muscleColorBordered, EQUIPMENT_LABEL } from '../utils/exerciseUtils'
 
 interface Props {
@@ -66,7 +70,9 @@ export default function ExercisePicker({ selectedIds, onSelect, onClose }: Props
 
         {/* Detail content */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          <ExerciseDetailContent exercise={detailExercise} />
+          <Suspense fallback={null}>
+            <ExerciseDetailContent exercise={detailExercise} />
+          </Suspense>
         </div>
 
         {/* Sticky add bar */}
