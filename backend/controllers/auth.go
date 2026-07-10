@@ -11,6 +11,10 @@ import (
 
 var validate = validator.New()
 
+// A valid bcrypt hash of a random throwaway string, compared against when the
+// login email doesn't exist — see the timing note in Login.
+const dummyBcryptHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+
 func (h *Handler) Register(c *gin.Context) {
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -60,6 +64,9 @@ func (h *Handler) Login(c *gin.Context) {
 
 	user, err := h.s.User.GetByEmail(req.Email)
 	if err == sql.ErrNoRows {
+		// Burn the same bcrypt cost as a real comparison so "unknown email"
+		// and "wrong password" are indistinguishable by response time.
+		utils.CheckPassword(req.Password, dummyBcryptHash)
 		utils.Unauthorized(c, "invalid email or password")
 		return
 	}

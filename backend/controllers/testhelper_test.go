@@ -50,12 +50,14 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS user_settings (
-  user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  weight_unit    TEXT    NOT NULL DEFAULT 'lbs',
-  calorie_target INTEGER NOT NULL DEFAULT 2000,
-  protein_target INTEGER NOT NULL DEFAULT 150,
-  carb_target    INTEGER NOT NULL DEFAULT 250,
-  fat_target     INTEGER NOT NULL DEFAULT 65
+  user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  weight_unit        TEXT    NOT NULL DEFAULT 'lbs',
+  calorie_target     INTEGER NOT NULL DEFAULT 2000,
+  protein_target     INTEGER NOT NULL DEFAULT 150,
+  carb_target        INTEGER NOT NULL DEFAULT 250,
+  fat_target         INTEGER NOT NULL DEFAULT 65,
+  cholesterol_target INTEGER NOT NULL DEFAULT 300,
+  sodium_target      INTEGER NOT NULL DEFAULT 2300
 );
 CREATE TABLE IF NOT EXISTS exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +77,7 @@ CREATE TABLE IF NOT EXISTS workouts (
   name TEXT NOT NULL,
   notes TEXT NOT NULL DEFAULT '',
   duration INTEGER NOT NULL DEFAULT 0,
+  program_id INTEGER REFERENCES programs(id) ON DELETE SET NULL,
   started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -140,6 +143,7 @@ CREATE TABLE IF NOT EXISTS food_logs (
   fiber        REAL    NOT NULL DEFAULT 0,
   sugar        REAL    NOT NULL DEFAULT 0,
   sodium       REAL    NOT NULL DEFAULT 0,
+  cholesterol  REAL    NOT NULL DEFAULT 0,
   servings     REAL    NOT NULL DEFAULT 1,
   serving_size TEXT    NOT NULL DEFAULT '',
   barcode      TEXT    NOT NULL DEFAULT '',
@@ -147,6 +151,12 @@ CREATE TABLE IF NOT EXISTS food_logs (
   source       TEXT    NOT NULL DEFAULT '',
   logged_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS active_sessions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  data       TEXT    NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS saved_foods (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,8 +168,12 @@ CREATE TABLE IF NOT EXISTS saved_foods (
   carbs        REAL    NOT NULL DEFAULT 0,
   fat          REAL    NOT NULL DEFAULT 0,
   fiber        REAL    NOT NULL DEFAULT 0,
+  sugar        REAL    NOT NULL DEFAULT 0,
+  sodium       REAL    NOT NULL DEFAULT 0,
+  cholesterol  REAL    NOT NULL DEFAULT 0,
   serving_size TEXT    NOT NULL DEFAULT '',
   barcode      TEXT    NOT NULL DEFAULT '',
+  image_url    TEXT    NOT NULL DEFAULT '',
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );`
 	_, err := db.DB.Exec(schema)

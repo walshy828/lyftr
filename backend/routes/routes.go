@@ -3,6 +3,7 @@ package routes
 import (
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/controllers"
@@ -23,8 +24,10 @@ func Setup(r *gin.Engine, h *controllers.Handler) {
 	// Public: "test connection" probe for the in-app server selector.
 	api.GET("/info", h.ServerInfo)
 
-	// Auth (public)
+	// Auth (public) — rate-limited per IP since these are the only endpoints
+	// where an unauthenticated caller can grind on credentials.
 	auth := api.Group("/auth")
+	auth.Use(middleware.RateLimit(10, time.Minute))
 	{
 		auth.POST("/register", h.Register)
 		auth.POST("/login", h.Login)
@@ -95,10 +98,15 @@ func Setup(r *gin.Engine, h *controllers.Handler) {
 		protected.POST("programs/:id/unshare", h.UnshareProgram)
 		protected.POST("programs/:id/copy", h.CopyProgram)
 
-		// Admin
-		protected.POST("admin/sync-exercises", h.SyncExercises)
-		protected.GET("admin/seed-status", h.ExerciseSeedStatus)
-		protected.POST("admin/reset-exercises", h.ResetExercises)
+		// Admin — additionally gated by the ADMIN_EMAILS allow-list; closed
+		// to everyone when unset (reset-exercises wipes the whole library).
+		admin := protected.Group("admin")
+		admin.Use(middleware.AdminOnly())
+		{
+			admin.POST("/sync-exercises", h.SyncExercises)
+			admin.GET("/seed-status", h.ExerciseSeedStatus)
+			admin.POST("/reset-exercises", h.ResetExercises)
+		}
 	}
 }
 

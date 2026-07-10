@@ -22,8 +22,17 @@ func Unauthorized(c *gin.Context, msg string) {
 	c.JSON(http.StatusUnauthorized, gin.H{"error": msg})
 }
 
+func Forbidden(c *gin.Context, msg string) {
+	c.JSON(http.StatusForbidden, gin.H{"error": msg})
+}
+
 func NotFound(c *gin.Context, msg string) {
 	c.JSON(http.StatusNotFound, gin.H{"error": msg})
+}
+
+func TooManyRequests(c *gin.Context, msg string) {
+	c.Header("Retry-After", "60")
+	c.JSON(http.StatusTooManyRequests, gin.H{"error": msg})
 }
 
 func InternalError(c *gin.Context) {

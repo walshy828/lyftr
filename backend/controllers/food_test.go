@@ -263,16 +263,18 @@ func TestLogFood_imageURLTooLong(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)
 
+	// image_url may carry a base64 data URI (photo import), so the cap is
+	// 10MB — see LogFood in food.go — not a URL-length limit.
 	body := map[string]any{
 		"name": "Test", "meal": "lunch",
 		"calories": 100.0, "protein": 5.0, "carbs": 10.0, "fat": 3.0,
-		"image_url": "https://" + strings.Repeat("a", 494),
+		"image_url": "data:image/jpeg;base64," + strings.Repeat("a", 10_000_001),
 	}
 	c, w := newContext(uid, http.MethodPost, "/api/v1/food", body)
 	th.LogFood(c)
 
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for image_url > 500 chars, got %d", w.Code)
+		t.Fatalf("expected 400 for image_url > 10MB, got %d", w.Code)
 	}
 }
 

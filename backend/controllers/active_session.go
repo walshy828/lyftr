@@ -8,6 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxActiveSessionBytes = 128 * 1024
+
 // GetActiveSession returns the caller's saved session blob. The store treats
 // "data" as an opaque, client-defined JSON string (e.g. an ActiveSession
 // object as serialized by the web app or Android phone companion) — the
@@ -32,6 +34,12 @@ func (h *Handler) UpsertActiveSession(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		utils.BadRequest(c, err.Error())
+		return
+	}
+	// The blob is opaque but not a dumping ground — a real session is a few
+	// KB, so anything huge is a bug or abuse, not a workout.
+	if len(body.Data) > maxActiveSessionBytes {
+		utils.BadRequest(c, "session data too large")
 		return
 	}
 	if utils.DBError(c, h.s.ActiveSession.Upsert(uid, body.Data)) {

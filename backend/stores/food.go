@@ -140,7 +140,9 @@ func scanSavedFood(row interface{ Scan(...any) error }, f *models.SavedFood) err
 }
 
 func (s *FoodStore) ListSaved(uid int64) ([]models.SavedFood, error) {
-	rows, err := s.db.Query(savedFoodSelect+` WHERE user_id = ? ORDER BY name ASC`, uid)
+	// LIMIT is a backstop, not pagination — the UI shows the full saved list,
+	// but an unbounded query over a years-old account shouldn't be possible.
+	rows, err := s.db.Query(savedFoodSelect+` WHERE user_id = ? ORDER BY name ASC LIMIT 500`, uid)
 	if err != nil {
 		return nil, err
 	}

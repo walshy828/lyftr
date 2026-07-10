@@ -26,9 +26,15 @@ func main() {
 
 	config.Load()
 	db.Connect()
-	seed.DemoUser(db.DB)
+	// Demo user/data carry a well-known password (demo@lyftr.local /
+	// password123) and must never end up on a production deployment.
+	if config.C.SeedDemo {
+		seed.DemoUser(db.DB)
+	}
 	seed.Exercises(db.DB)
-	go seed.DemoData(db.DB)
+	if config.C.SeedDemo {
+		go seed.DemoData(db.DB)
+	}
 
 	if config.C.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)

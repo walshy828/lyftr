@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -21,6 +22,17 @@ type Config struct {
 	CORSOrigin string
 	Env        string
 	Version    string
+
+	// SeedDemo controls the demo user + demo workout/food data. Defaults to
+	// on in development and off in production; ENV var SEED_DEMO=true/false
+	// overrides either way. The exercise library seed is unaffected (it's
+	// reference data, not credentials).
+	SeedDemo bool
+
+	// AdminEmails is the comma-separated allow-list (ADMIN_EMAILS) of user
+	// emails permitted to call the /admin/* endpoints. Empty means no one:
+	// the admin surface is closed unless explicitly opened.
+	AdminEmails []string
 
 	// Nutrition label photo import (optional). VisionProvider selects which
 	// of the three keys below is used; leave it unset to disable the feature.
@@ -78,9 +90,23 @@ func Load() {
 		GeminiModel:     getEnv("GEMINI_MODEL", ""),
 	}
 
+	C.SeedDemo = getEnv("SEED_DEMO", "") == "true" ||
+		(C.Env != "production" && getEnv("SEED_DEMO", "") != "false")
+	C.AdminEmails = splitList(getEnv("ADMIN_EMAILS", ""))
+
 	if C.Env == "production" && C.JWTSecret == "change-me-in-production-min-32-chars!!" {
 		log.Fatal("JWT_SECRET must be set in production")
 	}
+}
+
+func splitList(raw string) []string {
+	out := make([]string, 0)
+	for _, p := range strings.Split(raw, ",") {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {
