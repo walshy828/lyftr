@@ -419,12 +419,64 @@ export async function hydrateActiveSessionFromServer() {
   }
 }
 
+// Poll cadences: 8s during an active workout roughly matches the phone
+// companion's own loop (watch action → phone PUT → here); 45s with no
+// session is only there so a workout started on the watch/phone eventually
+// shows up in an already-open tab. A hidden tab doesn't poll at all — the
+// visibilitychange/focus listeners hydrate once on return instead.
+const ACTIVE_POLL_MS = 8000
+const IDLE_POLL_MS = 45000
+
 // Keeps this tab following watch/phone-side edits while logged in. Returns
-// a cleanup function for the caller's useEffect. 8s roughly matches the
-// phone companion's own poll cadence — watch action → phone PUT → here.
+// a cleanup function for the caller's useEffect.
 export function startActiveSessionPolling(): () => void {
-  const id = setInterval(hydrateActiveSessionFromServer, 8000)
-  return () => clearInterval(id)
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let stopped = false
+  let lastHydrate = 0
+
+  const scheduleNext = () => {
+    if (stopped || document.hidden) return
+    const delay = useWorkoutSession.getState().session ? ACTIVE_POLL_MS : IDLE_POLL_MS
+    timer = setTimeout(async () => {
+      lastHydrate = Date.now()
+      await hydrateActiveSessionFromServer()
+      scheduleNext()
+    }, delay)
+  }
+
+  const onVisible = () => {
+    if (document.hidden) {
+      // Stop polling entirely while hidden — nothing on a background tab
+      // needs fresh session data.
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      return
+    }
+    // Back in view: catch up immediately, then resume the timer chain.
+    // visibilitychange and focus both fire on tab return — the timestamp
+    // guard collapses them into one fetch.
+    if (timer) clearTimeout(timer)
+    timer = null
+    if (Date.now() - lastHydrate < 2000) {
+      scheduleNext()
+      return
+    }
+    lastHydrate = Date.now()
+    hydrateActiveSessionFromServer().finally(scheduleNext)
+  }
+
+  document.addEventListener('visibilitychange', onVisible)
+  window.addEventListener('focus', onVisible)
+  scheduleNext()
+
+  return () => {
+    stopped = true
+    if (timer) clearTimeout(timer)
+    document.removeEventListener('visibilitychange', onVisible)
+    window.removeEventListener('focus', onVisible)
+  }
 }
 
 // Best-effort: writes the weights actually logged in a finished workout back
