@@ -59,7 +59,8 @@ func (p *geminiProvider) AnalyzeLabel(ctx context.Context, imageBase64Data, medi
 			}, genai.RoleUser),
 		},
 		&genai.GenerateContentConfig{
-			ResponseMIMEType: "application/json",
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: nutritionJSONSchema(),
 		},
 	)
 	if err != nil {
@@ -94,7 +95,8 @@ func (p *geminiProvider) ParseMeal(ctx context.Context, description string) ([]M
 			}, genai.RoleUser),
 		},
 		&genai.GenerateContentConfig{
-			ResponseMIMEType: "application/json",
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: mealParseJSONSchema(),
 		},
 	)
 	if err != nil {
@@ -131,7 +133,8 @@ func (p *geminiProvider) RecommendMeals(ctx context.Context, req RecommendReques
 			}, genai.RoleUser),
 		},
 		&genai.GenerateContentConfig{
-			ResponseMIMEType: "application/json",
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: mealRecommendJSONSchema(),
 		},
 	)
 	if err != nil {
@@ -147,6 +150,12 @@ func (p *geminiProvider) RecommendMeals(ctx context.Context, req RecommendReques
 		Recommendations []MealRecommendation `json:"recommendations"`
 	}
 	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		// Gemini has been observed returning the recommendations as a bare
+		// top-level array despite the schema — accept that shape too.
+		var bare []MealRecommendation
+		if arrErr := json.Unmarshal([]byte(text), &bare); arrErr == nil {
+			return bare, nil
+		}
 		return nil, fmt.Errorf("gemini meal recommend call: unmarshal structured output: %w", err)
 	}
 	return out.Recommendations, nil

@@ -741,7 +741,10 @@ func (h *Handler) RecommendMeals(c *gin.Context) {
 
 	// Recommendations generate more output tokens than a single parsed meal,
 	// so this timeout is longer than the 20s used by the other AI endpoints.
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	// 60s: Gemini in particular has been observed taking ~30s server-side on
+	// this request, and the SDK propagates the ctx deadline upstream — a 30s
+	// budget produced upstream 504s right at the wire.
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 	defer cancel()
 
 	recs, err := h.vision.RecommendMeals(ctx, vision.RecommendRequest{
