@@ -41,6 +41,7 @@ const DEFAULT_SETTINGS: types.UserSettings = {
   user_id: 0, weight_unit: 'lbs', calorie_target: 2000,
   protein_target: 150, carb_target: 250, fat_target: 65,
   cholesterol_target: 300, sodium_target: 2300,
+  food_allergies: '', food_dislikes: '', food_likes: '',
 }
 
 // Hex colors for recharts (can't use Tailwind classes)

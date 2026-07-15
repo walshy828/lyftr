@@ -9,6 +9,7 @@ package vision
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // NutritionExtraction is the normalized shape every provider returns. The
@@ -47,6 +48,31 @@ type MealItem struct {
 	ServingSize string  `json:"serving_size,omitempty"`
 }
 
+// RecommendRequest carries everything the model needs to suggest meals. The
+// controller assembles it server-side (remaining budget = targets minus what
+// was already logged today, preferences from user_settings, recent log names)
+// so providers stay stateless.
+type RecommendRequest struct {
+	Meal              string  // "breakfast", "lunch", "dinner", or "snacks"
+	RemainingCalories float64 // clamped >= 0 by the caller
+	RemainingProtein  float64 // grams
+	RemainingCarbs    float64 // grams
+	RemainingFat      float64 // grams
+	Allergies         string  // free-text list; hard exclusions
+	Dislikes          string  // free-text list; soft avoid
+	Likes             string  // free-text list; taste signal
+	RecentFoods       []string
+}
+
+// MealRecommendation is one suggested meal. Items reuse MealItem so a
+// recommendation can be logged directly with no extra mapping — like every
+// other vision result it is a suggestion, never persisted by the provider.
+type MealRecommendation struct {
+	Title       string     `json:"title"`
+	Description string     `json:"description"` // one sentence on why it fits the remaining budget/preferences
+	Items       []MealItem `json:"items"`
+}
+
 // Provider is implemented once per vision backend (Anthropic/OpenAI/Gemini).
 type Provider interface {
 	// AnalyzeLabel takes a base64-encoded photo of a nutrition facts label
@@ -64,6 +90,12 @@ type Provider interface {
 	// rather than an error — an error is reserved for genuine
 	// provider/network/auth failures.
 	ParseMeal(ctx context.Context, description string) ([]MealItem, error)
+
+	// RecommendMeals suggests 2-3 meals sized to the user's remaining daily
+	// macro budget, honoring allergies as hard exclusions and dislikes/likes/
+	// recent foods as soft taste signals. Empty preference fields are fine —
+	// an error is reserved for genuine provider/network/auth failures.
+	RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error)
 }
 
 // Config carries the selected provider, all three providers' API keys — only
@@ -94,10 +126,10 @@ Estimate nutrition for the totals of what's described for that item, not per-100
 
 Meal description: `
 
-// mealParseJSONSchema is the JSON schema all three providers' structured
-// output requests should target for ParseMeal.
-func mealParseJSONSchema() map[string]any {
-	item := map[string]any{
+// mealItemJSONSchema is the per-item schema shared by mealParseJSONSchema and
+// mealRecommendJSONSchema — it mirrors the MealItem struct.
+func mealItemJSONSchema() map[string]any {
+	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"name":         map[string]any{"type": "string"},
@@ -115,15 +147,78 @@ func mealParseJSONSchema() map[string]any {
 		"required":             []string{"name", "calories", "protein", "carbs", "fat"},
 		"additionalProperties": false,
 	}
+}
+
+// mealParseJSONSchema is the JSON schema all three providers' structured
+// output requests should target for ParseMeal.
+func mealParseJSONSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"items": map[string]any{
 				"type":  "array",
-				"items": item,
+				"items": mealItemJSONSchema(),
 			},
 		},
 		"required":             []string{"items"},
+		"additionalProperties": false,
+	}
+}
+
+// mealRecommendPrompt builds the shared RecommendMeals prompt — one builder
+// used by all three providers so their prompts can't drift apart. Allergies
+// are stated as a hard safety constraint; dislikes/likes/recent foods are
+// soft signals; the remaining macro budget bounds each suggestion.
+func mealRecommendPrompt(req RecommendRequest) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Suggest exactly 2 or 3 realistic %s options for one person to eat today. Each recommendation needs a short title, a one-sentence description of why it fits the user's remaining nutrition budget and tastes, and the list of discrete food items it consists of (as a person would log them in a food diary).\n\n", req.Meal)
+
+	if req.RemainingCalories < 200 {
+		b.WriteString("The user has nearly or fully used up their calorie target for today — suggest light, low-calorie options rather than exceeding the budget.\n")
+	}
+	fmt.Fprintf(&b, "Remaining daily budget: approximately %.0f kcal, %.0fg protein, %.0fg carbs, %.0fg fat. Each suggestion should fit within this budget while prioritizing whichever macro has the most room left.\n", req.RemainingCalories, req.RemainingProtein, req.RemainingCarbs, req.RemainingFat)
+
+	if req.Allergies != "" {
+		fmt.Fprintf(&b, "\nCRITICAL SAFETY CONSTRAINT: the user is allergic to: %s. Never include these ingredients or foods that commonly contain them.\n", req.Allergies)
+	}
+	if req.Dislikes != "" {
+		fmt.Fprintf(&b, "Avoid these foods the user dislikes: %s.\n", req.Dislikes)
+	}
+	if req.Likes != "" {
+		fmt.Fprintf(&b, "The user enjoys: %s.\n", req.Likes)
+	}
+	if len(req.RecentFoods) > 0 {
+		fmt.Fprintf(&b, "Foods the user logged recently (use as a taste/cuisine signal, but prefer variety — don't repeat the exact same meals): %s.\n", strings.Join(req.RecentFoods, ", "))
+	}
+
+	b.WriteString("\nFor each item return: name, quantity (e.g. \"1 sandwich\" or \"12 fl oz can\"), calories, protein (grams), carbs (grams), fat (grams), fiber (grams), sugar (grams), sodium (milligrams), cholesterol (milligrams), serving_size (a short label for the amount, usually the same as quantity). Estimate nutrition for the totals of the item as described, not per-100g or per-single-unit values.")
+	return b.String()
+}
+
+// mealRecommendJSONSchema is the JSON schema all three providers' structured
+// output requests should target for RecommendMeals.
+func mealRecommendJSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"recommendations": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"title":       map[string]any{"type": "string"},
+						"description": map[string]any{"type": "string"},
+						"items": map[string]any{
+							"type":  "array",
+							"items": mealItemJSONSchema(),
+						},
+					},
+					"required":             []string{"title", "description", "items"},
+					"additionalProperties": false,
+				},
+			},
+		},
+		"required":             []string{"recommendations"},
 		"additionalProperties": false,
 	}
 }

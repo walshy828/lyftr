@@ -27,7 +27,7 @@ func (s *UserStore) GetByEmail(email string) (models.User, error) {
 	return u, err
 }
 
-const userSettingsSelect = `SELECT user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target FROM user_settings`
+const userSettingsSelect = `SELECT user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes FROM user_settings`
 
 // GetSettings returns the user's settings row, or sql.ErrNoRows if none (the
 // controller owns the default fallback).
@@ -35,7 +35,7 @@ func (s *UserStore) GetSettings(uid int64) (models.UserSettings, error) {
 	var st models.UserSettings
 	err := s.db.QueryRow(userSettingsSelect+` WHERE user_id = ?`, uid).
 		Scan(&st.UserID, &st.WeightUnit, &st.CalorieTarget, &st.ProteinTarget, &st.CarbTarget, &st.FatTarget,
-			&st.CholesterolTarget, &st.SodiumTarget)
+			&st.CholesterolTarget, &st.SodiumTarget, &st.FoodAllergies, &st.FoodDislikes, &st.FoodLikes)
 	return st, err
 }
 
@@ -51,8 +51,8 @@ func (s *UserStore) UpsertSettings(uid int64, req models.UpdateSettingsRequest) 
 	d := models.DefaultUserSettings(uid)
 	var st models.UserSettings
 	err := s.db.QueryRow(
-		`INSERT INTO user_settings (user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target)
-		 VALUES (?, COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?))
+		`INSERT INTO user_settings (user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes)
+		 VALUES (?, COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?))
 		 ON CONFLICT(user_id) DO UPDATE SET
 		   weight_unit        = COALESCE(?, user_settings.weight_unit),
 		   calorie_target     = COALESCE(?, user_settings.calorie_target),
@@ -60,8 +60,11 @@ func (s *UserStore) UpsertSettings(uid int64, req models.UpdateSettingsRequest) 
 		   carb_target        = COALESCE(?, user_settings.carb_target),
 		   fat_target         = COALESCE(?, user_settings.fat_target),
 		   cholesterol_target = COALESCE(?, user_settings.cholesterol_target),
-		   sodium_target      = COALESCE(?, user_settings.sodium_target)
-		 RETURNING user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target`,
+		   sodium_target      = COALESCE(?, user_settings.sodium_target),
+		   food_allergies     = COALESCE(?, user_settings.food_allergies),
+		   food_dislikes      = COALESCE(?, user_settings.food_dislikes),
+		   food_likes         = COALESCE(?, user_settings.food_likes)
+		 RETURNING user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes`,
 		uid,
 		req.WeightUnit, d.WeightUnit,
 		req.CalorieTarget, d.CalorieTarget,
@@ -70,10 +73,14 @@ func (s *UserStore) UpsertSettings(uid int64, req models.UpdateSettingsRequest) 
 		req.FatTarget, d.FatTarget,
 		req.CholesterolTarget, d.CholesterolTarget,
 		req.SodiumTarget, d.SodiumTarget,
+		req.FoodAllergies, d.FoodAllergies,
+		req.FoodDislikes, d.FoodDislikes,
+		req.FoodLikes, d.FoodLikes,
 		req.WeightUnit, req.CalorieTarget, req.ProteinTarget, req.CarbTarget, req.FatTarget,
 		req.CholesterolTarget, req.SodiumTarget,
+		req.FoodAllergies, req.FoodDislikes, req.FoodLikes,
 	).Scan(&st.UserID, &st.WeightUnit, &st.CalorieTarget, &st.ProteinTarget, &st.CarbTarget, &st.FatTarget,
-		&st.CholesterolTarget, &st.SodiumTarget)
+		&st.CholesterolTarget, &st.SodiumTarget, &st.FoodAllergies, &st.FoodDislikes, &st.FoodLikes)
 	if err != nil {
 		return models.UserSettings{}, err
 	}

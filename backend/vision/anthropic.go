@@ -103,3 +103,45 @@ func (p *anthropicProvider) ParseMeal(ctx context.Context, description string) (
 	}
 	return out.Items, nil
 }
+
+func (p *anthropicProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model: p.model,
+		// 2048: two-to-three recommendations with full item lists run longer
+		// than a single parsed meal (1024).
+		MaxTokens: 2048,
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortLow,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: mealRecommendJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(mealRecommendPrompt(req)),
+			),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("anthropic meal recommend call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return nil, fmt.Errorf("anthropic meal recommend call: no text content in response")
+	}
+
+	var out struct {
+		Recommendations []MealRecommendation `json:"recommendations"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return nil, fmt.Errorf("anthropic meal recommend call: unmarshal structured output: %w", err)
+	}
+	return out.Recommendations, nil
+}

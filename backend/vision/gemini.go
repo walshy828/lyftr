@@ -114,3 +114,40 @@ func (p *geminiProvider) ParseMeal(ctx context.Context, description string) ([]M
 	}
 	return out.Items, nil
 }
+
+func (p *geminiProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gemini client: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromText(mealRecommendPrompt(req)),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType: "application/json",
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gemini meal recommend call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return nil, fmt.Errorf("gemini meal recommend call: empty response text")
+	}
+
+	var out struct {
+		Recommendations []MealRecommendation `json:"recommendations"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return nil, fmt.Errorf("gemini meal recommend call: unmarshal structured output: %w", err)
+	}
+	return out.Recommendations, nil
+}

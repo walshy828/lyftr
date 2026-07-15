@@ -1021,6 +1021,12 @@ type fakeVisionProvider struct {
 	err       error
 	mealItems []vision.MealItem
 	mealErr   error
+
+	recommendations []vision.MealRecommendation
+	recommendErr    error
+	// recommendReq captures what the handler asked for, so tests can assert
+	// the remaining-budget math and preference threading.
+	recommendReq vision.RecommendRequest
 }
 
 func (f *fakeVisionProvider) AnalyzeLabel(_ context.Context, _, _ string) (vision.NutritionExtraction, error) {
@@ -1029,6 +1035,11 @@ func (f *fakeVisionProvider) AnalyzeLabel(_ context.Context, _, _ string) (visio
 
 func (f *fakeVisionProvider) ParseMeal(_ context.Context, _ string) ([]vision.MealItem, error) {
 	return f.mealItems, f.mealErr
+}
+
+func (f *fakeVisionProvider) RecommendMeals(_ context.Context, req vision.RecommendRequest) ([]vision.MealRecommendation, error) {
+	f.recommendReq = req
+	return f.recommendations, f.recommendErr
 }
 
 func TestAnalyzeFoodLabel_success(t *testing.T) {
@@ -1186,5 +1197,187 @@ func TestParseMeal_providerError(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 on provider error, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRecommendMeals_success(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{
+		recommendations: []vision.MealRecommendation{
+			{
+				Title:       "Grilled chicken bowl",
+				Description: "High protein to close your remaining protein gap.",
+				Items: []vision.MealItem{
+					{Name: "Grilled chicken breast", Quantity: "6 oz", Calories: 280, Protein: 52, Carbs: 0, Fat: 6},
+					{Name: "Brown rice", Quantity: "1 cup", Calories: 220, Protein: 5, Carbs: 45, Fat: 2},
+				},
+			},
+			{
+				Title:       "Tuna salad wrap",
+				Description: "Light on carbs, fits your remaining calories.",
+				Items: []vision.MealItem{
+					{Name: "Tuna salad wrap", Quantity: "1 wrap", Calories: 400, Protein: 30, Carbs: 35, Fat: 15},
+				},
+			},
+		},
+	})
+
+	body := map[string]any{"meal": "lunch", "date": time.Now().Format("2006-01-02")}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/recommend", body)
+	h.RecommendMeals(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].(map[string]any)
+	recs := data["recommendations"].([]any)
+	if len(recs) != 2 {
+		t.Fatalf("expected 2 recommendations, got %d", len(recs))
+	}
+	first := recs[0].(map[string]any)
+	if first["title"].(string) != "Grilled chicken bowl" {
+		t.Errorf("expected title 'Grilled chicken bowl', got %v", first["title"])
+	}
+	items := first["items"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items in first recommendation, got %d", len(items))
+	}
+	if items[0].(map[string]any)["calories"].(float64) != 280 {
+		t.Errorf("expected calories 280, got %v", items[0].(map[string]any)["calories"])
+	}
+}
+
+func TestRecommendMeals_notConfigured(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), nil)
+
+	body := map[string]any{"meal": "lunch", "date": time.Now().Format("2006-01-02")}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/recommend", body)
+	h.RecommendMeals(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when vision provider is nil, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRecommendMeals_invalidRequest(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	cases := []map[string]any{
+		{"meal": "brunch", "date": "2026-07-15"}, // not a valid meal slot
+		{"meal": "lunch", "date": "July 15"},     // not YYYY-MM-DD
+		{"meal": "lunch"},                        // missing date
+		{"date": "2026-07-15"},                   // missing meal
+	}
+	for _, body := range cases {
+		c, w := newContext(uid, http.MethodPost, "/api/v1/food/recommend", body)
+		h.RecommendMeals(c)
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("body %v: expected 422, got %d: %s", body, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestRecommendMeals_providerError(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{recommendErr: fmt.Errorf("upstream boom")})
+
+	body := map[string]any{"meal": "dinner", "date": time.Now().Format("2006-01-02")}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/recommend", body)
+	h.RecommendMeals(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 on provider error, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// The handler must pass the provider the remaining budget (targets minus
+// today's logged totals, clamped at 0) and the user's stored preferences.
+func TestRecommendMeals_budgetAndPreferencesThreading(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	fake := &fakeVisionProvider{}
+	h := NewHandler(stores.New(db.DB), fake)
+
+	// Custom targets + food preferences.
+	c, w := newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{
+		"calorie_target": 2200, "protein_target": 180, "carb_target": 200, "fat_target": 70,
+		"food_allergies": "avocado, peanuts",
+		"food_dislikes":  "mushrooms",
+		"food_likes":     "spicy food, salmon",
+	})
+	h.UpdateSettings(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("settings setup expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Log part of the day.
+	now := time.Now()
+	date := now.Format("2006-01-02")
+	insertFoodLog(t, uid, "Oatmeal", "breakfast", 300, 10, 54, 6, now)
+	insertFoodLog(t, uid, "Protein shake", "breakfast", 200, 40, 6, 4, now)
+
+	c, w = newContext(uid, http.MethodPost, "/api/v1/food/recommend", map[string]any{"meal": "lunch", "date": date})
+	h.RecommendMeals(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	req := fake.recommendReq
+	if req.Meal != "lunch" {
+		t.Errorf("meal = %q, want lunch", req.Meal)
+	}
+	if req.RemainingCalories != 1700 { // 2200 - 500
+		t.Errorf("remaining calories = %v, want 1700", req.RemainingCalories)
+	}
+	if req.RemainingProtein != 130 { // 180 - 50
+		t.Errorf("remaining protein = %v, want 130", req.RemainingProtein)
+	}
+	if req.RemainingCarbs != 140 { // 200 - 60
+		t.Errorf("remaining carbs = %v, want 140", req.RemainingCarbs)
+	}
+	if req.RemainingFat != 60 { // 70 - 10
+		t.Errorf("remaining fat = %v, want 60", req.RemainingFat)
+	}
+	if req.Allergies != "avocado, peanuts" {
+		t.Errorf("allergies = %q, want 'avocado, peanuts'", req.Allergies)
+	}
+	if req.Dislikes != "mushrooms" {
+		t.Errorf("dislikes = %q, want 'mushrooms'", req.Dislikes)
+	}
+	if req.Likes != "spicy food, salmon" {
+		t.Errorf("likes = %q, want 'spicy food, salmon'", req.Likes)
+	}
+	// Recently logged names arrive as the implicit taste signal.
+	if len(req.RecentFoods) != 2 {
+		t.Fatalf("recent foods = %v, want 2 names", req.RecentFoods)
+	}
+}
+
+// Over-target days clamp the remaining budget at 0 rather than going negative.
+func TestRecommendMeals_overBudgetClampsToZero(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	fake := &fakeVisionProvider{}
+	h := NewHandler(stores.New(db.DB), fake)
+
+	now := time.Now()
+	insertFoodLog(t, uid, "Feast", "dinner", 5000, 300, 500, 200, now)
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/recommend",
+		map[string]any{"meal": "snacks", "date": now.Format("2006-01-02")})
+	h.RecommendMeals(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	req := fake.recommendReq
+	if req.RemainingCalories != 0 || req.RemainingProtein != 0 || req.RemainingCarbs != 0 || req.RemainingFat != 0 {
+		t.Errorf("expected all remaining macros clamped to 0, got %+v", req)
 	}
 }

@@ -106,3 +106,35 @@ func (p *openAIProvider) ParseMeal(ctx context.Context, description string) ([]M
 	}
 	return out.Items, nil
 }
+
+func (p *openAIProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
+	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: p.model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(mealRecommendPrompt(req)),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+				JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:   "meal_recommend",
+					Schema: mealRecommendJSONSchema(),
+					Strict: openai.Bool(true),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("openai meal recommend call: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("openai meal recommend call: no choices in response")
+	}
+
+	var out struct {
+		Recommendations []MealRecommendation `json:"recommendations"`
+	}
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &out); err != nil {
+		return nil, fmt.Errorf("openai meal recommend call: unmarshal structured output: %w", err)
+	}
+	return out.Recommendations, nil
+}

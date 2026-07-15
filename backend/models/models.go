@@ -19,6 +19,9 @@ type UserSettings struct {
 	FatTarget         int    `json:"fat_target" db:"fat_target"`
 	CholesterolTarget int    `json:"cholesterol_target" db:"cholesterol_target"` // mg
 	SodiumTarget      int    `json:"sodium_target" db:"sodium_target"`           // mg
+	FoodAllergies     string `json:"food_allergies" db:"food_allergies"`         // free-text list, hard exclusions for the meal recommender
+	FoodDislikes      string `json:"food_dislikes" db:"food_dislikes"`           // free-text list, soft avoid
+	FoodLikes         string `json:"food_likes" db:"food_likes"`                 // free-text list, taste signal
 }
 
 // DefaultUserSettings is the single source of truth for a brand-new user's
@@ -241,6 +244,11 @@ type ParseMealRequest struct {
 	Description string `json:"description" validate:"required,max=1000"`
 }
 
+type RecommendMealsRequest struct {
+	Meal string `json:"meal" validate:"required,oneof=breakfast lunch dinner snacks"`
+	Date string `json:"date" validate:"required,datetime=2006-01-02"`
+}
+
 type SaveFoodRequest struct {
 	Name        string  `json:"name" validate:"required"`
 	Brand       string  `json:"brand"`
@@ -284,6 +292,9 @@ type UpdateSettingsRequest struct {
 	FatTarget         *int    `json:"fat_target" validate:"omitempty,gte=0"`
 	CholesterolTarget *int    `json:"cholesterol_target" validate:"omitempty,gte=0"`
 	SodiumTarget      *int    `json:"sodium_target" validate:"omitempty,gte=0"`
+	FoodAllergies     *string `json:"food_allergies" validate:"omitempty,max=500"`
+	FoodDislikes      *string `json:"food_dislikes" validate:"omitempty,max=500"`
+	FoodLikes         *string `json:"food_likes" validate:"omitempty,max=500"`
 }
 
 type Program struct {

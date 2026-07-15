@@ -14,6 +14,9 @@ export interface UserSettings {
   fat_target: number
   cholesterol_target: number
   sodium_target: number
+  food_allergies: string
+  food_dislikes: string
+  food_likes: string
   workout_layout?: 'list' | 'gym'
   // Client-only (localStorage, not persisted server-side):
   rest_enabled?: boolean        // master rest-timer on/off
@@ -151,6 +154,12 @@ export interface MealItem {
   sodium: number
   cholesterol: number
   serving_size?: string
+}
+
+export interface MealRecommendation {
+  title: string
+  description: string
+  items: MealItem[]
 }
 
 export interface SavedFood {

@@ -36,6 +36,9 @@ const DEFAULTS: types.UserSettings = {
   fat_target: 65,
   cholesterol_target: 300,
   sodium_target: 2300,
+  food_allergies: '',
+  food_dislikes: '',
+  food_likes: '',
   ...clientPrefs(),
 }
 

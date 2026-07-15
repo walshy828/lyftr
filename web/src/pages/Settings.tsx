@@ -63,6 +63,9 @@ export default function Settings() {
     fat_target: storedSettings.fat_target,
     cholesterol_target: storedSettings.cholesterol_target,
     sodium_target: storedSettings.sodium_target,
+    food_allergies: storedSettings.food_allergies,
+    food_dislikes: storedSettings.food_dislikes,
+    food_likes: storedSettings.food_likes,
   })
 
   const loadSeedStatus = useCallback(async () => {
@@ -86,6 +89,9 @@ export default function Settings() {
           fat_target: s.fat_target,
           cholesterol_target: s.cholesterol_target,
           sodium_target: s.sodium_target,
+          food_allergies: s.food_allergies,
+          food_dislikes: s.food_dislikes,
+          food_likes: s.food_likes,
         })
       } catch (err: any) {
         setError(err.message || 'Failed to load settings')
@@ -390,6 +396,53 @@ export default function Settings() {
             className="btn-primary btn-sm"
           >
             <Check className="w-3.5 h-3.5" /> {saving ? 'Saving...' : 'Save targets'}
+          </button>
+        </div>
+      </Section>
+
+      {/* Food preferences — feeds the AI meal recommender */}
+      <Section title="Food Preferences">
+        <SettingRow label="Allergies" description="Never suggested — foods you must avoid">
+          <input
+            type="text"
+            value={formData.food_allergies}
+            onChange={e => setFormData({ ...formData, food_allergies: e.target.value })}
+            placeholder="e.g. peanuts, shellfish"
+            maxLength={500}
+            className="input w-44 sm:w-56"
+          />
+        </SettingRow>
+
+        <SettingRow label="Dislikes" description="Foods to avoid in meal suggestions">
+          <input
+            type="text"
+            value={formData.food_dislikes}
+            onChange={e => setFormData({ ...formData, food_dislikes: e.target.value })}
+            placeholder="e.g. mushrooms, cilantro"
+            maxLength={500}
+            className="input w-44 sm:w-56"
+          />
+        </SettingRow>
+
+        <SettingRow label="Likes" description="Favorite foods and cuisines to lean toward">
+          <input
+            type="text"
+            value={formData.food_likes}
+            onChange={e => setFormData({ ...formData, food_likes: e.target.value })}
+            placeholder="e.g. spicy food, salmon"
+            maxLength={500}
+            className="input w-44 sm:w-56"
+          />
+        </SettingRow>
+
+        <div className="py-3 flex items-center justify-between">
+          <p className="text-xs text-tx-muted">Used by AI meal suggestions on the Nutrition page</p>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-primary btn-sm"
+          >
+            <Check className="w-3.5 h-3.5" /> {saving ? 'Saving...' : 'Save preferences'}
           </button>
         </div>
       </Section>

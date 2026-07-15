@@ -76,6 +76,13 @@ func alterMigrations() {
 	ensureColumn("user_settings", "cholesterol_target", `ALTER TABLE user_settings ADD COLUMN cholesterol_target INTEGER NOT NULL DEFAULT 300`)
 	ensureColumn("user_settings", "sodium_target", `ALTER TABLE user_settings ADD COLUMN sodium_target INTEGER NOT NULL DEFAULT 2300`)
 
+	// Food preferences for the AI meal recommender (#mealRecommend): free-text
+	// comma lists fed into the recommendation prompt. Allergies are treated as
+	// a hard exclusion, dislikes/likes as soft taste signals.
+	ensureColumn("user_settings", "food_allergies", `ALTER TABLE user_settings ADD COLUMN food_allergies TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("user_settings", "food_dislikes", `ALTER TABLE user_settings ADD COLUMN food_dislikes TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("user_settings", "food_likes", `ALTER TABLE user_settings ADD COLUMN food_likes TEXT NOT NULL DEFAULT ''`)
+
 	// Link workouts back to the program they were started from (#programSort),
 	// so program lists can be sorted by last-used date. Nullable: existing
 	// workouts and quick-start workouts have no program.

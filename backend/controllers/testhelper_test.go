@@ -57,7 +57,10 @@ CREATE TABLE IF NOT EXISTS user_settings (
   carb_target        INTEGER NOT NULL DEFAULT 250,
   fat_target         INTEGER NOT NULL DEFAULT 65,
   cholesterol_target INTEGER NOT NULL DEFAULT 300,
-  sodium_target      INTEGER NOT NULL DEFAULT 2300
+  sodium_target      INTEGER NOT NULL DEFAULT 2300,
+  food_allergies     TEXT    NOT NULL DEFAULT '',
+  food_dislikes      TEXT    NOT NULL DEFAULT '',
+  food_likes         TEXT    NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

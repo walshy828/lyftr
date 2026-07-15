@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { format, subDays, addDays } from 'date-fns'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Flame, Plus, Trash2,
-  AlertCircle, Coffee, Sun, Moon, Cookie, CalendarDays, Utensils,
+  AlertCircle, Coffee, Sun, Moon, Cookie, CalendarDays, Utensils, Sparkles,
 } from 'lucide-react'
 import IconButton from '../components/ui/IconButton'
 import SectionHeader from '../components/ui/SectionHeader'
@@ -12,6 +12,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import Loading from '../components/Loading'
+import MealRecommendations from '../components/MealRecommendations'
 import PeriodSelector from '../components/PeriodSelector'
 import { foodAPI, userAPI } from '../services/api'
 import { todayStr } from '../utils/dateUtils'
@@ -84,6 +85,7 @@ export default function Food() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const hasLoadedRef = useRef(false)
   const [showMoreNutrients, setShowMoreNutrients] = useState(false)
+  const [recommendMeal, setRecommendMeal] = useState<types.FoodLog['meal'] | null>(null)
 
   const loadDay = useCallback(async (date: string) => {
     setLoading(true)
@@ -104,6 +106,7 @@ export default function Food() {
               user_id: 0, weight_unit: 'lbs' as const,
               calorie_target: 2000, protein_target: 150, carb_target: 250, fat_target: 65,
               cholesterol_target: 300, sodium_target: 2300,
+              food_allergies: '', food_dislikes: '', food_likes: '',
             })),
       ])
       setLogs(logData || [])
@@ -342,6 +345,12 @@ export default function Food() {
                     )}
                   </div>
                   <IconButton
+                    icon={Sparkles}
+                    variant="brand"
+                    label={`Suggest ${MEAL_LABELS[meal]} ideas`}
+                    onClick={() => setRecommendMeal(meal)}
+                  />
+                  <IconButton
                     icon={Plus}
                     variant="solid"
                     label={`Add to ${MEAL_LABELS[meal]}`}
@@ -500,6 +509,18 @@ export default function Food() {
         </div>
       </div>
 
+      {recommendMeal && (
+        <MealRecommendations
+          meal={recommendMeal}
+          mealLabel={MEAL_LABELS[recommendMeal]}
+          date={selectedDate}
+          onClose={() => setRecommendMeal(null)}
+          onLogged={() => {
+            setRecommendMeal(null)
+            loadDay(selectedDate)
+          }}
+        />
+      )}
     </div>
   )
 }

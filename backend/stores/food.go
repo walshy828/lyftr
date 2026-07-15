@@ -107,6 +107,31 @@ func (s *FoodStore) DailyMacros(uid int64, date string) (models.DailyStats, erro
 	return stats, err
 }
 
+// RecentFoodNames returns up to limit distinct food names the user logged,
+// most recently logged first — used as an implicit taste signal for the meal
+// recommender.
+func (s *FoodStore) RecentFoodNames(uid int64, limit int) ([]string, error) {
+	rows, err := s.db.Query(
+		`SELECT name FROM food_logs WHERE user_id = ?
+		 GROUP BY name ORDER BY MAX(logged_at) DESC LIMIT ?`,
+		uid, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	names := []string{}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, rows.Err()
+}
+
 func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, error) {
 	rows, err := s.db.Query(
 		`SELECT substr(logged_at, 1, 10) as d,

@@ -17,6 +17,7 @@ import (
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
 	"github.com/Cawlumm/lyftr-backend/utils"
+	"github.com/Cawlumm/lyftr-backend/vision"
 	"github.com/gin-gonic/gin"
 )
 
@@ -687,4 +688,81 @@ func (h *Handler) ParseMeal(c *gin.Context) {
 		return
 	}
 	utils.OK(c, gin.H{"items": items})
+}
+
+// recommendRecentFoodLimit caps how many recently-logged food names are fed
+// into the recommendation prompt as an implicit taste signal.
+const recommendRecentFoodLimit = 25
+
+// RecommendMeals suggests 2-3 meals for the requested meal slot, sized to the
+// user's remaining daily macro budget (targets minus what's already logged on
+// the requested date) and honoring the food preferences in user_settings.
+// Like the other vision endpoints the result is always a suggestion: nothing
+// is written to food_logs here.
+func (h *Handler) RecommendMeals(c *gin.Context) {
+	uid := middleware.UserID(c)
+	var req models.RecommendMealsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	if h.vision == nil {
+		utils.ServiceUnavailable(c, "meal recommendations are not configured on this server")
+		return
+	}
+
+	settings, err := h.s.User.GetSettings(uid)
+	if err == sql.ErrNoRows {
+		settings = models.DefaultUserSettings(uid)
+	} else if utils.DBError(c, err) {
+		return
+	}
+	stats, err := h.s.Food.DailyMacros(uid, req.Date)
+	if utils.DBError(c, err) {
+		return
+	}
+	recent, err := h.s.Food.RecentFoodNames(uid, recommendRecentFoodLimit)
+	if utils.DBError(c, err) {
+		return
+	}
+
+	// Remaining budget clamps at 0 — the prompt tells the model to go light
+	// when the day's target is already spent, not to suggest negative food.
+	remaining := func(target int, consumed float64) float64 {
+		if r := float64(target) - consumed; r > 0 {
+			return r
+		}
+		return 0
+	}
+
+	// Recommendations generate more output tokens than a single parsed meal,
+	// so this timeout is longer than the 20s used by the other AI endpoints.
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	recs, err := h.vision.RecommendMeals(ctx, vision.RecommendRequest{
+		Meal:              req.Meal,
+		RemainingCalories: remaining(settings.CalorieTarget, stats.TotalCalories),
+		RemainingProtein:  remaining(settings.ProteinTarget, stats.TotalProtein),
+		RemainingCarbs:    remaining(settings.CarbTarget, stats.TotalCarbs),
+		RemainingFat:      remaining(settings.FatTarget, stats.TotalFat),
+		Allergies:         settings.FoodAllergies,
+		Dislikes:          settings.FoodDislikes,
+		Likes:             settings.FoodLikes,
+		RecentFoods:       recent,
+	})
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			utils.ServiceUnavailable(c, "meal recommendations timed out — try again")
+			return
+		}
+		log.Printf("[food/recommend] vision error: %v", err)
+		utils.ServiceUnavailable(c, "could not generate recommendations — try again")
+		return
+	}
+	utils.OK(c, gin.H{"recommendations": recs})
 }

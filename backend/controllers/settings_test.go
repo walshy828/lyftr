@@ -128,6 +128,45 @@ func TestUpdateSettings_rejectsInvalid(t *testing.T) {
 	}
 }
 
+// Food preferences persist and survive a later partial update of other fields.
+func TestUpdateSettings_foodPreferences(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	c, w := newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{
+		"food_allergies": "avocado", "food_dislikes": "cilantro", "food_likes": "sushi",
+	})
+	th.UpdateSettings(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	d := settingsData(t, w)
+	if d["food_allergies"] != "avocado" || d["food_dislikes"] != "cilantro" || d["food_likes"] != "sushi" {
+		t.Fatalf("preferences not persisted: %v", d)
+	}
+	// Untouched targets seeded with defaults, not zeroed.
+	assertNum(t, d, "calorie_target", 2000)
+
+	// A partial update of another field leaves the preferences intact...
+	c, w = newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"weight_unit": "kg"})
+	th.UpdateSettings(c)
+	d = settingsData(t, w)
+	if d["food_allergies"] != "avocado" {
+		t.Fatalf("food_allergies = %v, want avocado (preserved)", d["food_allergies"])
+	}
+
+	// ...and an explicit empty string clears a preference.
+	c, w = newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"food_dislikes": ""})
+	th.UpdateSettings(c)
+	d = settingsData(t, w)
+	if d["food_dislikes"] != "" {
+		t.Fatalf("food_dislikes = %v, want cleared", d["food_dislikes"])
+	}
+	if d["food_allergies"] != "avocado" {
+		t.Fatalf("food_allergies = %v, want avocado (preserved)", d["food_allergies"])
+	}
+}
+
 // An explicit 0 is a real value (the pointer distinguishes it from "absent"),
 // so it must be stored while other omitted fields keep their values.
 func TestUpdateSettings_explicitZeroRespected(t *testing.T) {
