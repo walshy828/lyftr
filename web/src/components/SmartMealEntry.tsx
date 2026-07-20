@@ -34,6 +34,25 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
 
+  // On mobile, `position: fixed` sizes against the layout viewport, not the
+  // visual one — so when the keyboard opens, the browser doesn't shrink this
+  // container and the footer button ends up hidden behind the keyboard.
+  // Track the visual viewport directly so the modal (and its flex children)
+  // resize to the actually-visible area as the keyboard opens/closes.
+  const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => setViewport({ height: vv.height, top: vv.offsetTop })
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [])
+
   const toggleListening = () => {
     if (!SpeechRecognitionCtor) return
     if (listening) {
@@ -84,8 +103,11 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-surface-base flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-surface-border">
+    <div
+      className="fixed inset-x-0 top-0 bottom-0 z-50 bg-surface-base flex flex-col"
+      style={viewport ? { top: viewport.top, height: viewport.height, bottom: 'auto' } : undefined}
+    >
+      <div className="flex items-center justify-between p-3 border-b border-surface-border flex-shrink-0">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-brand-500" />
           <p className="text-sm font-semibold text-tx-primary">Describe your meal</p>
@@ -99,8 +121,8 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
-        <div className="relative flex-1 min-h-[8rem]">
+      <div className="flex-1 flex flex-col p-3 gap-2 overflow-y-auto min-h-0">
+        <div className="relative flex-1 min-h-[4.5rem]">
           <textarea
             ref={textareaRef}
             value={description}
@@ -113,7 +135,7 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
             }}
             placeholder={EXAMPLE}
             enterKeyHint="send"
-            rows={6}
+            rows={4}
             maxLength={1000}
             className={`input h-full w-full resize-none text-base ${SpeechRecognitionCtor ? 'pr-12' : ''}`}
           />
@@ -128,11 +150,13 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
             />
           )}
         </div>
-        <p className="text-xs text-tx-muted">
-          {listening
-            ? 'Listening… speak your meal, then tap the mic again.'
-            : 'Describe everything you ate and roughly how much — Lyftr will split it into items you can review before logging.'}
-        </p>
+        {(listening || !description.trim()) && (
+          <p className="text-xs text-tx-muted flex-shrink-0">
+            {listening
+              ? 'Listening… speak your meal, then tap the mic again.'
+              : 'Describe everything you ate and roughly how much — Lyftr will split it into items you can review before logging.'}
+          </p>
+        )}
 
         {error && (
           <div className="flex items-center gap-2 rounded-xl border border-error-500/20 bg-error-500/10 px-3.5 py-3 text-xs text-error-400">
@@ -142,7 +166,7 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
         )}
       </div>
 
-      <div className="p-4 border-t border-surface-border safe-area-bottom">
+      <div className="p-3 border-t border-surface-border safe-area-bottom flex-shrink-0">
         <button
           onClick={submit}
           disabled={!description.trim() || parsing}
