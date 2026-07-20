@@ -244,6 +244,12 @@ type ParseMealRequest struct {
 	Description string `json:"description" validate:"required,max=1000"`
 }
 
+type AnalyzeMealPhotoRequest struct {
+	ImageBase64 string `json:"image_base64" validate:"required"`
+	MediaType   string `json:"media_type" validate:"required,oneof=image/jpeg image/png image/webp"`
+	Description string `json:"description" validate:"omitempty,max=1000"`
+}
+
 type RecommendMealsRequest struct {
 	Meal string `json:"meal" validate:"required,oneof=breakfast lunch dinner snacks"`
 	Date string `json:"date" validate:"required,datetime=2006-01-02"`

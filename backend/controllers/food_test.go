@@ -6,13 +6,18 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/db"
+	"github.com/Cawlumm/lyftr-backend/storage"
 	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/Cawlumm/lyftr-backend/vision"
+	"github.com/gin-gonic/gin"
 )
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -1027,6 +1032,12 @@ type fakeVisionProvider struct {
 	// recommendReq captures what the handler asked for, so tests can assert
 	// the remaining-budget math and preference threading.
 	recommendReq vision.RecommendRequest
+
+	mealPhotoResult vision.MealPhotoAnalysis
+	mealPhotoErr    error
+	// mealPhotoDescription captures the description the handler passed
+	// through, so tests can assert text is threaded alongside the photo.
+	mealPhotoDescription string
 }
 
 func (f *fakeVisionProvider) AnalyzeLabel(_ context.Context, _, _ string) (vision.NutritionExtraction, error) {
@@ -1040,6 +1051,11 @@ func (f *fakeVisionProvider) ParseMeal(_ context.Context, _ string) ([]vision.Me
 func (f *fakeVisionProvider) RecommendMeals(_ context.Context, req vision.RecommendRequest) ([]vision.MealRecommendation, error) {
 	f.recommendReq = req
 	return f.recommendations, f.recommendErr
+}
+
+func (f *fakeVisionProvider) AnalyzeMealPhoto(_ context.Context, _, _, description string) (vision.MealPhotoAnalysis, error) {
+	f.mealPhotoDescription = description
+	return f.mealPhotoResult, f.mealPhotoErr
 }
 
 func TestAnalyzeFoodLabel_success(t *testing.T) {
@@ -1183,6 +1199,200 @@ func TestParseMeal_missingDescription(t *testing.T) {
 
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected 422 for empty description, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ─── AnalyzeMealPhoto / ServeMealPhoto ─────────────────────────────────────
+
+// withTempMealPhotoDir points config.C.MealPhotoDir at a fresh t.TempDir()
+// for the duration of the test and restores the previous config afterward.
+func withTempMealPhotoDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	orig := config.C
+	config.C = &config.Config{MealPhotoDir: dir}
+	t.Cleanup(func() { config.C = orig })
+	return dir
+}
+
+func TestAnalyzeMealPhoto_success(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	dir := withTempMealPhotoDir(t)
+	fake := &fakeVisionProvider{
+		mealPhotoResult: vision.MealPhotoAnalysis{
+			Items: []vision.MealPhotoItem{
+				{Name: "Grilled chicken breast", Quantity: "6 oz", Calories: 280, Protein: 52, Carbs: 0, Fat: 6, Confidence: "high", PortionReasoning: "roughly palm-sized relative to the plate"},
+			},
+			Assessment: "High protein, low carb — well balanced for a post-workout meal.",
+		},
+	}
+	h := NewHandler(stores.New(db.DB), fake)
+
+	body := map[string]any{"image_base64": "Zm9vZA==", "media_type": "image/jpeg", "description": "grilled chicken with rice"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-meal-photo", body)
+	h.AnalyzeMealPhoto(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if fake.mealPhotoDescription != "grilled chicken with rice" {
+		t.Errorf("expected description threaded to provider, got %q", fake.mealPhotoDescription)
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].(map[string]any)
+	items := data["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	first := items[0].(map[string]any)
+	if first["confidence"].(string) != "high" {
+		t.Errorf("expected confidence high, got %v", first["confidence"])
+	}
+	if data["assessment"].(string) == "" {
+		t.Errorf("expected non-empty assessment")
+	}
+	imageURL, _ := data["image_url"].(string)
+	wantPrefix := fmt.Sprintf("/api/v1/food/photos/%d/", uid)
+	if !strings.HasPrefix(imageURL, wantPrefix) {
+		t.Fatalf("expected image_url to start with %q, got %q", wantPrefix, imageURL)
+	}
+
+	relPath := strings.TrimPrefix(imageURL, "/api/v1/food/photos/")
+	if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
+		t.Errorf("expected persisted photo file at %s: %v", filepath.Join(dir, relPath), err)
+	}
+}
+
+func TestAnalyzeMealPhoto_notConfigured(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	withTempMealPhotoDir(t)
+	h := NewHandler(stores.New(db.DB), nil)
+
+	body := map[string]any{"image_base64": "Zm9vZA==", "media_type": "image/jpeg"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-meal-photo", body)
+	h.AnalyzeMealPhoto(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when vision provider is nil, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyzeMealPhoto_oversizedImage(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	withTempMealPhotoDir(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	body := map[string]any{"image_base64": strings.Repeat("a", maxLabelImageBytes+1), "media_type": "image/jpeg"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-meal-photo", body)
+	h.AnalyzeMealPhoto(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized image, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyzeMealPhoto_missingImage(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	withTempMealPhotoDir(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	body := map[string]any{"image_base64": "", "media_type": "image/jpeg"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-meal-photo", body)
+	h.AnalyzeMealPhoto(c)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for missing image, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyzeMealPhoto_providerError(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	dir := withTempMealPhotoDir(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{mealPhotoErr: fmt.Errorf("upstream boom")})
+
+	body := map[string]any{"image_base64": "Zm9vZA==", "media_type": "image/jpeg"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/analyze-meal-photo", body)
+	h.AnalyzeMealPhoto(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 on provider error, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// A failed vision call must not leave an orphaned file behind.
+	entries, err := os.ReadDir(filepath.Join(dir, fmt.Sprintf("%d", uid)))
+	if err == nil && len(entries) != 0 {
+		t.Errorf("expected no photo files written on provider error, found %d", len(entries))
+	}
+}
+
+func TestServeMealPhoto_ownerOnly(t *testing.T) {
+	setupTestDB(t)
+	uidA := createTestUser(t)
+	uidB := otherUser(t)
+	dir := withTempMealPhotoDir(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	relPath, err := storage.SavePhoto(dir, uidA, []byte("fake-jpeg-bytes"))
+	if err != nil {
+		t.Fatalf("failed to seed photo file: %v", err)
+	}
+	filename := filepath.Base(relPath)
+
+	// Owner can fetch.
+	c, w := newContext(uidA, http.MethodGet, "/api/v1/food/photos/"+fmt.Sprintf("%d", uidA)+"/"+filename, nil)
+	c.Params = gin.Params{{Key: "userID", Value: fmt.Sprintf("%d", uidA)}, {Key: "filename", Value: filename}}
+	h.ServeMealPhoto(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for owner, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Different user gets 404, not the file.
+	c2, w2 := newContext(uidB, http.MethodGet, "/api/v1/food/photos/"+fmt.Sprintf("%d", uidA)+"/"+filename, nil)
+	c2.Params = gin.Params{{Key: "userID", Value: fmt.Sprintf("%d", uidA)}, {Key: "filename", Value: filename}}
+	h.ServeMealPhoto(c2)
+	if w2.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-owner, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestDeleteFoodLog_removesPersistedPhoto(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	dir := withTempMealPhotoDir(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	relPath, err := storage.SavePhoto(dir, uid, []byte("fake-jpeg-bytes"))
+	if err != nil {
+		t.Fatalf("failed to seed photo file: %v", err)
+	}
+	imageURL := "/api/v1/food/photos/" + relPath
+
+	body := map[string]any{
+		"name": "Grilled chicken", "meal": "lunch", "calories": 280, "protein": 52, "carbs": 0, "fat": 6,
+		"source": "photo", "image_url": imageURL,
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food", body)
+	h.LogFood(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 logging food, got %d: %s", w.Code, w.Body.String())
+	}
+	created := decodeResponse(t, w)["data"].(map[string]any)
+	lid := int64(created["id"].(float64))
+
+	c2, w2 := newContext(uid, http.MethodDelete, fmt.Sprintf("/api/v1/food/%d", lid), nil)
+	setParam(c2, "id", fmt.Sprintf("%d", lid))
+	h.DeleteFoodLog(c2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200 deleting food log, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, relPath)); !os.IsNotExist(err) {
+		t.Errorf("expected persisted photo to be removed after delete, stat err = %v", err)
 	}
 }
 

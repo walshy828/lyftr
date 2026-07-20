@@ -3,19 +3,23 @@ package controllers
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
+	"github.com/Cawlumm/lyftr-backend/storage"
 	"github.com/Cawlumm/lyftr-backend/utils"
 	"github.com/Cawlumm/lyftr-backend/vision"
 	"github.com/gin-gonic/gin"
@@ -155,12 +159,28 @@ func (h *Handler) UpdateFoodLog(c *gin.Context) {
 	utils.OK(c, f)
 }
 
+// mealPhotoURLPrefix identifies a FoodLog.ImageURL that points at a locally
+// persisted meal photo (served by ServeMealPhoto) rather than an external
+// URL (e.g. Open Food Facts), so DeleteFoodLog knows when it also needs to
+// remove a file from disk.
+const mealPhotoURLPrefix = "/api/v1/food/photos/"
+
 func (h *Handler) DeleteFoodLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		utils.BadRequest(c, "invalid id")
 		return
+	}
+
+	// Look up the entry first so a locally-stored meal photo can be cleaned
+	// up from disk — best-effort, since a self-hosted single-file-DB app
+	// shouldn't fail the delete over an orphaned file.
+	f, err := h.s.Food.Get(uid, lid)
+	if err != nil && err != sql.ErrNoRows {
+		if utils.DBError(c, err) {
+			return
+		}
 	}
 
 	n, err := h.s.Food.Delete(uid, lid)
@@ -171,6 +191,14 @@ func (h *Handler) DeleteFoodLog(c *gin.Context) {
 		utils.NotFound(c, "log entry not found")
 		return
 	}
+
+	if strings.HasPrefix(f.ImageURL, mealPhotoURLPrefix) {
+		relPath := strings.TrimPrefix(f.ImageURL, mealPhotoURLPrefix) // "{userID}/{filename}"
+		if err := storage.DeletePhoto(config.C.MealPhotoDir, relPath); err != nil {
+			log.Printf("[food/:id delete] photo cleanup error: %v", err)
+		}
+	}
+
 	utils.OK(c, gin.H{"deleted": true})
 }
 
@@ -688,6 +716,91 @@ func (h *Handler) ParseMeal(c *gin.Context) {
 		return
 	}
 	utils.OK(c, gin.H{"items": items})
+}
+
+// AnalyzeMealPhoto takes a photo of a meal (plus an optional free-text
+// description) and returns a best-effort breakdown of discrete food items
+// with portion/nutrition estimates, confidence, and an overall assessment,
+// via the same configured vision/AI provider as ParseMeal and
+// AnalyzeFoodLabel. Unlike those two, on success the photo is persisted to
+// disk (see backend/storage) and the response's image_url can be attached to
+// the FoodLog the user ultimately creates from these items.
+func (h *Handler) AnalyzeMealPhoto(c *gin.Context) {
+	uid := middleware.UserID(c)
+	var req models.AnalyzeMealPhotoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	if len(req.ImageBase64) > maxLabelImageBytes {
+		utils.BadRequest(c, "image too large — please retake at a lower resolution")
+		return
+	}
+	if h.vision == nil {
+		utils.ServiceUnavailable(c, "photo meal analysis is not configured on this server")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	defer cancel()
+
+	result, err := h.vision.AnalyzeMealPhoto(ctx, req.ImageBase64, req.MediaType, req.Description)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			utils.ServiceUnavailable(c, "meal photo analysis timed out — try again or enter manually")
+			return
+		}
+		log.Printf("[food/analyze-meal-photo] vision error: %v", err)
+		utils.ServiceUnavailable(c, "could not analyze that photo — try again or enter manually")
+		return
+	}
+
+	// Persist only after a successful vision call, so a rejected/unreadable
+	// photo never leaves an orphaned file on disk.
+	imgBytes, err := base64.StdEncoding.DecodeString(req.ImageBase64)
+	if err != nil {
+		utils.BadRequest(c, "invalid image data")
+		return
+	}
+	relPath, err := storage.SavePhoto(config.C.MealPhotoDir, uid, imgBytes)
+	if err != nil {
+		log.Printf("[food/analyze-meal-photo] photo save error: %v", err)
+		utils.ServiceUnavailable(c, "could not save that photo — try again")
+		return
+	}
+
+	utils.OK(c, gin.H{
+		"items":      result.Items,
+		"assessment": result.Assessment,
+		"image_url":  mealPhotoURLPrefix + relPath,
+	})
+}
+
+// ServeMealPhoto serves back a meal photo persisted by AnalyzeMealPhoto.
+// Only the owning user may fetch it; a mismatch returns 404 (not 403) so as
+// not to confirm the photo exists for another user's id.
+func (h *Handler) ServeMealPhoto(c *gin.Context) {
+	uid := middleware.UserID(c)
+	pathUID, err := strconv.ParseInt(c.Param("userID"), 10, 64)
+	if err != nil || pathUID != uid {
+		utils.NotFound(c, "photo not found")
+		return
+	}
+
+	absPath, err := storage.AbsPath(config.C.MealPhotoDir, pathUID, c.Param("filename"))
+	if err != nil {
+		utils.NotFound(c, "photo not found")
+		return
+	}
+	if _, err := os.Stat(absPath); err != nil {
+		utils.NotFound(c, "photo not found")
+		return
+	}
+	c.File(absPath)
 }
 
 // recommendRecentFoodLimit caps how many recently-logged food names are fed

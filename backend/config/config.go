@@ -45,6 +45,12 @@ type Config struct {
 	AnthropicModel  string
 	OpenAIModel     string
 	GeminiModel     string
+
+	// MealPhotoDir is where persisted meal photos (from AnalyzeMealPhoto) are
+	// stored on disk, one subdirectory per user. Defaults to a subdirectory
+	// of the sqlite data dir so it rides the same docker-compose volume with
+	// no extra mount required.
+	MealPhotoDir string
 }
 
 var C *Config
@@ -88,6 +94,8 @@ func Load() {
 		AnthropicModel:  getEnv("ANTHROPIC_MODEL", ""),
 		OpenAIModel:     getEnv("OPENAI_MODEL", ""),
 		GeminiModel:     getEnv("GEMINI_MODEL", ""),
+
+		MealPhotoDir: getEnv("MEAL_PHOTO_DIR", "data/meal-photos"),
 	}
 
 	C.SeedDemo = getEnv("SEED_DEMO", "") == "true" ||

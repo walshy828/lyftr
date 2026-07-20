@@ -73,6 +73,33 @@ type MealRecommendation struct {
 	Items       []MealItem `json:"items"`
 }
 
+// MealPhotoItem is one food item identified in a meal photo, extending
+// MealItem with the per-item reasoning the photo-review UI surfaces to the
+// user so they can judge how much to trust the estimate.
+type MealPhotoItem struct {
+	Name             string  `json:"name"`
+	Quantity         string  `json:"quantity,omitempty"`
+	Calories         float64 `json:"calories"`
+	Protein          float64 `json:"protein"`
+	Carbs            float64 `json:"carbs"`
+	Fat              float64 `json:"fat"`
+	Fiber            float64 `json:"fiber"`
+	Sugar            float64 `json:"sugar"`
+	Sodium           float64 `json:"sodium"`
+	Cholesterol      float64 `json:"cholesterol"`
+	ServingSize      string  `json:"serving_size,omitempty"`
+	Confidence       string  `json:"confidence,omitempty"`        // "high", "medium", or "low"
+	PortionReasoning string  `json:"portion_reasoning,omitempty"` // how the portion size was estimated, e.g. relative to plate/utensils
+}
+
+// MealPhotoAnalysis is the full result of analyzing a meal photo (plus
+// optional accompanying text) — like every other vision result it is a
+// suggestion, never persisted directly by the provider.
+type MealPhotoAnalysis struct {
+	Items      []MealPhotoItem `json:"items"`
+	Assessment string          `json:"assessment,omitempty"` // one or two sentences of overall nutritional commentary
+}
+
 // Provider is implemented once per vision backend (Anthropic/OpenAI/Gemini).
 type Provider interface {
 	// AnalyzeLabel takes a base64-encoded photo of a nutrition facts label
@@ -96,6 +123,17 @@ type Provider interface {
 	// recent foods as soft taste signals. Empty preference fields are fine —
 	// an error is reserved for genuine provider/network/auth failures.
 	RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error)
+
+	// AnalyzeMealPhoto takes a base64-encoded photo of a meal (imageBase64,
+	// no data: URI prefix), its MIME type, and an optional free-text
+	// description that supplements/clarifies what's in the photo, and
+	// returns a best-effort breakdown of discrete food items with portion
+	// and nutrition estimates, per-item confidence/reasoning, and an overall
+	// assessment. Implementations should tolerate a photo with no
+	// recognizable food by returning an empty items slice rather than an
+	// error — an error is reserved for genuine provider/network/auth
+	// failures.
+	AnalyzeMealPhoto(ctx context.Context, imageBase64, mediaType, description string) (MealPhotoAnalysis, error)
 }
 
 // Config carries the selected provider, all three providers' API keys — only
@@ -125,6 +163,73 @@ const mealParsePrompt = `Split the following free-text meal description into the
 Estimate nutrition for the totals of what's described for that item, not per-100g or per-single-unit values. Only include items for food or drink actually mentioned — never invent items that weren't described. If the description contains no recognizable food, return an empty items array.
 
 Meal description: `
+
+// mealPhotoAnalysisPrompt is shared across all three providers for meal
+// photo analysis.
+const mealPhotoAnalysisPrompt = `Look at this photo of a meal and identify each discrete food item a person would log separately in a food diary — e.g. combine a sandwich's visible ingredients into one "sandwich" item, but keep a separate drink or side as its own item. For each item estimate its portion size from visual cues (relative to the plate, utensils, or other objects in frame) and return: name, quantity (the estimated amount, e.g. "1 sandwich" or "12 fl oz can"), calories, protein (grams), carbs (grams), fat (grams), fiber (grams), sugar (grams), sodium (milligrams), cholesterol (milligrams), serving_size (a short label for the amount, usually the same as quantity), confidence ("high", "medium", or "low" — how sure you are about the identification and portion estimate), and portion_reasoning (one short sentence on how you estimated the portion size, e.g. "roughly half the 10-inch plate").
+
+If a text description is also provided, use it to confirm or adjust identifications and portions — the photo is authoritative for what's visible, but the text can clarify ambiguous items or add ones not clearly visible.
+
+Also return a top-level assessment: one or two sentences of overall nutritional commentary on the meal as a whole (e.g. macro balance, anything notably high or low).
+
+Only include items for food or drink actually visible or described — never invent items. If no recognizable food is visible, return an empty items array.`
+
+// mealPhotoDescriptionPrefix precedes any accompanying free-text description
+// appended to mealPhotoAnalysisPrompt.
+const mealPhotoDescriptionPrefix = "\n\nAccompanying description from the user: "
+
+// mealPhotoAnalysisPromptWithDescription builds the full prompt for
+// AnalyzeMealPhoto, appending the optional user-supplied description (if
+// any) in a consistent way across all three providers.
+func mealPhotoAnalysisPromptWithDescription(description string) string {
+	if description == "" {
+		return mealPhotoAnalysisPrompt
+	}
+	return mealPhotoAnalysisPrompt + mealPhotoDescriptionPrefix + description
+}
+
+// mealPhotoItemJSONSchema is the per-item schema for AnalyzeMealPhoto. Kept
+// as its own explicit flat field list (rather than merging/embedding
+// mealItemJSONSchema()) so schema drift is caught at a glance in review.
+func mealPhotoItemJSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":              map[string]any{"type": "string"},
+			"quantity":          map[string]any{"type": "string"},
+			"calories":          map[string]any{"type": "number"},
+			"protein":           map[string]any{"type": "number"},
+			"carbs":             map[string]any{"type": "number"},
+			"fat":               map[string]any{"type": "number"},
+			"fiber":             map[string]any{"type": "number"},
+			"sugar":             map[string]any{"type": "number"},
+			"sodium":            map[string]any{"type": "number"},
+			"cholesterol":       map[string]any{"type": "number"},
+			"serving_size":      map[string]any{"type": "string"},
+			"confidence":        map[string]any{"type": "string"},
+			"portion_reasoning": map[string]any{"type": "string"},
+		},
+		"required":             []string{"name", "calories", "protein", "carbs", "fat"},
+		"additionalProperties": false,
+	}
+}
+
+// mealPhotoAnalysisJSONSchema is the JSON schema all three providers'
+// structured output requests should target for AnalyzeMealPhoto.
+func mealPhotoAnalysisJSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"items": map[string]any{
+				"type":  "array",
+				"items": mealPhotoItemJSONSchema(),
+			},
+			"assessment": map[string]any{"type": "string"},
+		},
+		"required":             []string{"items"},
+		"additionalProperties": false,
+	}
+}
 
 // mealItemJSONSchema is the per-item schema shared by mealParseJSONSchema and
 // mealRecommendJSONSchema — it mirrors the MealItem struct.

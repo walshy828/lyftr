@@ -117,6 +117,48 @@ func (p *geminiProvider) ParseMeal(ctx context.Context, description string) ([]M
 	return out.Items, nil
 }
 
+func (p *geminiProvider) AnalyzeMealPhoto(ctx context.Context, imageBase64Data, mediaType, description string) (MealPhotoAnalysis, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return MealPhotoAnalysis{}, fmt.Errorf("gemini client: %w", err)
+	}
+
+	imgBytes, err := base64.StdEncoding.DecodeString(imageBase64Data)
+	if err != nil {
+		return MealPhotoAnalysis{}, fmt.Errorf("gemini meal photo call: decode image: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromBytes(imgBytes, mediaType),
+				genai.NewPartFromText(mealPhotoAnalysisPromptWithDescription(description)),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: mealPhotoAnalysisJSONSchema(),
+		},
+	)
+	if err != nil {
+		return MealPhotoAnalysis{}, fmt.Errorf("gemini meal photo call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return MealPhotoAnalysis{}, fmt.Errorf("gemini meal photo call: empty response text")
+	}
+
+	var out MealPhotoAnalysis
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return MealPhotoAnalysis{}, fmt.Errorf("gemini meal photo call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}
+
 func (p *geminiProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  p.apiKey,

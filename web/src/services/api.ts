@@ -210,6 +210,10 @@ export const foodAPI = {
     api.post<{ data: types.NutritionExtraction }>('/food/analyze-label', { image_base64: imageBase64, media_type: mediaType }).then(res => unwrap(res)),
   parseMeal: (description: string) =>
     api.post<{ data: { items: types.MealItem[] } }>('/food/parse-meal', { description }).then(res => unwrap(res)),
+  analyzeMealPhoto: (imageBase64: string, mediaType: string, description?: string) =>
+    api.post<{ data: types.MealPhotoAnalysis }>('/food/analyze-meal-photo', {
+      image_base64: imageBase64, media_type: mediaType, description: description ?? '',
+    }).then(res => unwrap(res)),
   recommend: (meal: string, date: string) =>
     api.post<{ data: { recommendations: types.MealRecommendation[] } }>('/food/recommend', { meal, date }).then(res => unwrap(res)),
 }

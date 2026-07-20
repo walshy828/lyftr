@@ -162,6 +162,17 @@ export interface MealRecommendation {
   items: MealItem[]
 }
 
+export interface MealPhotoItem extends MealItem {
+  confidence?: 'high' | 'medium' | 'low'
+  portion_reasoning?: string
+}
+
+export interface MealPhotoAnalysis {
+  items: MealPhotoItem[]
+  assessment?: string
+  image_url: string
+}
+
 export interface SavedFood {
   id: number
   name: string

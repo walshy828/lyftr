@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, AlertCircle, Sparkles, Mic, MicOff } from 'lucide-react'
+import { X, AlertCircle, Sparkles, Mic, MicOff, Camera } from 'lucide-react'
 import { foodAPI } from '../services/api'
 import IconButton from './ui/IconButton'
 import * as types from '../types'
 
 interface Props {
-  onResult: (items: types.MealItem[]) => void
+  onTextResult: (items: types.MealItem[]) => void
+  onPhotoResult: (analysis: types.MealPhotoAnalysis) => void
   onClose: () => void
 }
 
@@ -14,13 +15,46 @@ const EXAMPLE = 'e.g. "turkey sandwich with 2 pieces of turkey, honey wheat brea
 
 const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition
 
-export default function SmartMealEntry({ onResult, onClose }: Props) {
+const MAX_LONG_EDGE = 1600
+const JPEG_QUALITY = 0.85
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = ''
+  const bytes = new Uint8Array(buffer)
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
+// Downscales an in-memory image (from a picked/captured file) to a JPEG
+// data URL + base64 payload, mirroring NutritionLabelCamera's canvas
+// pipeline so both photo entry points send the same shape of image.
+async function downscaleToJpeg(file: File): Promise<{ dataUrl: string; base64: string }> {
+  const bitmap = await createImageBitmap(file)
+  const longEdge = Math.max(bitmap.width, bitmap.height)
+  const scale = longEdge > MAX_LONG_EDGE ? MAX_LONG_EDGE / longEdge : 1
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas unavailable')
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+
+  const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY))
+  if (!blob) throw new Error('image encode failed')
+  const buffer = await blob.arrayBuffer()
+  return { dataUrl: canvas.toDataURL('image/jpeg', JPEG_QUALITY), base64: arrayBufferToBase64(buffer) }
+}
+
+export default function SmartMealEntry({ onTextResult, onPhotoResult, onClose }: Props) {
   const [description, setDescription] = useState('')
   const [parsing, setParsing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [listening, setListening] = useState(false)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -79,18 +113,45 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
     setListening(true)
   }
 
+  const handlePhotoPicked = async (file: File | null) => {
+    if (!file) return
+    try {
+      const { dataUrl, base64 } = await downscaleToJpeg(file)
+      setPhotoPreview(dataUrl)
+      setPhotoBase64(base64)
+      setError(null)
+    } catch {
+      setError('Could not read that photo — try again')
+    }
+  }
+
+  const removePhoto = () => {
+    setPhotoPreview(null)
+    setPhotoBase64(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const submit = async () => {
     const trimmed = description.trim()
-    if (!trimmed || parsing) return
+    if ((!trimmed && !photoBase64) || parsing) return
     setParsing(true)
     setError(null)
     try {
-      const { items } = await foodAPI.parseMeal(trimmed)
-      if (!items || items.length === 0) {
-        setError("Couldn't find any food items in that — try rephrasing")
-        return
+      if (photoBase64) {
+        const analysis = await foodAPI.analyzeMealPhoto(photoBase64, 'image/jpeg', trimmed)
+        if (!analysis.items || analysis.items.length === 0) {
+          setError("Couldn't find any food items in that photo — try a clearer shot or add a description")
+          return
+        }
+        onPhotoResult(analysis)
+      } else {
+        const { items } = await foodAPI.parseMeal(trimmed)
+        if (!items || items.length === 0) {
+          setError("Couldn't find any food items in that — try rephrasing")
+          return
+        }
+        onTextResult(items)
       }
-      onResult(items)
     } catch (err: any) {
       if (err?.response?.status === 503) {
         setError(err?.response?.data?.error || 'Smart food entry is unavailable right now')
@@ -122,6 +183,36 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
       </div>
 
       <div className="flex-1 flex flex-col p-3 gap-2 overflow-y-auto min-h-0">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={e => handlePhotoPicked(e.target.files?.[0] ?? null)}
+        />
+
+        {photoPreview ? (
+          <div className="relative flex-shrink-0">
+            <img src={photoPreview} alt="Meal photo" className="w-full max-h-48 object-cover rounded-xl" />
+            <button
+              onClick={removePhoto}
+              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 hover:bg-black/80 transition-colors"
+              aria-label="Remove photo"
+            >
+              <X className="w-4 h-4 text-white" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-shrink-0 flex items-center justify-center gap-2 rounded-xl border border-dashed border-surface-border text-tx-secondary hover:text-tx-primary hover:border-brand-500/40 py-3 text-sm font-medium transition-colors"
+          >
+            <Camera className="w-4 h-4" />
+            Add a photo of your meal
+          </button>
+        )}
+
         <div className="relative flex-1 min-h-[4.5rem]">
           <textarea
             ref={textareaRef}
@@ -154,7 +245,9 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
           <p className="text-xs text-tx-muted flex-shrink-0">
             {listening
               ? 'Listening… speak your meal, then tap the mic again.'
-              : 'Describe everything you ate and roughly how much — Lyftr will split it into items you can review before logging.'}
+              : photoBase64
+                ? 'Optionally add details the photo might miss, like dressing or extra sides.'
+                : 'Describe everything you ate and roughly how much, or add a photo — Lyftr will split it into items you can review before logging.'}
           </p>
         )}
 
@@ -169,10 +262,10 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
       <div className="p-3 border-t border-surface-border safe-area-bottom flex-shrink-0">
         <button
           onClick={submit}
-          disabled={!description.trim() || parsing}
+          disabled={(!description.trim() && !photoBase64) || parsing}
           className="btn-primary btn-lg w-full"
         >
-          {parsing ? 'Parsing…' : 'Parse meal'}
+          {parsing ? 'Analyzing…' : photoBase64 ? 'Analyze photo' : 'Parse meal'}
         </button>
       </div>
     </div>,

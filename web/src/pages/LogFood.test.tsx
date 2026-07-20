@@ -12,6 +12,8 @@ vi.mock('../services/api', () => ({
     search: vi.fn().mockResolvedValue([]),
     barcode: vi.fn(),
     analyzeLabel: vi.fn(),
+    parseMeal: vi.fn(),
+    analyzeMealPhoto: vi.fn(),
   },
   savedFoodsAPI: {
     list: vi.fn().mockResolvedValue([]),
@@ -88,5 +90,55 @@ describe('LogFood manual entry', () => {
     expect(screen.getByText(/not the right match/i)).toBeTruthy()
     expect(screen.getByText(/enter "peanut butter" manually/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: /scan label/i })).toBeTruthy()
+  })
+})
+
+describe('LogFood photo review flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(foodAPI.list as any).mockResolvedValue([])
+    ;(foodAPI.log as any).mockResolvedValue({})
+    ;(globalThis as any).createImageBitmap = vi.fn().mockResolvedValue({ width: 100, height: 100 })
+    HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({ drawImage: vi.fn() }) as any
+    HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/jpeg;base64,abc123')
+    HTMLCanvasElement.prototype.toBlob = vi.fn().mockImplementation((cb: (b: Blob | null) => void) => {
+      cb(new Blob(['fake'], { type: 'image/jpeg' }))
+    })
+  })
+
+  it('analyzes an attached meal photo and logs the reviewed items with source photo', async () => {
+    ;(foodAPI.analyzeMealPhoto as any).mockResolvedValue({
+      items: [
+        { name: 'Grilled chicken breast', quantity: '6 oz', calories: 280, protein: 52, carbs: 0, fat: 6, confidence: 'high', portion_reasoning: 'palm-sized relative to the plate' },
+      ],
+      assessment: 'High protein, low carb.',
+      image_url: '/api/v1/food/photos/1/abc.jpg',
+    })
+
+    renderLogFood()
+
+    fireEvent.click(await screen.findByText(/describe your meal/i))
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['fake'], 'meal.jpg', { type: 'image/jpeg' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    await waitFor(() => expect(screen.getByAltText(/meal photo/i)).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /analyze photo/i }))
+
+    // Photo-review phase: assessment banner + persisted photo thumbnail render.
+    await waitFor(() => expect(screen.getByText(/high protein, low carb/i)).toBeTruthy())
+    expect(screen.getByAltText(/analyzed meal/i)).toBeTruthy()
+    expect(screen.getAllByText(/high/i).length).toBeGreaterThan(0) // confidence badge
+    expect(screen.getByText(/palm-sized relative to the plate/i)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /log 1 item/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    expect(payload.name).toBe('Grilled chicken breast')
+    expect(payload.source).toBe('photo')
+    expect(payload.image_url).toBe('/api/v1/food/photos/1/abc.jpg')
+    expect(payload.calories).toBe(280)
   })
 })

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Search, Scan, Minus, Plus, X,
   Bookmark, BookmarkCheck, AlertCircle, Utensils, Zap,
   Coffee, Sun, Moon, Cookie, ChevronRight, Camera, Pencil,
-  Sparkles, Trash2,
+  Sparkles,
 } from 'lucide-react'
 import { foodAPI, savedFoodsAPI } from '../services/api'
 import { todayStr, dayToIsoNoon } from '../utils/dateUtils'
@@ -13,15 +13,17 @@ import BarcodeScanner from '../components/BarcodeScanner'
 import NutritionLabelCamera from '../components/NutritionLabelCamera'
 import SmartMealEntry from '../components/SmartMealEntry'
 import EditSavedFoodSheet from '../components/EditSavedFoodSheet'
+import MealItemEditCard, { type EditableMealItem } from '../components/MealItemEditCard'
 import IconButton from '../components/ui/IconButton'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import DateInput from '../components/ui/DateInput'
 import * as types from '../types'
 
-type Phase = 'search' | 'detail' | 'scan' | 'scan-label' | 'smart' | 'smart-review'
+type Phase = 'search' | 'detail' | 'scan' | 'scan-label' | 'smart' | 'smart-review' | 'photo-review'
 type SearchTab = 'recent' | 'myfoods' | 'all'
 
-type ReviewItem = types.MealItem & { servings: number; include: boolean }
+type ReviewItem = EditableMealItem
+type PhotoReviewItem = types.MealPhotoItem & { servings: number; include: boolean }
 
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'] as const
 const MEAL_LABELS: Record<string, string> = {
@@ -130,6 +132,10 @@ export default function LogFood() {
   const [mealItems, setMealItems] = useState<ReviewItem[]>([])
   const [loggingMealItems, setLoggingMealItems] = useState(false)
   const [mealLogError, setMealLogError] = useState<string | null>(null)
+  const [photoAnalysis, setPhotoAnalysis] = useState<types.MealPhotoAnalysis | null>(null)
+  const [photoReviewItems, setPhotoReviewItems] = useState<PhotoReviewItem[]>([])
+  const [loggingPhotoItems, setLoggingPhotoItems] = useState(false)
+  const [photoLogError, setPhotoLogError] = useState<string | null>(null)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -214,6 +220,51 @@ export default function LogFood() {
 
   const removeMealItem = (index: number) => {
     setMealItems(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handlePhotoAnalyzed = (analysis: types.MealPhotoAnalysis) => {
+    setPhotoAnalysis(analysis)
+    setPhotoReviewItems(analysis.items.map(item => ({ ...item, servings: 1, include: true })))
+    setPhotoLogError(null)
+    setPhase('photo-review')
+  }
+
+  const updatePhotoItem = (index: number, patch: Partial<PhotoReviewItem>) => {
+    setPhotoReviewItems(prev => prev.map((item, i) => i === index ? { ...item, ...patch } : item))
+  }
+
+  const removePhotoItem = (index: number) => {
+    setPhotoReviewItems(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleLogPhotoItems = async () => {
+    const toLog = photoReviewItems.filter(item => item.include)
+    if (toLog.length === 0 || loggingPhotoItems || !photoAnalysis) return
+    setLoggingPhotoItems(true)
+    setPhotoLogError(null)
+    try {
+      await Promise.all(toLog.map(item => foodAPI.log({
+        name: item.name || 'Custom entry',
+        meal,
+        calories: +(item.calories * item.servings).toFixed(1),
+        protein: +(item.protein * item.servings).toFixed(1),
+        carbs: +(item.carbs * item.servings).toFixed(1),
+        fat: +(item.fat * item.servings).toFixed(1),
+        fiber: +((item.fiber ?? 0) * item.servings).toFixed(1),
+        sugar: +((item.sugar ?? 0) * item.servings).toFixed(1),
+        sodium: +((item.sodium ?? 0) * item.servings).toFixed(1),
+        cholesterol: +((item.cholesterol ?? 0) * item.servings).toFixed(1),
+        servings: item.servings,
+        serving_size: item.serving_size ?? item.quantity ?? '',
+        image_url: photoAnalysis.image_url,
+        source: 'photo',
+        logged_at: dayToIsoNoon(date),
+      })))
+      navigate('/food', { replace: true })
+    } catch {
+      setPhotoLogError('Failed to save one or more items — try again')
+      setLoggingPhotoItems(false)
+    }
   }
 
   const handleLogMealItems = async () => {
@@ -351,7 +402,8 @@ export default function LogFood() {
   if (phase === 'smart') {
     return (
       <SmartMealEntry
-        onResult={handleMealParsed}
+        onTextResult={handleMealParsed}
+        onPhotoResult={handlePhotoAnalyzed}
         onClose={() => setPhase('search')}
       />
     )
@@ -378,7 +430,7 @@ export default function LogFood() {
       {/* Header with breadcrumb */}
       <div className="flex items-center gap-3 mb-5">
         <button
-          onClick={() => (phase === 'detail' && !editId) || phase === 'smart-review' ? setPhase('search') : navigate(-1)}
+          onClick={() => (phase === 'detail' && !editId) || phase === 'smart-review' || phase === 'photo-review' ? setPhase('search') : navigate(-1)}
           className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-surface-muted active:scale-95 transition-all flex-shrink-0"
         >
           <ArrowLeft className="w-5 h-5 text-tx-muted" />
@@ -857,71 +909,89 @@ export default function LogFood() {
 
           {/* Parsed items */}
           {mealItems.map((item, i) => (
-            <div key={i} className={`card p-4 space-y-3 ${!item.include ? 'opacity-50' : ''}`}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={e => updateMealItem(i, { name: e.target.value })}
-                    className="font-semibold text-sm text-tx-primary bg-transparent border-0 border-b border-transparent hover:border-surface-border focus:border-brand-500 outline-none w-full px-0 py-0.5"
-                  />
-                  <input
-                    type="text"
-                    value={item.serving_size ?? item.quantity ?? ''}
-                    onChange={e => updateMealItem(i, { serving_size: e.target.value })}
-                    placeholder="Serving size"
-                    className="text-xs text-tx-muted bg-transparent border-0 border-b border-transparent hover:border-surface-border focus:border-brand-500 outline-none w-full mt-0.5 px-0 py-0.5"
-                  />
-                </div>
-                <button
-                  onClick={() => removeMealItem(i)}
-                  className="p-1.5 rounded-lg hover:bg-surface-muted text-tx-muted hover:text-error-400 transition-colors flex-shrink-0"
-                  aria-label="Remove item"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { field: 'calories' as const, label: 'Cal', color: 'text-tx-primary' },
-                  { field: 'protein' as const, label: 'Protein', color: 'text-emerald-400' },
-                  { field: 'carbs' as const, label: 'Carbs', color: 'text-amber-400' },
-                  { field: 'fat' as const, label: 'Fat', color: 'text-violet-400' },
-                ].map(m => (
-                  <div key={m.label} className="rounded-xl border border-surface-border bg-surface-muted p-2 text-center">
-                    <input
-                      type="number"
-                      value={item[m.field]}
-                      onChange={e => updateMealItem(i, { [m.field]: Number(e.target.value) || 0 })}
-                      className={`text-sm font-bold tabular-nums bg-transparent border-0 outline-none w-full text-center ${m.color}`}
-                    />
-                    <p className="text-[10px] text-tx-muted mt-0.5">{m.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-xs text-tx-secondary">
-                  <input
-                    type="checkbox"
-                    checked={item.include}
-                    onChange={e => updateMealItem(i, { include: e.target.checked })}
-                    className="w-4 h-4 rounded accent-brand-500"
-                  />
-                  Include
-                </label>
-                <div className="flex items-center gap-2">
-                  <IconButton icon={Minus} variant="secondary" size="sm" label="Decrease servings" onClick={() => updateMealItem(i, { servings: Math.max(0.5, +(item.servings - 0.5).toFixed(1)) })} />
-                  <span className="text-sm font-semibold tabular-nums w-10 text-center">{item.servings}×</span>
-                  <IconButton icon={Plus} variant="secondary" size="sm" label="Increase servings" onClick={() => updateMealItem(i, { servings: +(item.servings + 0.5).toFixed(1) })} />
-                </div>
-              </div>
-            </div>
+            <MealItemEditCard
+              key={i}
+              item={item}
+              onChange={patch => updateMealItem(i, patch)}
+              onRemove={() => removeMealItem(i)}
+            />
           ))}
 
           {mealItems.length === 0 && (
+            <div className="px-4 py-14 text-center">
+              <Utensils className="w-8 h-8 text-tx-muted opacity-30 mx-auto mb-2" />
+              <p className="text-sm text-tx-muted">No items left to log</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Photo-review phase — richer review UI for AnalyzeMealPhoto results:
+          photo thumbnail, overall assessment, and per-item confidence/reasoning. */}
+      {phase === 'photo-review' && photoAnalysis && (
+        <div className="space-y-4 pb-32">
+          {photoLogError && (
+            <div className="alert-error">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{photoLogError}</span>
+            </div>
+          )}
+
+          <img
+            src={photoAnalysis.image_url}
+            alt="Analyzed meal"
+            className="w-full max-h-56 object-cover rounded-xl"
+          />
+
+          {photoAnalysis.assessment && (
+            <div className="flex items-start gap-2 rounded-xl border border-brand-500/20 bg-brand-500/10 px-3.5 py-3 text-xs text-tx-secondary">
+              <Sparkles className="w-4 h-4 flex-shrink-0 text-brand-500 mt-0.5" />
+              <span>{photoAnalysis.assessment}</span>
+            </div>
+          )}
+
+          {/* Log to: meal + when (shared across all identified items) */}
+          <div className="card p-4 space-y-5">
+            <div className="space-y-3">
+              <label className="label">Meal</label>
+              <div className="grid grid-cols-2 gap-2">
+                {MEALS.map(m => {
+                  const MealIcon = MEAL_ICONS[m]
+                  const iconColor = MEAL_COLORS[m]
+                  const active = meal === m
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => setMeal(m)}
+                      className={`flex items-center gap-2.5 px-3.5 py-3 rounded-xl border font-medium text-sm transition-all ${
+                        active
+                          ? 'bg-brand-500/10 border-brand-500/40 text-tx-primary'
+                          : 'bg-surface-muted border-surface-border text-tx-secondary hover:text-tx-primary hover:bg-surface-overlay'
+                      }`}
+                    >
+                      <MealIcon className={`w-4 h-4 flex-shrink-0 ${active ? iconColor : 'text-tx-muted'}`} />
+                      {MEAL_LABELS[m]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="border-t border-surface-border" />
+            <DateInput label="When" value={date} onChange={setDate} max={todayStr()} />
+          </div>
+
+          {photoReviewItems.map((item, i) => (
+            <MealItemEditCard
+              key={i}
+              item={item}
+              confidence={item.confidence}
+              portionReasoning={item.portion_reasoning}
+              onChange={patch => updatePhotoItem(i, patch)}
+              onRemove={() => removePhotoItem(i)}
+            />
+          ))}
+
+          {photoReviewItems.length === 0 && (
             <div className="px-4 py-14 text-center">
               <Utensils className="w-8 h-8 text-tx-muted opacity-30 mx-auto mb-2" />
               <p className="text-sm text-tx-muted">No items left to log</p>
@@ -952,6 +1022,19 @@ export default function LogFood() {
             className="btn-primary btn-lg w-full"
           >
             {loggingMealItems ? 'Saving…' : `Log ${mealItems.filter(item => item.include).length} item${mealItems.filter(item => item.include).length === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      )}
+
+      {/* Sticky log button — photo-review phase only */}
+      {phase === 'photo-review' && (
+        <div className="fixed bottom-0 inset-x-0 p-4 bg-surface-base/95 backdrop-blur-sm border-t border-surface-border safe-area-bottom">
+          <button
+            onClick={handleLogPhotoItems}
+            disabled={loggingPhotoItems || photoReviewItems.filter(item => item.include).length === 0}
+            className="btn-primary btn-lg w-full"
+          >
+            {loggingPhotoItems ? 'Saving…' : `Log ${photoReviewItems.filter(item => item.include).length} item${photoReviewItems.filter(item => item.include).length === 1 ? '' : 's'}`}
           </button>
         </div>
       )}

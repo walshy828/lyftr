@@ -104,6 +104,47 @@ func (p *anthropicProvider) ParseMeal(ctx context.Context, description string) (
 	return out.Items, nil
 }
 
+func (p *anthropicProvider) AnalyzeMealPhoto(ctx context.Context, imageBase64, mediaType, description string) (MealPhotoAnalysis, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model: p.model,
+		// 1536: per-item confidence/portion_reasoning text adds tokens
+		// beyond what ParseMeal's 1024 needs.
+		MaxTokens: 1536,
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortLow,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: mealPhotoAnalysisJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewImageBlockBase64(mediaType, imageBase64),
+				anthropic.NewTextBlock(mealPhotoAnalysisPromptWithDescription(description)),
+			),
+		},
+	})
+	if err != nil {
+		return MealPhotoAnalysis{}, fmt.Errorf("anthropic meal photo call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return MealPhotoAnalysis{}, fmt.Errorf("anthropic meal photo call: no text content in response")
+	}
+
+	var out MealPhotoAnalysis
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return MealPhotoAnalysis{}, fmt.Errorf("anthropic meal photo call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}
+
 func (p *anthropicProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model: p.model,
