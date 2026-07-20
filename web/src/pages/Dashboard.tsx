@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { format, startOfWeek, isSameDay, eachDayOfInterval, endOfWeek, subWeeks } from 'date-fns'
 import {
   Dumbbell, Flame, ArrowRight, Beef,
-  AlertCircle, Play, Timer, TrendingUp, Scale, Activity, Plus,
+  AlertCircle, Play, Timer, TrendingUp, Scale, Activity, Plus, Utensils,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -267,13 +267,22 @@ export default function Dashboard() {
             {greeting()}, {username}
           </h1>
         </div>
-        <button
-          onClick={() => navigate('/workout/start')}
-          className="btn-primary btn-sm flex-shrink-0"
-        >
-          <Play className="w-3.5 h-3.5" />
-          {session ? 'Resume' : 'Start'}
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => navigate('/food/log')}
+            className="btn-secondary btn-sm"
+          >
+            <Utensils className="w-3.5 h-3.5" />
+            Log Food
+          </button>
+          <button
+            onClick={() => navigate('/workout/start')}
+            className="btn-primary btn-sm"
+          >
+            <Play className="w-3.5 h-3.5" />
+            {session ? 'Resume' : 'Start'}
+          </button>
+        </div>
       </div>
 
       {/* ── Active session banner ──────────────────── */}

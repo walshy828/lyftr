@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, AlertCircle, Sparkles } from 'lucide-react'
+import { X, AlertCircle, Sparkles, Mic, MicOff } from 'lucide-react'
 import { foodAPI } from '../services/api'
+import IconButton from './ui/IconButton'
 import * as types from '../types'
 
 interface Props {
@@ -11,11 +12,15 @@ interface Props {
 
 const EXAMPLE = 'e.g. "turkey sandwich with 2 pieces of turkey, honey wheat bread, and mayonnaise, with a can of ginger ale"'
 
+const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition
+
 export default function SmartMealEntry({ onResult, onClose }: Props) {
   const [description, setDescription] = useState('')
   const [parsing, setParsing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [listening, setListening] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -26,6 +31,34 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  useEffect(() => () => recognitionRef.current?.stop(), [])
+
+  const toggleListening = () => {
+    if (!SpeechRecognitionCtor) return
+    if (listening) {
+      recognitionRef.current?.stop()
+      return
+    }
+    const recognition = new SpeechRecognitionCtor()
+    recognition.continuous = true
+    recognition.interimResults = false
+    recognition.lang = navigator.language || 'en-US'
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) transcript += event.results[i][0].transcript
+      }
+      if (transcript.trim()) {
+        setDescription(d => (d.trim() ? `${d.trim()} ${transcript.trim()}` : transcript.trim()))
+      }
+    }
+    recognition.onerror = () => setListening(false)
+    recognition.onend = () => setListening(false)
+    recognitionRef.current = recognition
+    recognition.start()
+    setListening(true)
+  }
 
   const submit = async () => {
     const trimmed = description.trim()
@@ -67,17 +100,38 @@ export default function SmartMealEntry({ onResult, onClose }: Props) {
       </div>
 
       <div className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
-        <textarea
-          ref={textareaRef}
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder={EXAMPLE}
-          rows={6}
-          maxLength={1000}
-          className="input flex-1 min-h-[8rem] resize-none text-base"
-        />
+        <div className="relative flex-1 min-h-[8rem]">
+          <textarea
+            ref={textareaRef}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            placeholder={EXAMPLE}
+            enterKeyHint="send"
+            rows={6}
+            maxLength={1000}
+            className={`input h-full w-full resize-none text-base ${SpeechRecognitionCtor ? 'pr-12' : ''}`}
+          />
+          {SpeechRecognitionCtor && (
+            <IconButton
+              icon={listening ? MicOff : Mic}
+              label={listening ? 'Stop voice input' : 'Describe your meal by voice'}
+              onClick={toggleListening}
+              variant={listening ? 'danger' : 'brand'}
+              size="md"
+              className={`absolute bottom-2.5 right-2.5 ${listening ? 'animate-pulse' : ''}`}
+            />
+          )}
+        </div>
         <p className="text-xs text-tx-muted">
-          Describe everything you ate and roughly how much — Lyftr will split it into items you can review before logging.
+          {listening
+            ? 'Listening… speak your meal, then tap the mic again.'
+            : 'Describe everything you ate and roughly how much — Lyftr will split it into items you can review before logging.'}
         </p>
 
         {error && (
