@@ -7,3 +7,12 @@ import { cleanup } from '@testing-library/react'
 afterEach(() => {
   cleanup()
 })
+
+// jsdom doesn't implement the Blob URL APIs; stub them so code that turns a
+// fetched Blob into an <img src> (e.g. useAuthedImage) doesn't throw in tests.
+if (typeof URL.createObjectURL !== 'function') {
+  URL.createObjectURL = () => 'blob:mock-url'
+}
+if (typeof URL.revokeObjectURL !== 'function') {
+  URL.revokeObjectURL = () => {}
+}

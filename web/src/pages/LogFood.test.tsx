@@ -4,6 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import LogFood from './LogFood'
 
 vi.mock('../services/api', () => ({
+  default: { get: vi.fn().mockResolvedValue({ data: new Blob() }) },
   foodAPI: {
     list: vi.fn().mockResolvedValue([]),
     log: vi.fn().mockResolvedValue({}),

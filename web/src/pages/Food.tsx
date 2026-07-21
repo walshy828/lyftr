@@ -8,6 +8,7 @@ import {
 import IconButton from '../components/ui/IconButton'
 import SectionHeader from '../components/ui/SectionHeader'
 import PageHeader from '../components/ui/PageHeader'
+import AuthedImg from '../components/ui/AuthedImg'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -391,13 +392,16 @@ export default function Food() {
                               onClick={() => navigate(`/food/log?edit=${entry.id}&date=${selectedDate}`)}
                               className="flex items-center gap-3 flex-1 min-w-0 text-left"
                             >
-                              {entry.image_url ? (
-                                <img src={entry.image_url} alt="" className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border" />
-                              ) : (
-                                <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
-                                  <Utensils className="w-5 h-5 text-tx-muted opacity-40" />
-                                </div>
-                              )}
+                              <AuthedImg
+                                src={entry.image_url}
+                                alt=""
+                                className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border"
+                                fallback={
+                                  <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
+                                    <Utensils className="w-5 h-5 text-tx-muted opacity-40" />
+                                  </div>
+                                }
+                              />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-tx-primary truncate">{entry.name}</p>
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">

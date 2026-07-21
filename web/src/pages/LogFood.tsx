@@ -17,6 +17,7 @@ import MealItemEditCard, { type EditableMealItem } from '../components/MealItemE
 import IconButton from '../components/ui/IconButton'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import DateInput from '../components/ui/DateInput'
+import AuthedImg from '../components/ui/AuthedImg'
 import * as types from '../types'
 
 type Phase = 'search' | 'detail' | 'scan' | 'scan-label' | 'smart' | 'smart-review' | 'photo-review'
@@ -71,13 +72,16 @@ function FoodResultRow({ item, onClick }: { item: types.FoodSearchResult; onClic
       onClick={onClick}
       className="flex items-center gap-3 w-full px-4 py-3.5 hover:bg-surface-muted active:bg-surface-muted/80 transition-colors border-b border-surface-border last:border-0 text-left"
     >
-      {item.image_url ? (
-        <img src={item.image_url} alt="" className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border" />
-      ) : (
-        <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
-          <Utensils className="w-5 h-5 text-tx-muted" />
-        </div>
-      )}
+      <AuthedImg
+        src={item.image_url}
+        alt=""
+        className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border"
+        fallback={
+          <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
+            <Utensils className="w-5 h-5 text-tx-muted" />
+          </div>
+        }
+      />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-tx-primary truncate">{item.name}</p>
         {item.brand && <p className="text-xs text-tx-muted truncate mt-0.5">{item.brand}</p>}
@@ -583,13 +587,16 @@ export default function LogFood() {
                       className="flex items-center gap-3 flex-1 min-w-0 px-4 py-3.5 hover:bg-surface-muted active:bg-surface-muted/80 transition-colors text-left"
                       onClick={() => selectResult(savedToResult(sf))}
                     >
-                      {sf.image_url ? (
-                        <img src={sf.image_url} alt="" className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border" />
-                      ) : (
-                        <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
-                          <Utensils className="w-5 h-5 text-tx-muted" />
-                        </div>
-                      )}
+                      <AuthedImg
+                        src={sf.image_url}
+                        alt=""
+                        className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border"
+                        fallback={
+                          <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
+                            <Utensils className="w-5 h-5 text-tx-muted" />
+                          </div>
+                        }
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-tx-primary truncate">{sf.name}</p>
                         {sf.brand && <p className="text-xs text-tx-muted truncate mt-0.5">{sf.brand}</p>}
@@ -686,11 +693,11 @@ export default function LogFood() {
             {/* Image — captured photo takes priority, then image_url from search result */}
             {(capturedImageUrl || selected.image_url) ? (
               <div className="relative">
-                <img
+                <AuthedImg
                   src={capturedImageUrl || selected.image_url}
                   alt={selected.name}
                   className="w-full h-52 object-cover"
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  fallback={null}
                 />
                 <button
                   onClick={() => setCapturedImageUrl('')}
@@ -937,10 +944,11 @@ export default function LogFood() {
             </div>
           )}
 
-          <img
+          <AuthedImg
             src={photoAnalysis.image_url}
             alt="Analyzed meal"
             className="w-full max-h-56 object-cover rounded-xl"
+            fallback={<div className="w-full h-40 rounded-xl bg-surface-muted animate-pulse" />}
           />
 
           {photoAnalysis.assessment && (

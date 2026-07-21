@@ -9,6 +9,7 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { todayStr, dayToIsoNoon, isoToDayInput } from '../utils/dateUtils'
 import BarcodeScanner from './BarcodeScanner'
+import AuthedImg from './ui/AuthedImg'
 import * as types from '../types'
 
 interface Props {
@@ -546,17 +547,16 @@ function FoodResultRow({ item, onClick }: { item: types.FoodSearchResult; onClic
       onClick={onClick}
       className="flex items-center gap-3 w-full px-4 py-3 hover:bg-surface-muted transition-colors border-b border-surface-border last:border-0 text-left"
     >
-      {item.image_url ? (
-        <img
-          src={item.image_url}
-          alt=""
-          className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-surface-border"
-        />
-      ) : (
-        <div className="w-10 h-10 rounded-lg bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
-          <Utensils className="w-4 h-4 text-tx-muted" />
-        </div>
-      )}
+      <AuthedImg
+        src={item.image_url}
+        alt=""
+        className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-surface-border"
+        fallback={
+          <div className="w-10 h-10 rounded-lg bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
+            <Utensils className="w-4 h-4 text-tx-muted" />
+          </div>
+        }
+      />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-tx-primary truncate">{item.name}</p>
         {item.brand && <p className="text-xs text-tx-muted truncate">{item.brand}</p>}
