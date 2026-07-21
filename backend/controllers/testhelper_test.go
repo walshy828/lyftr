@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS food_logs (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name         TEXT    NOT NULL,
+  brand        TEXT    NOT NULL DEFAULT '',
   meal         TEXT    NOT NULL DEFAULT 'snacks',
   calories     REAL    NOT NULL DEFAULT 0,
   protein      REAL    NOT NULL DEFAULT 0,

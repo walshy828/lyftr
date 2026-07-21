@@ -137,8 +137,9 @@ export default function MealRecommendations({ meal, mealLabel, date, onLogged, o
                         <p className="text-xs font-medium text-tx-primary truncate">{item.name}</p>
                         {item.quantity && <p className="text-[10px] text-tx-muted">{item.quantity}</p>}
                       </div>
-                      <span className="text-xs text-tx-secondary tabular-nums flex-shrink-0">
-                        {Math.round(item.calories)} kcal
+                      <span className="text-xs tabular-nums flex-shrink-0 text-right">
+                        <span className="text-tx-secondary">{Math.round(item.calories)} kcal</span>
+                        <span className="text-emerald-400"> · {Math.round(item.protein)}g P</span>
                       </span>
                     </div>
                   ))}

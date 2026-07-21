@@ -348,6 +348,7 @@ export default function LogFood() {
     try {
       const payload = {
         name: selected.name || 'Custom entry',
+        brand: selected.brand ?? '',
         meal,
         calories: +(selected.calories * servings).toFixed(1),
         protein: +(selected.protein * servings).toFixed(1),

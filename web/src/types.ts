@@ -82,6 +82,7 @@ export interface FoodLog {
   id: number
   user_id?: number
   name: string
+  brand?: string
   meal: 'breakfast' | 'lunch' | 'dinner' | 'snacks'
   calories: number
   protein: number

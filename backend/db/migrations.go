@@ -55,6 +55,7 @@ func alterMigrations() {
 	ensureColumn("food_logs", "source", `ALTER TABLE food_logs ADD COLUMN source TEXT NOT NULL DEFAULT ''`)
 	ensureColumn("food_logs", "sugar", `ALTER TABLE food_logs ADD COLUMN sugar REAL NOT NULL DEFAULT 0`)
 	ensureColumn("food_logs", "sodium", `ALTER TABLE food_logs ADD COLUMN sodium REAL NOT NULL DEFAULT 0`)
+	ensureColumn("food_logs", "brand", `ALTER TABLE food_logs ADD COLUMN brand TEXT NOT NULL DEFAULT ''`)
 
 	// Food photos for saved foods (#savedFoodPhoto)
 	ensureColumn("saved_foods", "image_url", `ALTER TABLE saved_foods ADD COLUMN image_url TEXT NOT NULL DEFAULT ''`)
@@ -214,6 +215,7 @@ CREATE TABLE IF NOT EXISTS food_logs (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name         TEXT    NOT NULL,
+  brand        TEXT    NOT NULL DEFAULT '',
   meal         TEXT    NOT NULL DEFAULT 'snacks',
   calories     REAL    NOT NULL DEFAULT 0,
   protein      REAL    NOT NULL DEFAULT 0,
