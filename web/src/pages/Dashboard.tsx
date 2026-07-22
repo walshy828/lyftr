@@ -30,7 +30,7 @@ function greeting() {
 }
 
 const calcVolume = (w: types.Workout) =>
-  (w.exercises ?? []).reduce((s, ex) => s + (ex.sets ?? []).reduce((ss, set) => ss + set.reps * set.weight, 0), 0)
+  (w.exercises ?? []).reduce((s, ex) => s + (ex.sets ?? []).reduce((ss, set) => ss + (set.reps || 0) * (set.weight || 0), 0), 0)
 
 const DEFAULT_FOOD: types.DailyStats = {
   date: format(TODAY, 'yyyy-MM-dd'),
