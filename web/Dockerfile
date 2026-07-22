@@ -3,9 +3,16 @@ FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies first (layer cache)
+# Playwright is a devDependency (used by `npm run test:e2e` only) but npm ci
+# still installs it; skip its browser-binary postinstall download (Chromium/
+# Firefox/WebKit, several hundred MB) since nothing in this image runs e2e tests.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+# Install dependencies first (layer cache). Cache mount persists npm's package
+# cache across builds so a package-lock.json change doesn't re-download every
+# dependency from the registry.
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
 
 # Copy source and build
 COPY . .

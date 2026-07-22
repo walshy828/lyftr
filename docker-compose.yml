@@ -8,7 +8,9 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      - ENV=production
+      # Controls Gin's debug/release mode and demo-data seeding (see backend/config/config.go).
+      # Defaults to production for self-host deployments; override in .env only for local debugging.
+      - ENV=${ENV:-production}
       - PORT=3000
       - JWT_SECRET=${JWT_SECRET}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}

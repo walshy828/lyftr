@@ -8,14 +8,16 @@ ARG VERSION=dev
 
 WORKDIR /build
 
-# Download dependencies first (layer cache)
+# Download dependencies first (layer cache). Cache mounts persist the module
+# and build cache across builds so a go.sum change doesn't force a full re-download.
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy source and build the static binary via the shared build script
 # (single source of the version ldflags — see backend/build.sh)
 COPY . .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION sh build.sh
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION sh build.sh
 
 # Stage 2: Runtime
 FROM alpine:3.19
