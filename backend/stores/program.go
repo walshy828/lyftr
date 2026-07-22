@@ -47,26 +47,31 @@ func scanProgram(row interface{ Scan(...any) error }, p *models.Program) error {
 
 // lastUsedLayouts are the datetime formats that may show up in
 // workouts.started_at: RFC3339 (written by the app via a bound time.Time
-// parameter) and SQLite's own CURRENT_TIMESTAMP default format.
-var lastUsedLayouts = []string{time.RFC3339, "2006-01-02 15:04:05"}
+// parameter), SQLite's own CURRENT_TIMESTAMP default format, and Go's
+// time.Time.String() format (older rows written via an interpolated/%v
+// value instead of a proper driver.Valuer binding).
+var lastUsedLayouts = []string{
+	time.RFC3339,
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04:05.999999999 -0700 MST",
+}
 
 // parseLastUsed converts the lastUsedJoin's MAX(started_at) result to a
 // *time.Time. It comes back as a plain string rather than a driver-typed
 // time.Time because SQLite aggregate expressions lose the column's declared
-// type affinity, so sql.NullTime can't scan it directly.
-func parseLastUsed(ns sql.NullString) (*time.Time, error) {
+// type affinity, so sql.NullTime can't scan it directly. last_used_at is
+// display/sort metadata, not core data — an unrecognized historical format
+// degrades to "unknown" (nil) rather than 500ing the whole programs list.
+func parseLastUsed(ns sql.NullString) *time.Time {
 	if !ns.Valid {
-		return nil, nil
+		return nil
 	}
-	var lastErr error
 	for _, layout := range lastUsedLayouts {
 		if t, err := time.Parse(layout, ns.String); err == nil {
-			return &t, nil
-		} else {
-			lastErr = err
+			return &t
 		}
 	}
-	return nil, lastErr
+	return nil
 }
 
 func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error) {
@@ -98,10 +103,7 @@ func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error
 			rows.Close()
 			return nil, err
 		}
-		if p.LastUsedAt, err = parseLastUsed(lastUsed); err != nil {
-			rows.Close()
-			return nil, err
-		}
+		p.LastUsedAt = parseLastUsed(lastUsed)
 		programs = append(programs, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -172,10 +174,7 @@ func (s *ProgramStore) ListShared(uid int64, f ProgramFilter) ([]models.Program,
 			return nil, err
 		}
 		p.OwnerEmail = ownerEmail
-		if p.LastUsedAt, err = parseLastUsed(lastUsed); err != nil {
-			rows.Close()
-			return nil, err
-		}
+		p.LastUsedAt = parseLastUsed(lastUsed)
 		programs = append(programs, p)
 	}
 	if err := rows.Err(); err != nil {

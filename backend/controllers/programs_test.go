@@ -545,3 +545,31 @@ func TestListPrograms_smartSortIncludesLastUsed(t *testing.T) {
 		t.Errorf("expected last_used_at '2026-07-15T18:00:00Z', got %v", lu)
 	}
 }
+
+// Some historical rows have started_at stored via Go's time.Time.String()
+// format (e.g. "2026-07-21 22:30:08.763 +0000 UTC") instead of RFC3339 —
+// production hit this and it 500'd every /programs request. last_used_at
+// should degrade to unknown rather than break the list.
+func TestListPrograms_smartSortToleratesLegacyTimeFormat(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	res, _ := db.DB.Exec(`INSERT INTO programs (user_id, name) VALUES (?, ?)`, uid, "PPL")
+	pid, _ := res.LastInsertId()
+	db.DB.Exec(
+		`INSERT INTO workouts (user_id, name, program_id, started_at) VALUES (?, ?, ?, ?)`,
+		uid, "Push Day", pid, "2026-07-21 22:30:08.763 +0000 UTC",
+	)
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/programs", nil)
+	c.Request.URL.RawQuery = "sort=smart"
+	th.ListPrograms(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("expected 1 program, got %d", len(data))
+	}
+}
