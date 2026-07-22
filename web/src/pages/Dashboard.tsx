@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
-import { format, startOfWeek, isSameDay, eachDayOfInterval, endOfWeek, subWeeks } from 'date-fns'
+import { format, startOfWeek, isSameDay, eachDayOfInterval, endOfWeek, subWeeks, subDays } from 'date-fns'
 import {
   Dumbbell, Flame, ArrowRight, Beef,
-  AlertCircle, Play, Timer, TrendingUp, Scale, Activity, Plus, Utensils,
+  AlertCircle, Play, Timer, TrendingUp, Scale, Activity, Plus, Utensils, Apple,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  LineChart, Line, PieChart, Pie, Legend,
+  LineChart, Line, PieChart, Pie, AreaChart, Area, ReferenceLine,
 } from 'recharts'
 import Loading from '../components/Loading'
 import SectionHeader from '../components/ui/SectionHeader'
@@ -64,6 +64,42 @@ const MUSCLE_HEX: Record<string, string> = {
   'full body': '#e879f9',
 }
 const muscleHex = (m: string) => MUSCLE_HEX[m?.toLowerCase()] ?? '#6366f1'
+
+// Focus category: which broad area a workout trained, derived from its exercises'
+// muscle groups (no discipline/focus field is stored on Workout or Program).
+type FocusCategory = 'Upper' | 'Lower' | 'Core' | 'Full Body'
+const FOCUS_CATEGORY: Record<string, FocusCategory> = {
+  chest: 'Upper', back: 'Upper', shoulders: 'Upper', biceps: 'Upper', triceps: 'Upper',
+  forearms: 'Upper', traps: 'Upper', lats: 'Upper',
+  legs: 'Lower', quadriceps: 'Lower', hamstrings: 'Lower', glutes: 'Lower', calves: 'Lower',
+  core: 'Core', abs: 'Core',
+  'full body': 'Full Body',
+}
+// Validated (dataviz palette validator, adjacent-pairs, light+dark) categorical order.
+const FOCUS_HEX: Record<FocusCategory, string> = {
+  Upper: '#2563eb',
+  Lower: '#16a34a',
+  'Full Body': '#9333ea',
+  Core: '#d97706',
+}
+const FOCUS_ORDER: FocusCategory[] = ['Upper', 'Lower', 'Core', 'Full Body']
+function dominantFocus(w: types.Workout): FocusCategory | null {
+  const counts = new Map<FocusCategory, number>()
+  ;(w.exercises ?? []).forEach(ex => {
+    const cat = FOCUS_CATEGORY[ex.exercise?.muscle_group?.toLowerCase() ?? '']
+    if (cat) counts.set(cat, (counts.get(cat) || 0) + (ex.sets ?? []).length)
+  })
+  let top: FocusCategory | null = null
+  let max = 0
+  counts.forEach((v, k) => { if (v > max) { max = v; top = k } })
+  return top
+}
+
+// Macro colors, shared across the nutrition widgets on this page.
+const CAL_COLOR = '#00b8d9'
+const PROTEIN_COLOR = '#3b82f6'
+const CARBS_COLOR = '#f59e0b'
+const FAT_COLOR = '#8b5cf6'
 
 const MUSCLE_ROAST: Record<string, string> = {
   chest:       'All chest, no legs. Classic bro.',
@@ -141,20 +177,25 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [volumePeriod, setVolumePeriod] = useState<'7' | '14' | '30'>('7')
+  const [volumePeriod, setVolumePeriod] = useState<'7' | '14' | '30' | '90'>('7')
+  const [foodHistory, setFoodHistory] = useState<types.FoodHistoryPoint[]>([])
+  const [nutritionPeriod, setNutritionPeriod] = useState<'7' | '14' | '30' | '90'>('7')
+  const [nutritionView, setNutritionView] = useState<'% of Target' | 'Macro Mix'>('% of Target')
   const wUnit = weightShort(settings.weight_unit)
 
   useEffect(() => {
     Promise.all([
-      workoutAPI.list({ limit: 84 }),  // 12 weeks × 7 days max
+      workoutAPI.list({ limit: 150 }),  // enough history for a 90-day trend at typical frequency
       foodAPI.stats(format(TODAY, 'yyyy-MM-dd')).catch(() => DEFAULT_FOOD),
+      foodAPI.history(90).catch(() => []),
       weightAPI.list({ limit: 14 }).catch(() => []),
       weightAPI.stats().catch(() => null),
       userAPI.getSettings().catch(() => DEFAULT_SETTINGS),
     ])
-      .then(([ws, fs, wl, wst, s]) => {
+      .then(([ws, fs, fh, wl, wst, s]) => {
         setWorkouts(ws || [])
         setFood(fs || DEFAULT_FOOD)
+        setFoodHistory(fh || [])
         setWeightLogs(wl || [])
         setWeightStats(wst)
         setSettings(s || DEFAULT_SETTINGS)
@@ -178,13 +219,34 @@ export default function Dashboard() {
   const weekStart = startOfWeek(TODAY, { weekStartsOn: 1 })
   const weekWorkouts = workouts.filter(w => new Date(w.started_at) >= weekStart)
   const lastWorkout = workouts[0] ?? null
+  const lastWorkoutFocus = lastWorkout ? dominantFocus(lastWorkout) : null
 
-  // Volume chart: slice by selected period, oldest→newest
-  const chartData = workouts.slice(0, Number(volumePeriod)).reverse().map(w => ({
-    date: format(new Date(w.started_at), 'M/d'),
-    volume: displayVolume(calcVolume(w), settings.weight_unit),
-    name: w.name,
-  }))
+  // Volume & Focus chart: workouts within the selected trailing-N-calendar-day window, oldest→newest
+  const volumeDays = Number(volumePeriod)
+  const periodWorkouts = workouts.filter(w => new Date(w.started_at) >= subDays(TODAY, volumeDays))
+  const chartData = periodWorkouts.slice().reverse().map(w => {
+    const focus = dominantFocus(w)
+    return {
+      date: format(new Date(w.started_at), 'M/d'),
+      volume: displayVolume(calcVolume(w), settings.weight_unit),
+      duration: Math.round(w.duration / 60),
+      name: w.name,
+      focus,
+      focusColor: focus ? FOCUS_HEX[focus] : '#6366f1',
+    }
+  })
+  const prevPeriodWorkouts = workouts.filter(w => {
+    const t = new Date(w.started_at)
+    return t < subDays(TODAY, volumeDays) && t >= subDays(TODAY, volumeDays * 2)
+  })
+  const periodVolume = periodWorkouts.reduce((s, w) => s + calcVolume(w), 0)
+  const prevPeriodVolume = prevPeriodWorkouts.reduce((s, w) => s + calcVolume(w), 0)
+  const volumeChangePct = prevPeriodVolume > 0
+    ? Math.round(((periodVolume - prevPeriodVolume) / prevPeriodVolume) * 100)
+    : null
+  const avgDuration = periodWorkouts.length > 0
+    ? Math.round(periodWorkouts.reduce((s, w) => s + w.duration, 0) / periodWorkouts.length / 60)
+    : 0
 
   // Current week dots
   const weekDays = eachDayOfInterval({ start: weekStart, end: endOfWeek(TODAY, { weekStartsOn: 1 }) })
@@ -245,6 +307,60 @@ export default function Dashboard() {
   const fatPct   = Math.min(100, (food.total_fat      / settings.fat_target)      * 100) || 0
   const cholPct   = Math.min(100, (food.total_cholesterol / settings.cholesterol_target) * 100) || 0
   const sodiumPct = Math.min(100, (food.total_sodium      / settings.sodium_target)      * 100) || 0
+
+  // Nutrition trend: zero-fill the last 90 days so gaps read as "didn't log" rather than a broken chart
+  const trendStart = subDays(TODAY, 89)
+  const foodByDate = new Map(foodHistory.map(p => [p.date, p]))
+  const filledHistory = eachDayOfInterval({ start: trendStart, end: TODAY }).map(d => {
+    const k = format(d, 'yyyy-MM-dd')
+    const p = foodByDate.get(k)
+    return {
+      date: k,
+      calories: p?.calories ?? 0,
+      protein: p?.protein ?? 0,
+      carbs: p?.carbs ?? 0,
+      fat: p?.fat ?? 0,
+    }
+  })
+  const nutritionDays = Number(nutritionPeriod)
+  const nutritionSlice = filledHistory.slice(-nutritionDays)
+  const prevNutritionSlice = filledHistory.slice(-nutritionDays * 2, -nutritionDays)
+
+  const pctOfTargetData = nutritionSlice.map(p => ({
+    date: format(new Date(p.date), 'M/d'),
+    calPct: Math.round((p.calories / settings.calorie_target) * 100),
+    protPct: Math.round((p.protein / settings.protein_target) * 100),
+    carbPct: Math.round((p.carbs / settings.carb_target) * 100),
+  }))
+  const macroMixData = nutritionSlice.map(p => {
+    const protCal = p.protein * 4, carbCal = p.carbs * 4, fatCal = p.fat * 9
+    const totalMacroCal = protCal + carbCal + fatCal
+    return {
+      date: format(new Date(p.date), 'M/d'),
+      protPct: totalMacroCal > 0 ? Math.round((protCal / totalMacroCal) * 100) : 0,
+      carbPct: totalMacroCal > 0 ? Math.round((carbCal / totalMacroCal) * 100) : 0,
+      fatPct: totalMacroCal > 0 ? Math.round((fatCal / totalMacroCal) * 100) : 0,
+    }
+  })
+
+  const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : 0
+  const avgCalories = avg(nutritionSlice.map(p => p.calories))
+  const avgProtein = avg(nutritionSlice.map(p => p.protein))
+  const avgCarbs = avg(nutritionSlice.map(p => p.carbs))
+  const avgFat = avg(nutritionSlice.map(p => p.fat))
+  const avgMacroCal = avgProtein * 4 + avgCarbs * 4 + avgFat * 9
+  const avgProtSharePct = avgMacroCal > 0 ? Math.round((avgProtein * 4 / avgMacroCal) * 100) : 0
+  const avgCarbSharePct = avgMacroCal > 0 ? Math.round((avgCarbs * 4 / avgMacroCal) * 100) : 0
+  const avgFatSharePct  = avgMacroCal > 0 ? Math.round((avgFat  * 9 / avgMacroCal) * 100) : 0
+  const prevAvgCalories = avg(prevNutritionSlice.map(p => p.calories))
+  const calorieChangePct = prevAvgCalories > 0
+    ? Math.round(((avgCalories - prevAvgCalories) / prevAvgCalories) * 100)
+    : null
+  const hasFoodHistory = filledHistory.some(p => p.calories > 0)
+
+  // Weight ↔ nutrition tie-in: avg daily calorie balance vs target over the trailing week
+  const last7Food = filledHistory.slice(-7)
+  const avgCalBalance = Math.round(avg(last7Food.map(p => p.calories)) - settings.calorie_target)
 
   // Weight sparkline
   const sparkData = [...weightLogs].reverse().map(l => ({
@@ -342,12 +458,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Volume trend chart ─────────────────────── */}
+      {/* ── Volume & Focus trend chart ─────────────── */}
       <div className="card p-4">
         <SectionHeader
           icon={TrendingUp}
-          title="Volume Trend"
-          right={<PeriodSelector options={['7', '14', '30'] as const} value={volumePeriod} onChange={setVolumePeriod} />}
+          title="Volume & Focus Trend"
+          right={<PeriodSelector options={['7', '14', '30', '90'] as const} value={volumePeriod} onChange={setVolumePeriod} />}
           className="mb-3"
         />
 
@@ -358,30 +474,55 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            {/* Focus legend */}
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-2">
+              {FOCUS_ORDER.map(cat => (
+                <div key={cat} className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: FOCUS_HEX[cat] }} />
+                  <span className="text-[10px] text-tx-muted">{cat}</span>
+                </div>
+              ))}
+            </div>
+
             <div className="w-full min-w-0">
             <ResponsiveContainer width="100%" height={110}>
-              <BarChart data={chartData} barSize={18} barCategoryGap="30%">
+              <BarChart data={chartData} barSize={volumeDays > 30 ? 6 : 18} barCategoryGap="30%">
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 10, fill: 'var(--color-tx-muted, #9ca3af)' }}
                   axisLine={false}
                   tickLine={false}
+                  interval="preserveStartEnd"
                 />
                 <YAxis hide />
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
-                  formatter={(v: number) => [`${v.toLocaleString()} ${wUnit}`, 'Volume']}
+                  formatter={(v: number, _n: string, props: { payload?: { duration: number, focus: string | null } }) => [
+                    `${v.toLocaleString()} ${wUnit} · ${props.payload?.duration ?? 0} min${props.payload?.focus ? ` · ${props.payload.focus}` : ''}`,
+                    'Volume',
+                  ]}
                   labelFormatter={(label: string) => chartData.find(d => d.date === label)?.name || label}
                   cursor={{ fill: 'rgba(99,102,241,0.08)', radius: 4 }}
                 />
                 <Bar dataKey="volume" radius={[4, 4, 0, 0]}>
-                  {chartData.map((_, i) => (
-                    <Cell key={i} fill="#6366f1" fillOpacity={i === chartData.length - 1 ? 1 : 0.25} />
+                  {chartData.map((d, i) => (
+                    <Cell key={i} fill={d.focusColor} fillOpacity={i === chartData.length - 1 ? 1 : 0.6} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
             </div>
+
+            {/* Period insight */}
+            <p className="text-[11px] text-tx-muted mt-2">
+              {periodWorkouts.length} session{periodWorkouts.length === 1 ? '' : 's'}
+              {avgDuration > 0 && ` · avg ${avgDuration} min`}
+              {volumeChangePct !== null && (
+                <span className={volumeChangePct >= 0 ? 'text-success-400' : 'text-error-400'}>
+                  {' · '}{volumeChangePct >= 0 ? '▲' : '▼'} {Math.abs(volumeChangePct)}% volume vs prior {volumeDays}d
+                </span>
+              )}
+            </p>
 
             {/* Current week day dots */}
             <div className="flex items-center justify-between mt-4 px-1">
@@ -476,7 +617,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── Last workout + Nutrition ───────────────── */}
+      {/* ── Last workout + Muscle balance ──────────── */}
       <div className="grid lg:grid-cols-2 gap-4 min-w-0">
 
         {lastWorkout ? (() => {
@@ -496,6 +637,14 @@ export default function Dashboard() {
                     {totalSets > 0 && ` · ${totalSets} sets`}
                     {totalVolume > 0 && ` · ${totalVolume.toLocaleString()} ${wUnit}`}
                   </p>
+                  {lastWorkoutFocus && (
+                    <span
+                      className="inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                      style={{ background: `${FOCUS_HEX[lastWorkoutFocus]}1a`, color: FOCUS_HEX[lastWorkoutFocus] }}
+                    >
+                      {lastWorkoutFocus} Focus
+                    </span>
+                  )}
                 </div>
                 <Link to="/workouts" className="flex items-center gap-0.5 text-xs text-brand-400 hover:text-brand-300 flex-shrink-0 transition-colors">
                   All <ArrowRight className="w-3 h-3" />
@@ -559,56 +708,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Nutrition */}
-        <div className="card p-4 overflow-hidden min-w-0">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="section-title">Today's Nutrition</h2>
-            <Link to="/food" className="text-xs text-brand-400 hover:text-brand-300 transition-colors flex-shrink-0">
-              Log →
-            </Link>
-          </div>
-
-          {/* Calorie total */}
-          <div className="flex items-baseline gap-1.5 mb-3">
-            <span className="text-3xl font-bold text-tx-primary tabular-nums leading-none">
-              {Math.round(food.total_calories)}
-            </span>
-            <span className="text-xs text-tx-muted">/ {settings.calorie_target} kcal</span>
-            <div className="flex-1" />
-            <span className="text-xs text-tx-muted tabular-nums">{Math.round(calPct)}%</span>
-          </div>
-          <div className="progress-track mb-4">
-            <div className="progress-bar" style={{ width: `${calPct}%`, background: '#00b8d9' }} />
-          </div>
-
-          {/* Macros */}
-          <div className="space-y-2.5">
-            {[
-              { label: 'Protein',     val: food.total_protein,     target: settings.protein_target,     pct: protPct,   color: '#3b82f6', unit: 'g' },
-              { label: 'Carbs',       val: food.total_carbs,       target: settings.carb_target,        pct: carbsPct,  color: '#f59e0b', unit: 'g' },
-              { label: 'Fat',         val: food.total_fat,         target: settings.fat_target,         pct: fatPct,    color: '#8b5cf6', unit: 'g' },
-              { label: 'Cholesterol', val: food.total_cholesterol, target: settings.cholesterol_target, pct: cholPct,   color: '#f472b6', unit: 'mg' },
-              { label: 'Sodium',      val: food.total_sodium,      target: settings.sodium_target,      pct: sodiumPct, color: '#38bdf8', unit: 'mg' },
-            ].map(m => (
-              <div key={m.label}>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs text-tx-muted">{m.label}</span>
-                  <span className="text-xs font-semibold text-tx-primary tabular-nums">
-                    {Math.round(m.val)}{m.unit}
-                    <span className="text-tx-muted font-normal"> / {m.target}{m.unit}</span>
-                  </span>
-                </div>
-                <div className="progress-track">
-                  <div className="progress-bar" style={{ width: `${m.pct}%`, background: m.color }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Muscle group balance ────────────────────── */}
-      <div className="card p-4">
+        {/* Muscle Balance */}
+        <div className="card p-4 min-w-0">
           <SectionHeader
             icon={Dumbbell}
             title="Muscle Balance"
@@ -689,6 +790,147 @@ export default function Dashboard() {
             </div>
           </div>
           )}
+        </div>
+      </div>
+
+      {/* ── Today's Nutrition + Nutrition Trend ─────── */}
+      <div className="grid lg:grid-cols-2 gap-4 min-w-0">
+
+        {/* Today's Nutrition */}
+        <div className="card p-4 overflow-hidden min-w-0">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="section-title">Today's Nutrition</h2>
+            <Link to="/food" className="text-xs text-brand-400 hover:text-brand-300 transition-colors flex-shrink-0">
+              Log →
+            </Link>
+          </div>
+
+          {/* Calorie total */}
+          <div className="flex items-baseline gap-1.5 mb-3">
+            <span className="text-3xl font-bold text-tx-primary tabular-nums leading-none">
+              {Math.round(food.total_calories)}
+            </span>
+            <span className="text-xs text-tx-muted">/ {settings.calorie_target} kcal</span>
+            <div className="flex-1" />
+            <span className="text-xs text-tx-muted tabular-nums">{Math.round(calPct)}%</span>
+          </div>
+          <div className="progress-track mb-4">
+            <div className="progress-bar" style={{ width: `${calPct}%`, background: CAL_COLOR }} />
+          </div>
+
+          {/* Macros */}
+          <div className="space-y-2.5">
+            {[
+              { label: 'Protein',     val: food.total_protein,     target: settings.protein_target,     pct: protPct,   color: PROTEIN_COLOR, unit: 'g' },
+              { label: 'Carbs',       val: food.total_carbs,       target: settings.carb_target,        pct: carbsPct,  color: CARBS_COLOR, unit: 'g' },
+              { label: 'Fat',         val: food.total_fat,         target: settings.fat_target,         pct: fatPct,    color: FAT_COLOR, unit: 'g' },
+              { label: 'Cholesterol', val: food.total_cholesterol, target: settings.cholesterol_target, pct: cholPct,   color: '#f472b6', unit: 'mg' },
+              { label: 'Sodium',      val: food.total_sodium,      target: settings.sodium_target,      pct: sodiumPct, color: '#38bdf8', unit: 'mg' },
+            ].map(m => (
+              <div key={m.label}>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs text-tx-muted">{m.label}</span>
+                  <span className="text-xs font-semibold text-tx-primary tabular-nums">
+                    {Math.round(m.val)}{m.unit}
+                    <span className="text-tx-muted font-normal"> / {m.target}{m.unit}</span>
+                  </span>
+                </div>
+                <div className="progress-track">
+                  <div className="progress-bar" style={{ width: `${m.pct}%`, background: m.color }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Nutrition Trend */}
+        <div className="card p-4 min-w-0">
+          <SectionHeader
+            icon={Apple}
+            title="Nutrition Trend"
+            right={<PeriodSelector options={['7', '14', '30', '90'] as const} value={nutritionPeriod} onChange={setNutritionPeriod} />}
+            className="mb-2"
+          />
+
+          {!hasFoodHistory ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2">
+              <Apple className="w-6 h-6 text-tx-muted opacity-40" />
+              <p className="text-xs text-tx-muted">Log food to see trends</p>
+            </div>
+          ) : (
+            <>
+              <div className="mb-2">
+                <PeriodSelector options={['% of Target', 'Macro Mix'] as const} value={nutritionView} onChange={setNutritionView} />
+              </div>
+
+              <div className="w-full min-w-0">
+                <ResponsiveContainer width="100%" height={130}>
+                  {nutritionView === '% of Target' ? (
+                    <LineChart data={pctOfTargetData}>
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: 'var(--color-tx-muted, #9ca3af)' }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis hide domain={[0, 'dataMax']} />
+                      <ReferenceLine y={100} stroke="var(--color-tx-muted, #9ca3af)" strokeDasharray="3 3" strokeOpacity={0.5} />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        formatter={(v: number, name: string) => [`${v}%`, name]}
+                      />
+                      <Line dataKey="calPct" name="Calories" dot={false} stroke={CAL_COLOR} strokeWidth={2} type="monotone" />
+                      <Line dataKey="protPct" name="Protein" dot={false} stroke={PROTEIN_COLOR} strokeWidth={2} type="monotone" />
+                      <Line dataKey="carbPct" name="Carbs" dot={false} stroke={CARBS_COLOR} strokeWidth={2} type="monotone" />
+                    </LineChart>
+                  ) : (
+                    <AreaChart data={macroMixData} stackOffset="expand">
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: 'var(--color-tx-muted, #9ca3af)' }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis hide />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        formatter={(v: number, name: string) => [`${v}%`, name]}
+                      />
+                      <Area dataKey="protPct" name="Protein" stackId="mix" stroke={PROTEIN_COLOR} fill={PROTEIN_COLOR} fillOpacity={0.7} />
+                      <Area dataKey="carbPct" name="Carbs" stackId="mix" stroke={CARBS_COLOR} fill={CARBS_COLOR} fillOpacity={0.7} />
+                      <Area dataKey="fatPct" name="Fat" stackId="mix" stroke={FAT_COLOR} fill={FAT_COLOR} fillOpacity={0.7} />
+                    </AreaChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
+
+              {/* Legend */}
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1">
+                {(nutritionView === '% of Target'
+                  ? [['Calories', CAL_COLOR], ['Protein', PROTEIN_COLOR], ['Carbs', CARBS_COLOR]]
+                  : [['Protein', PROTEIN_COLOR], ['Carbs', CARBS_COLOR], ['Fat', FAT_COLOR]]
+                ).map(([label, color]) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                    <span className="text-[10px] text-tx-muted">{label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Period insight */}
+              <p className="text-[11px] text-tx-muted mt-2">
+                Avg {Math.round(avgCalories).toLocaleString()} kcal/day · P {avgProtSharePct}% · C {avgCarbSharePct}% · F {avgFatSharePct}%
+                {calorieChangePct !== null && (
+                  <span className={calorieChangePct >= 0 ? 'text-success-400' : 'text-error-400'}>
+                    {' · '}{calorieChangePct >= 0 ? '▲' : '▼'} {Math.abs(calorieChangePct)}% kcal vs prior {nutritionDays}d
+                  </span>
+                )}
+              </p>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ── Weight quick-log card ──────────────────── */}
@@ -749,6 +991,11 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+            {hasFoodHistory && (
+              <p className="text-[11px] text-tx-muted mb-2">
+                Avg {Math.abs(Math.round(avgCalBalance))} kcal/day {avgCalBalance <= 0 ? 'under' : 'over'} target this week
+              </p>
+            )}
             {weightLogs.length >= 2 && (
               <div className="w-full min-w-0">
                 <ResponsiveContainer width="100%" height={48}>
