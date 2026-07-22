@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -46,6 +47,18 @@ class SessionSyncService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pollJob: Job? = null
 
+    /**
+     * Tracks the in-flight (or queued) [pushLocalChanges] coroutine so
+     * [finishWorkout] can wait for it to actually finish — not just request
+     * cancellation — before deleting the active session. `Job.cancel()` alone
+     * doesn't interrupt a coroutine already blocked inside OkHttp's
+     * synchronous `execute()`, so without this a stale PUT from the watch's
+     * final COMPLETE_SET can land *after* finishWorkout's DELETE and silently
+     * resurrect the active_sessions row via the backend's upsert, leaving web
+     * showing a phantom in-progress workout with nothing left to clear it.
+     */
+    private var pushJob: Job? = null
+
     /** Consecutive polls that found no session on the backend. */
     private var missCount = 0
 
@@ -66,7 +79,7 @@ class SessionSyncService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_PUSH -> scope.launch { pushLocalChanges() }
+            ACTION_PUSH -> pushJob = scope.launch { pushLocalChanges() }
             ACTION_FINISH -> {
                 val feeling = intent.getIntExtra(EXTRA_FEELING, 0)
                 scope.launch { finishWorkout(feeling) }
@@ -155,6 +168,12 @@ class SessionSyncService : Service() {
     private suspend fun finishWorkout(feeling: Int = 0) {
         pollJob?.cancel()
         pollJob = null
+
+        // Wait for (not just cancel) any push already in flight so it can't
+        // land after our DELETE below and resurrect the active session via
+        // the backend's upsert. See the kdoc on [pushJob].
+        pushJob?.cancelAndJoin()
+        pushJob = null
 
         if (SessionRepository.rawJsonString() == null) {
             // Cold-started by the watch's message waking a dead process —
