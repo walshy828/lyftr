@@ -23,6 +23,8 @@ import kotlinx.coroutines.launch
 fun WearApp(client: WearSessionClient) {
     val session by client.session.collectAsState()
     val scope = rememberCoroutineScope()
+    var confirmingEnd by remember { mutableStateOf(false) }
+    var ratingPending by remember { mutableStateOf(false) }
 
     val s = session
     if (s == null) {
@@ -43,11 +45,45 @@ fun WearApp(client: WearSessionClient) {
         return
     }
 
+    if (confirmingEnd) {
+        ConfirmEndWorkoutScreen(
+            onConfirm = {
+                confirmingEnd = false
+                ratingPending = true
+            },
+            onCancel = { confirmingEnd = false },
+        )
+        return
+    }
+
+    if (ratingPending) {
+        RateWorkoutScreen(
+            onRate = { feeling ->
+                ratingPending = false
+                scope.launch { client.sendAction(WearAction(WearActionType.END_WORKOUT, feeling = feeling)) }
+            },
+            onSkip = {
+                ratingPending = false
+                scope.launch { client.sendAction(WearAction(WearActionType.END_WORKOUT)) }
+            },
+        )
+        return
+    }
+
     val exercise = s.exercises.getOrNull(s.current_exercise_idx)
     val set = exercise?.sets?.getOrNull(s.current_set_idx)
+    // Computed here (not a phone-supplied flag) since every WearSet already
+    // carries `completed` for rendering — no need to duplicate this as a
+    // separate field that could drift out of sync with the per-set values
+    // it's derived from.
+    val allComplete = s.exercises.isNotEmpty() &&
+        s.exercises.all { it.sets.isNotEmpty() && it.sets.all { set -> set.completed } }
 
-    if (exercise == null || set == null) {
-        WorkoutCompleteScreen(workoutName = s.name)
+    if (exercise == null || set == null || allComplete) {
+        WorkoutCompleteScreen(
+            workoutName = s.name,
+            onFinish = { ratingPending = true },
+        )
         return
     }
 
@@ -76,5 +112,6 @@ fun WearApp(client: WearSessionClient) {
         onAdjustRest = { deltaSec ->
             scope.launch { client.sendAction(WearAction(WearActionType.ADJUST_REST, exIdx, setIdx, deltaSec.toDouble())) }
         },
+        onEndWorkout = { confirmingEnd = true },
     )
 }

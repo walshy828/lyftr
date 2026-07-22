@@ -49,10 +49,13 @@ data class WearSession(
 @Serializable
 data class WearAction(
     val type: WearActionType,
-    val exercise_idx: Int,
-    val set_idx: Int,
+    /** Null for session-level actions (e.g. END_WORKOUT, SKIP_REST, ADJUST_REST). */
+    val exercise_idx: Int? = null,
+    val set_idx: Int? = null,
     /** Only set for UPDATE_WEIGHT / UPDATE_REPS. */
     val value: Double? = null,
+    /** Only set for END_WORKOUT: 1 = light, 2 = moderate, 3 = intense, null = skipped/unrated. */
+    val feeling: Int? = null,
 ) {
     fun toJson(): String = Json.encodeToString(serializer(), this)
 

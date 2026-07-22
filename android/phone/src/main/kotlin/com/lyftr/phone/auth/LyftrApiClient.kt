@@ -22,6 +22,40 @@ private const val TAG = "LyftrSync"
 @Serializable private data class ActiveSessionEnvelope(val data: ActiveSessionData? = null)
 
 /**
+ * Mirrors backend/models/models.go's CreateSetReq/CreateWorkoutExerciseReq/
+ * CreateWorkoutRequest — the shape POST /api/v1/workouts expects. Kept as
+ * typed, one-way outbound DTOs (unlike SessionRepository's raw JsonObject
+ * tree, which deliberately avoids typed round-tripping): nothing reads these
+ * back, so there's no risk of silently dropping a field the phone doesn't
+ * know about.
+ */
+@Serializable
+data class CreateSetReq(
+    val set_number: Int,
+    val reps: Int,
+    val weight: Double,
+)
+
+@Serializable
+data class CreateWorkoutExerciseReq(
+    val exercise_id: Long,
+    val order_index: Int,
+    val rest_seconds: Int,
+    val sets: List<CreateSetReq>,
+)
+
+@Serializable
+data class CreateWorkoutRequest(
+    val name: String,
+    val duration: Int,
+    val started_at: String,
+    val program_id: Long? = null,
+    /** 0 = unrated, 1 = light, 2 = moderate, 3 = intense. */
+    val feeling: Int = 0,
+    val exercises: List<CreateWorkoutExerciseReq>,
+)
+
+/**
  * Minimal REST client for the subset of the Lyftr API (backend/routes/routes.go)
  * the phone companion needs: login/refresh and the active-session blob sync
  * (backend/controllers/active_session.go). No offline queueing — per the
@@ -88,6 +122,12 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
 
     suspend fun deleteActiveSession(): Boolean = withContext(Dispatchers.IO) {
         executeWithRefresh { authedRequest("/active-session").delete().build() } != null
+    }
+
+    /** Persists a finished (or early-ended) workout. See backend/controllers/workouts.go CreateWorkout. */
+    suspend fun createWorkout(req: CreateWorkoutRequest): Boolean = withContext(Dispatchers.IO) {
+        val body = json.encodeToString(CreateWorkoutRequest.serializer(), req).toRequestBody(JSON_MEDIA_TYPE)
+        executeWithRefresh { authedRequest("/workouts").post(body).build() } != null
     }
 
     private fun authedRequest(path: String) = Request.Builder()

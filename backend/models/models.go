@@ -61,6 +61,7 @@ type Workout struct {
 	StartedAt time.Time         `json:"started_at" db:"started_at"`
 	CreatedAt time.Time         `json:"created_at" db:"created_at"`
 	ProgramID *int64            `json:"program_id,omitempty" db:"program_id"`
+	Feeling   int               `json:"feeling" db:"feeling"` // 0=unrated, 1=light, 2=moderate, 3=intense
 	Exercises []WorkoutExercise `json:"exercises,omitempty"`
 }
 
@@ -190,6 +191,7 @@ type CreateWorkoutRequest struct {
 	Duration  int                        `json:"duration"`
 	StartedAt time.Time                  `json:"started_at"`
 	ProgramID *int64                     `json:"program_id"`
+	Feeling   int                        `json:"feeling" validate:"gte=0,lte=3"`
 	Exercises []CreateWorkoutExerciseReq `json:"exercises"`
 }
 

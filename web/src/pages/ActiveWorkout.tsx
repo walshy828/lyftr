@@ -9,6 +9,7 @@ import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore, weightShort, displayToLbs, displayWeight } from '../stores/settings'
 import WeightInput from '../components/WeightInput'
 import ExercisePicker from '../components/ExercisePicker'
+import FeelingPicker from '../components/FeelingPicker'
 import { workoutAPI } from '../services/api'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
@@ -66,6 +67,7 @@ export default function ActiveWorkout() {
   const [elapsed, setElapsed] = useState(0)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
+  const [feeling, setFeeling] = useState<0 | 1 | 2 | 3>(0)
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
   const [activeExIdx, setActiveExIdx] = useState(0)
@@ -105,7 +107,7 @@ export default function ActiveWorkout() {
     setSaving(true)
     setSaveError('')
     try {
-      const payload = buildPayload()
+      const payload = { ...buildPayload(), feeling }
       await workoutAPI.create(payload)
       if (session) await syncProgramWeights(session)
       cancelSession()
@@ -466,9 +468,10 @@ export default function ActiveWorkout() {
           <div className="bg-surface-base border border-surface-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-6">
             <div className="mx-auto w-10 h-1 rounded-full bg-surface-muted mb-4 sm:hidden" />
             <h3 className="font-display font-bold text-lg text-tx-primary mb-1">Finish Workout?</h3>
-            <p className="text-sm text-tx-muted mb-5">
+            <p className="text-sm text-tx-muted mb-4">
               {completedSets} of {totalSets} sets completed. Workout will be saved.
             </p>
+            <FeelingPicker value={feeling} onChange={setFeeling} />
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmFinish(false)}

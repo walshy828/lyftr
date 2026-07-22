@@ -41,4 +41,11 @@ enum class WearActionType {
 
     /** Shifts the running rest countdown by `value` seconds (±); indices unused. */
     ADJUST_REST,
+
+    /**
+     * Ends the workout now (early, or after the last set is done) and asks
+     * the phone to persist whatever results exist so far. Session-level;
+     * exercise/set indices unused.
+     */
+    END_WORKOUT,
 }

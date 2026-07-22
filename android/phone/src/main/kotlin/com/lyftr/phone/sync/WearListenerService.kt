@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
 import com.lyftr.shared.WearAction
+import com.lyftr.shared.WearActionType
 import com.lyftr.shared.WearPaths
 import kotlinx.coroutines.runBlocking
 
@@ -35,6 +36,16 @@ class WearListenerService : WearableListenerService() {
                 val action = runCatching {
                     WearAction.fromJson(String(messageEvent.data, Charsets.UTF_8))
                 }.onFailure { Log.e(TAG, "onMessageReceived: failed to parse action", it) }.getOrNull() ?: return
+
+                if (action.type == WearActionType.END_WORKOUT) {
+                    // Session-level: nothing in SessionRepository to mutate,
+                    // go straight to POST /workouts + clear via the sync
+                    // service. SessionSyncService.finishWorkout resyncs from
+                    // the backend itself if this process was just woken from
+                    // scratch and has no in-memory session yet.
+                    SessionSyncService.finishWorkout(applicationContext, action.feeling)
+                    return
+                }
 
                 // applyAction returns false when there's no session in memory
                 // (e.g. the workout already ended, or the process was

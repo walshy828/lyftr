@@ -1,10 +1,14 @@
 package com.lyftr.phone.sync
 
+import com.lyftr.phone.auth.CreateSetReq
+import com.lyftr.phone.auth.CreateWorkoutExerciseReq
+import com.lyftr.phone.auth.CreateWorkoutRequest
 import com.lyftr.shared.WearAction
 import com.lyftr.shared.WearActionType
 import com.lyftr.shared.WearExercise
 import com.lyftr.shared.WearSession
 import com.lyftr.shared.WearSet
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
@@ -115,15 +119,18 @@ object SessionRepository {
                     .with("rest_duration_sec", JsonPrimitive(newDuration))
                 return true
             }
+            // Handled directly by WearListenerService (POST /workouts + clear),
+            // never mutates this tree; reachable here only defensively.
+            WearActionType.END_WORKOUT -> return false
             else -> {}
         }
 
         val exercises = obj["exercises"]?.jsonArray ?: return false
-        val exIdx = action.exercise_idx
+        val exIdx = action.exercise_idx ?: return false
         if (exIdx !in exercises.indices) return false
         val exercise = exercises[exIdx].jsonObject
         val sets = exercise["sets"]?.jsonArray ?: return false
-        val setIdx = action.set_idx
+        val setIdx = action.set_idx ?: return false
         if (setIdx !in sets.indices) return false
         val set = sets[setIdx].jsonObject
 
@@ -132,8 +139,8 @@ object SessionRepository {
             WearActionType.SKIP_SET -> set.with("completed", JsonPrimitive(false))
             WearActionType.UPDATE_WEIGHT -> set.with("actual_weight", JsonPrimitive(action.value ?: 0.0))
             WearActionType.UPDATE_REPS -> set.with("actual_reps", JsonPrimitive((action.value ?: 0.0).toInt()))
-            // Rest actions returned above; unreachable.
-            WearActionType.SKIP_REST, WearActionType.ADJUST_REST -> return false
+            // Rest/session-level actions returned above; unreachable.
+            WearActionType.SKIP_REST, WearActionType.ADJUST_REST, WearActionType.END_WORKOUT -> return false
         }
         val updatedSets = JsonArray(sets.mapIndexed { i, el -> if (i == setIdx) updatedSet else el })
         val updatedExercise = exercise.with("sets", updatedSets)
@@ -171,6 +178,58 @@ object SessionRepository {
 
         _raw.value = updated
         return true
+    }
+
+    /** True once every set in every exercise is marked completed. */
+    fun isWorkoutComplete(): Boolean {
+        val obj = _raw.value ?: return false
+        val exercises = obj["exercises"]?.jsonArray ?: return false
+        if (exercises.isEmpty()) return false
+        return exercises.all { exEl ->
+            val sets = exEl.jsonObject["sets"]?.jsonArray ?: return@all false
+            sets.isNotEmpty() && sets.all { it.jsonObject["completed"]?.jsonPrimitive?.booleanOrNull == true }
+        }
+    }
+
+    /**
+     * Projects the current tree into the shape backend/controllers/workouts.go's
+     * CreateWorkout expects, mirroring web's buildPayload() (workoutSession.ts):
+     * every set is included regardless of `completed`, falling back to target
+     * reps/weight when no actual value was ever recorded — this is what lets an
+     * early-ended workout still log its unfinished sets at their planned values.
+     */
+    fun toCreateWorkoutRequest(feeling: Int = 0): CreateWorkoutRequest? {
+        val obj = _raw.value ?: return null
+        val startedAt = obj["started_at"]?.jsonPrimitive?.content ?: return null
+        val durationSec = ((System.currentTimeMillis() - Instant.parse(startedAt).toEpochMilli()) / 1000)
+            .toInt().coerceAtLeast(0)
+        val exercises = obj["exercises"]?.jsonArray ?: JsonArray(emptyList())
+        return CreateWorkoutRequest(
+            name = obj["name"]?.jsonPrimitive?.content ?: "",
+            duration = durationSec,
+            started_at = startedAt,
+            program_id = obj["program_id"]?.jsonPrimitive?.longOrNull,
+            feeling = feeling,
+            exercises = exercises.mapIndexed { i, exEl ->
+                val ex = exEl.jsonObject
+                val sets = ex["sets"]?.jsonArray ?: JsonArray(emptyList())
+                CreateWorkoutExerciseReq(
+                    exercise_id = ex["exercise_id"]?.jsonPrimitive?.longOrNull ?: 0,
+                    order_index = i,
+                    rest_seconds = ex["rest_seconds"]?.jsonPrimitive?.intOrNull ?: 0,
+                    sets = sets.mapIndexed { si, setEl ->
+                        val set = setEl.jsonObject
+                        val actualReps = set["actual_reps"]?.jsonPrimitive?.intOrNull ?: 0
+                        val actualWeight = set["actual_weight"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                        CreateSetReq(
+                            set_number = si + 1,
+                            reps = if (actualReps > 0) actualReps else set["target_reps"]?.jsonPrimitive?.intOrNull ?: 0,
+                            weight = if (actualWeight > 0) actualWeight else set["target_weight"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
+                        )
+                    },
+                )
+            },
+        )
     }
 
     private fun nextIncompleteSet(exercises: JsonArray, fromEx: Int, fromSet: Int): Pair<Int, Int> {

@@ -65,8 +65,13 @@ class SessionSyncService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_PUSH) {
-            scope.launch { pushLocalChanges() }
+        when (intent?.action) {
+            ACTION_PUSH -> scope.launch { pushLocalChanges() }
+            ACTION_FINISH -> {
+                val feeling = intent.getIntExtra(EXTRA_FEELING, 0)
+                scope.launch { finishWorkout(feeling) }
+                return START_NOT_STICKY
+            }
         }
         // Every start path runs the self-terminating poll loop, so however the
         // service came up it always ends when the session does.
@@ -139,6 +144,37 @@ class SessionSyncService : Service() {
         wearBridge.publish(SessionRepository.toWearSession())
     }
 
+    /**
+     * Persists the workout ended from the watch (early or after the last set),
+     * mirroring web's handleFinish (GymModeWorkout.tsx): POST /workouts with
+     * whatever is in the session right now, then delete the active-session
+     * blob and clear the watch. Stops the poll loop first so a poll in flight
+     * can't re-hydrate SessionRepository out from under us right as we're
+     * about to delete the session it would have re-fetched.
+     */
+    private suspend fun finishWorkout(feeling: Int = 0) {
+        pollJob?.cancel()
+        pollJob = null
+
+        if (SessionRepository.rawJsonString() == null) {
+            // Cold-started by the watch's message waking a dead process —
+            // resync from the backend before we have anything to finish.
+            SessionSyncService.checkAndStart(applicationContext)
+        }
+        val req = SessionRepository.toCreateWorkoutRequest(feeling)
+        if (req == null) {
+            Log.w(TAG, "finishWorkout: no session to finish")
+            return
+        }
+        if (!apiClient.createWorkout(req)) {
+            Log.e(TAG, "finishWorkout: createWorkout failed, leaving active-session intact for retry")
+            startPolling()
+            return
+        }
+        apiClient.deleteActiveSession() // best-effort; workout is already saved either way
+        shutDown("workout finished from watch")
+    }
+
     private fun buildNotification(): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
@@ -159,6 +195,8 @@ class SessionSyncService : Service() {
         private const val POLL_INTERVAL_MS = 10_000L
         private const val MAX_MISSES = 2
         private const val ACTION_PUSH = "com.lyftr.phone.action.PUSH"
+        private const val ACTION_FINISH = "com.lyftr.phone.action.FINISH"
+        private const val EXTRA_FEELING = "feeling"
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, SessionSyncService::class.java))
@@ -167,6 +205,14 @@ class SessionSyncService : Service() {
         /** Called by [WearListenerService] after applying a watch action to [SessionRepository]. */
         fun pushChanges(context: Context) {
             val intent = Intent(context, SessionSyncService::class.java).setAction(ACTION_PUSH)
+            context.startForegroundService(intent)
+        }
+
+        /** Called by [WearListenerService] when the watch sends END_WORKOUT. */
+        fun finishWorkout(context: Context, feeling: Int? = null) {
+            val intent = Intent(context, SessionSyncService::class.java)
+                .setAction(ACTION_FINISH)
+                .putExtra(EXTRA_FEELING, feeling ?: 0)
             context.startForegroundService(intent)
         }
 

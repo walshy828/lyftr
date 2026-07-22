@@ -66,6 +66,7 @@ export interface Workout {
   started_at: string
   created_at: string
   program_id?: number
+  feeling?: number // 0/undefined=unrated, 1=light, 2=moderate, 3=intense
   exercises: WorkoutExercise[]
 }
 

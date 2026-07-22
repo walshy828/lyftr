@@ -92,6 +92,11 @@ func alterMigrations() {
 		log.Fatalf("create idx_workouts_program: %v", err)
 	}
 
+	// Post-workout "how did that feel" rating (#workoutFeeling): 0=unrated
+	// (all pre-existing workouts and clients that don't send it), 1=light,
+	// 2=moderate, 3=intense.
+	ensureColumn("workouts", "feeling", `ALTER TABLE workouts ADD COLUMN feeling INTEGER NOT NULL DEFAULT 0`)
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a

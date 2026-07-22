@@ -52,6 +52,7 @@ fun ActiveSetScreen(
     onRepsChange: (Int) -> Unit,
     onSkipRest: () -> Unit,
     onAdjustRest: (Int) -> Unit,
+    onEndWorkout: () -> Unit,
 ) {
     val restEndsAt = session.rest_ends_at
     // Ticking state, not a plain comparison: when the countdown expires this
@@ -144,6 +145,21 @@ fun ActiveSetScreen(
                     onClick = onSkip,
                     label = { Text("Skip", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
                     colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                )
+            }
+            item {
+                // Deliberately separate from the Done/Skip pair above (not a
+                // third stepper-row action) and visually de-emphasized, since
+                // this is a rare, semi-destructive action rather than part of
+                // the core per-set loop.
+                Chip(
+                    onClick = onEndWorkout,
+                    label = { Text("End Workout", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                    colors = ChipDefaults.chipColors(
+                        backgroundColor = MaterialTheme.colors.surface,
+                        contentColor = MaterialTheme.colors.onSurfaceVariant,
+                    ),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 )
             }

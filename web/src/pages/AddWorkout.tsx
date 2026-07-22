@@ -7,6 +7,7 @@ import WeightInput from '../components/WeightInput'
 import ExercisePicker from '../components/ExercisePicker'
 import ProgramPicker from '../components/ProgramPicker'
 import RestPicker from '../components/RestPicker'
+import FeelingPicker from '../components/FeelingPicker'
 import * as types from '../types'
 
 interface WorkoutFormData {
@@ -14,6 +15,7 @@ interface WorkoutFormData {
   notes: string
   duration: number
   date: string
+  feeling: 0 | 1 | 2 | 3
   exercises: { exercise_id: number; notes: string; rest_seconds: number; sets: { set_number: number; reps: number; weight: number }[] }[]
 }
 
@@ -26,7 +28,7 @@ export default function AddWorkout() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [pickerExercises, setPickerExercises] = useState<Record<number, types.Exercise>>({})
-  const [formData, setFormData] = useState<WorkoutFormData>({ name: '', notes: '', duration: 0, date: new Date().toISOString().slice(0, 10), exercises: [] })
+  const [formData, setFormData] = useState<WorkoutFormData>({ name: '', notes: '', duration: 0, date: new Date().toISOString().slice(0, 10), feeling: 0, exercises: [] })
 
   useEffect(() => { if (error) window.scrollTo({ top: 0, behavior: 'smooth' }) }, [error])
 
@@ -168,6 +170,8 @@ export default function AddWorkout() {
           </div>
           <textarea value={formData.notes} onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="How did it feel? Any PRs?" className="input mt-1 min-h-20 resize-none" />
         </div>
+
+        <FeelingPicker value={formData.feeling} onChange={v => setFormData(prev => ({ ...prev, feeling: v }))} />
 
         {formData.exercises.length > 0 && (
           <div className="grid grid-cols-3 gap-2 p-3 bg-brand-500/10 border border-brand-500/20 rounded-lg">

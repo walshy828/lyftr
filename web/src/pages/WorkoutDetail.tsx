@@ -9,6 +9,7 @@ import { workoutAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayWeight, displayVolume } from '../stores/settings'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
+import { FeelingBadge, FocusBadge } from '../components/WorkoutBadges'
 
 function SetChip({ set, isBest, unit }: { set: types.Set; isBest: boolean; unit: string }) {
   return (
@@ -151,10 +152,19 @@ export default function WorkoutDetail() {
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="font-display font-bold text-xl text-tx-primary leading-tight">{workout.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display font-bold text-xl text-tx-primary leading-tight">{workout.name}</h1>
+              <FocusBadge workout={workout} />
+            </div>
             <p className="text-sm text-tx-muted mt-0.5">
               {format(new Date(workout.started_at), 'EEEE, MMMM d, yyyy')}
             </p>
+            {workout.feeling ? (
+              <p className="mt-1">
+                <span className="text-xs text-tx-muted mr-1">Felt:</span>
+                <FeelingBadge feeling={workout.feeling} />
+              </p>
+            ) : null}
           </div>
         </div>
 

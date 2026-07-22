@@ -1,3 +1,5 @@
+import type { Workout } from '../types'
+
 export const MUSCLE_COLORS: Record<string, string> = {
   chest:      'bg-red-500/20 text-red-400 border-red-500/30',
   back:       'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -88,4 +90,39 @@ export function muscleToBodySlugs(m: string): string[] {
     if (key.includes(k) || k.includes(key)) return v
   }
   return []
+}
+
+// Coarse region buckets for a workout's "focus" badge — collapses the
+// fine-grained muscle_group taxonomy (used above for body-heatmap slugs)
+// down to 3 buckets simple enough to summarize a whole workout in one word.
+export type MuscleRegion = 'upper' | 'lower' | 'core'
+const MUSCLE_TO_REGION: Record<string, MuscleRegion> = {
+  chest: 'upper', back: 'upper', shoulders: 'upper', biceps: 'upper', triceps: 'upper',
+  lats: 'upper', traps: 'upper', forearms: 'upper', 'middle back': 'upper', neck: 'upper',
+  quadriceps: 'lower', hamstrings: 'lower', legs: 'lower', glutes: 'lower', calves: 'lower',
+  abdominals: 'core', abs: 'core', core: 'core', obliques: 'core', 'lower back': 'core',
+}
+
+export function regionOf(muscleGroup: string): MuscleRegion {
+  return MUSCLE_TO_REGION[muscleGroup?.toLowerCase()] ?? 'upper'
+}
+
+export type WorkoutFocus = 'balanced' | 'upper' | 'lower' | 'core'
+
+// Buckets a workout's sets by muscle region and calls it "focused" on
+// whichever region has >=65% of total sets; otherwise "balanced". Returns
+// null for workouts with no sets (e.g. cardio-only) — no badge to show.
+export function computeWorkoutFocus(workout: Workout): WorkoutFocus | null {
+  const counts: Record<MuscleRegion, number> = { upper: 0, lower: 0, core: 0 }
+  let totalSets = 0
+  for (const ex of workout.exercises ?? []) {
+    const region = regionOf(ex.exercise?.muscle_group)
+    const n = ex.sets?.length ?? 0
+    counts[region] += n
+    totalSets += n
+  }
+  if (totalSets === 0) return null
+  const shares = Object.entries(counts).map(([region, n]) => [region, n / totalSets] as const)
+  const [topRegion, topShare] = shares.sort((a, b) => b[1] - a[1])[0]
+  return topShare >= 0.65 ? (topRegion as WorkoutFocus) : 'balanced'
 }

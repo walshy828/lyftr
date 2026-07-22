@@ -1,17 +1,23 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { format } from 'date-fns'
+import { format, startOfWeek, subDays, isAfter } from 'date-fns'
 import { Dumbbell, Plus, Play, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, ChevronRight, MoreVertical } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Loading from '../components/Loading'
 import EmptyState from '../components/ui/EmptyState'
 import PageHeader from '../components/ui/PageHeader'
+import PeriodSelector from '../components/PeriodSelector'
+import { FeelingBadge, FocusBadge } from '../components/WorkoutBadges'
 import { useServerInfiniteList } from '../hooks/useServerInfiniteList'
 import { workoutAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayVolume } from '../stores/settings'
 import { useWorkoutSession } from '../stores/workoutSession'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
+
+const PERIODS = ['7d', '30d', '90d', 'All'] as const
+type Period = typeof PERIODS[number]
+const PERIOD_DAYS: Record<Period, number | null> = { '7d': 7, '30d': 30, '90d': 90, 'All': null }
 
 function WorkoutCard({ workout, onEdit, onDelete }: { workout: types.Workout; onEdit: (id: number) => void; onDelete: (id: number) => void }) {
   const navigate = useNavigate()
@@ -98,7 +104,10 @@ function WorkoutCard({ workout, onEdit, onDelete }: { workout: types.Workout; on
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-tx-primary truncate">{workout.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-tx-primary truncate">{workout.name}</p>
+              <FocusBadge workout={workout} />
+            </div>
             <p className="text-xs text-tx-muted mt-0.5 whitespace-nowrap">{format(new Date(workout.started_at), 'MMM d, yyyy')}</p>
             <div className="flex items-center gap-x-2 mt-0.5 min-w-0 overflow-hidden">
               {durationMin > 0 && (
@@ -116,6 +125,8 @@ function WorkoutCard({ workout, onEdit, onDelete }: { workout: types.Workout; on
                   </span>
                 </>
               )}
+              {workout.feeling ? <span className="text-tx-muted/40 text-xs">·</span> : null}
+              <FeelingBadge feeling={workout.feeling} />
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
@@ -205,6 +216,7 @@ export default function Workouts() {
   const { session } = useWorkoutSession()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [period, setPeriod] = useState<Period>('30d')
   const [error, setError] = useState<string | null>(null)
 
   // Debounce search so we don't fire a request on every keystroke
@@ -229,6 +241,15 @@ export default function Workouts() {
     )
   }
 
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+  const thisWeek = workouts.filter(w => isAfter(new Date(w.started_at), weekStart))
+  const thisWeekIds = new Set(thisWeek.map(w => w.id))
+  const periodDays = PERIOD_DAYS[period]
+  const periodCutoff = periodDays != null ? subDays(new Date(), periodDays) : null
+  const historical = workouts
+    .filter(w => !thisWeekIds.has(w.id))
+    .filter(w => !periodCutoff || isAfter(new Date(w.started_at), periodCutoff))
+
   return (
     <div className="space-y-5 animate-slide-up">
       <PageHeader
@@ -250,7 +271,7 @@ export default function Workouts() {
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Total', value: workouts.length.toString(), unit: 'logged' },
-          { label: 'This Month', value: workouts.filter(w => new Date(w.started_at).getMonth() === new Date().getMonth()).length.toString(), unit: 'sessions' },
+          { label: 'This Week', value: thisWeek.length.toString(), unit: 'sessions' },
           { label: 'Avg Time', value: workouts.length > 0 ? Math.round(workouts.reduce((sum, w) => sum + w.duration, 0) / workouts.length / 60).toString() : '0', unit: 'min' },
         ].map(s => (
           <div key={s.label} className="card p-4">
@@ -276,27 +297,56 @@ export default function Workouts() {
         />
       </div>
 
-      {/* Workout list */}
-      <div className="space-y-2">
-        {workouts.length === 0 && !loading ? (
-          <EmptyState
-            icon={Dumbbell}
-            title="No workouts found"
-            subtitle={search ? 'Try a different search' : 'Log a workout to get started'}
-          />
-        ) : (
-          <>
-            {workouts.map(w => <WorkoutCard key={w.id} workout={w}
-              onEdit={(id) => navigate(`/workouts/${id}/edit`)}
-              onDelete={() => reload()}
-            />)}
+      {workouts.length === 0 && !loading ? (
+        <EmptyState
+          icon={Dumbbell}
+          title="No workouts found"
+          subtitle={search ? 'Try a different search' : 'Log a workout to get started'}
+        />
+      ) : (
+        <>
+          {/* This Week */}
+          <div className="space-y-2">
+            <h2 className="text-xs font-semibold text-tx-muted uppercase tracking-wider px-0.5">This Week</h2>
+            {thisWeek.length === 0 ? (
+              <EmptyState
+                icon={Dumbbell}
+                title="No workouts yet this week"
+                subtitle="Let's fix that"
+              />
+            ) : (
+              thisWeek.map(w => <WorkoutCard key={w.id} workout={w}
+                onEdit={(id) => navigate(`/workouts/${id}/edit`)}
+                onDelete={() => reload()}
+              />)
+            )}
+          </div>
+
+          {/* Historical */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-0.5">
+              <h2 className="text-xs font-semibold text-tx-muted uppercase tracking-wider">Historical</h2>
+              <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
+            </div>
+            {historical.length === 0 ? (
+              <EmptyState
+                icon={Dumbbell}
+                title="No historical workouts"
+                subtitle="Try a wider time period"
+              />
+            ) : (
+              historical.map(w => <WorkoutCard key={w.id} workout={w}
+                onEdit={(id) => navigate(`/workouts/${id}/edit`)}
+                onDelete={() => reload()}
+              />)
+            )}
             <div ref={sentinelRef} />
             {hasMore && loading && (
               <p className="text-center text-xs text-tx-muted py-2">Loading more…</p>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
     </div>
   )

@@ -14,6 +14,7 @@ import { useSettingsStore } from '../stores/settings'
 import RestPicker from '../components/RestPicker'
 import RestTimerBanner from '../components/RestTimerBanner'
 import ExercisePicker from '../components/ExercisePicker'
+import FeelingPicker from '../components/FeelingPicker'
 import { workoutAPI } from '../services/api'
 import StepperTile from '../components/ui/StepperTile'
 import NumberField from '../components/ui/NumberField'
@@ -78,6 +79,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
   const [imgFailed, setImgFailed] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [feeling, setFeeling] = useState<0 | 1 | 2 | 3>(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [showAddExercise, setShowAddExercise] = useState(false)
@@ -94,7 +96,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
     setSaving(true)
     setSaveError('')
     try {
-      const payload = buildPayload()
+      const payload = { ...buildPayload(), feeling }
       await workoutAPI.create(payload)
       if (session) await syncProgramWeights(session)
       cancelSession()
@@ -296,6 +298,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
               <h3 className="font-display font-bold text-lg text-tx-primary mb-1">Finish Workout?</h3>
               <p className="text-sm text-tx-muted mb-5">{completedSets} of {totalSets} sets completed. Workout will be saved.</p>
               {saveError && <p className="text-xs text-error-400 mb-3">{saveError}</p>}
+              <FeelingPicker value={feeling} onChange={setFeeling} />
               <div className="flex gap-3">
                 <button onClick={() => setConfirmFinish(false)} disabled={saving} className="flex-1 py-3 bg-surface-muted hover:bg-surface-muted/80 disabled:opacity-50 text-tx-secondary rounded-xl transition-colors font-medium text-sm">Keep Going</button>
                 <button onClick={handleFinish} disabled={saving} className="flex-1 py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-xl transition-colors font-semibold text-sm flex items-center justify-center gap-1.5">
@@ -506,6 +509,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
               <h3 className="font-display font-bold text-lg text-tx-primary mb-1">Finish Workout?</h3>
               <p className="text-sm text-tx-muted mb-5">{completedSets} of {totalSets} sets completed. Workout will be saved.</p>
               {saveError && <p className="text-xs text-error-400 mb-3">{saveError}</p>}
+              <FeelingPicker value={feeling} onChange={setFeeling} />
               <div className="flex gap-3">
                 <button onClick={() => setConfirmFinish(false)} disabled={saving} className="flex-1 py-3 bg-surface-muted hover:bg-surface-muted/80 disabled:opacity-50 text-tx-secondary rounded-xl transition-colors font-medium text-sm">Keep Going</button>
                 <button onClick={handleFinish} disabled={saving} className="flex-1 py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-xl transition-colors font-semibold text-sm flex items-center justify-center gap-1.5">
@@ -790,6 +794,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
             <h3 className="font-display font-bold text-lg text-tx-primary mb-1">Finish Workout?</h3>
             <p className="text-sm text-tx-muted mb-5">{completedSets} of {totalSets} sets completed. Workout will be saved.</p>
             {saveError && <p className="text-xs text-error-400 mb-3">{saveError}</p>}
+            <FeelingPicker value={feeling} onChange={setFeeling} />
             <div className="flex gap-3">
               <button onClick={() => setConfirmFinish(false)} disabled={saving} className="flex-1 py-3 bg-surface-muted hover:bg-surface-muted/80 disabled:opacity-50 text-tx-secondary rounded-xl transition-colors font-medium text-sm">
                 Keep Going
