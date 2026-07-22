@@ -3,6 +3,7 @@ package stores
 import (
 	"database/sql"
 	"strings"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/models"
 )
@@ -44,6 +45,30 @@ func scanProgram(row interface{ Scan(...any) error }, p *models.Program) error {
 	return row.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt)
 }
 
+// lastUsedLayouts are the datetime formats that may show up in
+// workouts.started_at: RFC3339 (written by the app via a bound time.Time
+// parameter) and SQLite's own CURRENT_TIMESTAMP default format.
+var lastUsedLayouts = []string{time.RFC3339, "2006-01-02 15:04:05"}
+
+// parseLastUsed converts the lastUsedJoin's MAX(started_at) result to a
+// *time.Time. It comes back as a plain string rather than a driver-typed
+// time.Time because SQLite aggregate expressions lose the column's declared
+// type affinity, so sql.NullTime can't scan it directly.
+func parseLastUsed(ns sql.NullString) (*time.Time, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	var lastErr error
+	for _, layout := range lastUsedLayouts {
+		if t, err := time.Parse(layout, ns.String); err == nil {
+			return &t, nil
+		} else {
+			lastErr = err
+		}
+	}
+	return nil, lastErr
+}
+
 func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error) {
 	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at, lu.last_used_at
 	         FROM programs p ` + lastUsedJoin + `
@@ -68,13 +93,14 @@ func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error
 	programs := []models.Program{}
 	for rows.Next() {
 		var p models.Program
-		var lastUsed sql.NullTime
+		var lastUsed sql.NullString
 		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &lastUsed); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		if lastUsed.Valid {
-			p.LastUsedAt = &lastUsed.Time
+		if p.LastUsedAt, err = parseLastUsed(lastUsed); err != nil {
+			rows.Close()
+			return nil, err
 		}
 		programs = append(programs, p)
 	}
@@ -140,14 +166,15 @@ func (s *ProgramStore) ListShared(uid int64, f ProgramFilter) ([]models.Program,
 	for rows.Next() {
 		var p models.Program
 		var ownerEmail string
-		var lastUsed sql.NullTime
+		var lastUsed sql.NullString
 		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &ownerEmail, &lastUsed); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		p.OwnerEmail = ownerEmail
-		if lastUsed.Valid {
-			p.LastUsedAt = &lastUsed.Time
+		if p.LastUsedAt, err = parseLastUsed(lastUsed); err != nil {
+			rows.Close()
+			return nil, err
 		}
 		programs = append(programs, p)
 	}

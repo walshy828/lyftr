@@ -513,3 +513,35 @@ func TestListPrograms_stillOwnerOnly(t *testing.T) {
 		t.Fatalf("expected 0 programs (other user's programs must never appear in My Programs), got %d", len(data))
 	}
 }
+
+// A program's last_used_at comes from MAX(workouts.started_at), which SQLite
+// returns as a plain string (aggregate expressions lose column type
+// affinity) rather than a driver-typed time.Time — regression test for a bug
+// where that broke the whole /programs?sort=smart response with a 500 once a
+// workout actually referenced a program.
+func TestListPrograms_smartSortIncludesLastUsed(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	res, _ := db.DB.Exec(`INSERT INTO programs (user_id, name) VALUES (?, ?)`, uid, "PPL")
+	pid, _ := res.LastInsertId()
+	db.DB.Exec(
+		`INSERT INTO workouts (user_id, name, program_id, started_at) VALUES (?, ?, ?, ?)`,
+		uid, "Push Day", pid, "2026-07-15T18:00:00Z",
+	)
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/programs", nil)
+	c.Request.URL.RawQuery = "sort=smart"
+	th.ListPrograms(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("expected 1 program, got %d", len(data))
+	}
+	if lu := data[0].(map[string]any)["last_used_at"]; lu != "2026-07-15T18:00:00Z" {
+		t.Errorf("expected last_used_at '2026-07-15T18:00:00Z', got %v", lu)
+	}
+}
