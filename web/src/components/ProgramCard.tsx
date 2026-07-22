@@ -5,6 +5,7 @@ import { BookOpen, Edit2, Trash2, Play, ChevronRight, MoreVertical, Share2, Copy
 import { useNavigate } from 'react-router-dom'
 import { programAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
+import { FocusBadge } from './WorkoutBadges'
 import * as types from '../types'
 
 interface ProgramCardProps {
@@ -154,6 +155,7 @@ export default function ProgramCard({ program, variant, onEdit, onDelete, onShar
                   Shared
                 </span>
               )}
+              <FocusBadge workout={program} />
             </div>
             <p className="text-xs text-tx-muted mt-0.5 whitespace-nowrap">
               {variant === 'shared' && program.owner_email
@@ -164,6 +166,10 @@ export default function ProgramCard({ program, variant, onEdit, onDelete, onShar
               <span className="text-xs text-tx-muted whitespace-nowrap">{program.exercises?.length || 0} exercises</span>
               <span className="text-tx-muted/40 text-xs">·</span>
               <span className="text-xs text-tx-muted whitespace-nowrap">{totalSets} sets</span>
+              <span className="text-tx-muted/40 text-xs">·</span>
+              <span className="text-xs text-tx-muted whitespace-nowrap">
+                {program.last_used_at ? `Last done ${format(new Date(program.last_used_at), 'MMM d, yyyy')}` : 'Never done'}
+              </span>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />

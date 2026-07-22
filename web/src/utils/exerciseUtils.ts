@@ -1,5 +1,3 @@
-import type { Workout } from '../types'
-
 export const MUSCLE_COLORS: Record<string, string> = {
   chest:      'bg-red-500/20 text-red-400 border-red-500/30',
   back:       'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -109,10 +107,17 @@ export function regionOf(muscleGroup: string): MuscleRegion {
 
 export type WorkoutFocus = 'balanced' | 'upper' | 'lower' | 'core'
 
-// Buckets a workout's sets by muscle region and calls it "focused" on
-// whichever region has >=65% of total sets; otherwise "balanced". Returns
-// null for workouts with no sets (e.g. cardio-only) — no badge to show.
-export function computeWorkoutFocus(workout: Workout): WorkoutFocus | null {
+// Structural shape shared by Workout and Program — lets the same focus
+// computation summarize either a logged workout or a program template.
+interface FocusSource {
+  exercises?: { exercise: { muscle_group: string }; sets?: unknown[] }[]
+}
+
+// Buckets a workout's (or program's) sets by muscle region and calls it
+// "focused" on whichever region has >=65% of total sets; otherwise
+// "balanced". Returns null when there are no sets (e.g. cardio-only) — no
+// badge to show.
+export function computeWorkoutFocus(workout: FocusSource): WorkoutFocus | null {
   const counts: Record<MuscleRegion, number> = { upper: 0, lower: 0, core: 0 }
   let totalSets = 0
   for (const ex of workout.exercises ?? []) {

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Zap, BookOpen, ChevronRight, Dumbbell, AlertCircle, Play, Timer, Trash2 } from 'lucide-react'
+import { format } from 'date-fns'
+import { ArrowLeft, Zap, BookOpen, ChevronRight, Dumbbell, AlertCircle, Play, Timer, Trash2, CalendarClock } from 'lucide-react'
 import { programAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
+import { FocusBadge } from '../components/WorkoutBadges'
 import * as types from '../types'
 
 export default function StartWorkout() {
@@ -14,7 +16,7 @@ export default function StartWorkout() {
 
   useEffect(() => {
     setLoading(true)
-    programAPI.list()
+    programAPI.list({ sort: 'smart' })
       .then(data => setPrograms(data || []))
       .catch(() => setError('Failed to load programs'))
       .finally(() => setLoading(false))
@@ -143,10 +145,18 @@ export default function StartWorkout() {
                   <BookOpen className="w-5 h-5 text-brand-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-tx-primary truncate">{p.name}</p>
-                  <p className="text-xs text-tx-muted mt-0.5">
-                    {p.exercises?.length || 0} exercises
-                  </p>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="font-semibold text-tx-primary truncate">{p.name}</p>
+                    <FocusBadge workout={p} />
+                  </div>
+                  <div className="flex items-center gap-x-2 mt-0.5 min-w-0 overflow-hidden">
+                    <span className="text-xs text-tx-muted whitespace-nowrap">{p.exercises?.length || 0} exercises</span>
+                    <span className="text-tx-muted/40 text-xs">·</span>
+                    <span className="flex items-center gap-1 text-xs text-tx-muted whitespace-nowrap">
+                      <CalendarClock className="w-3 h-3 flex-shrink-0" />
+                      {p.last_used_at ? `Last done ${format(new Date(p.last_used_at), 'MMM d, yyyy')}` : 'Never done'}
+                    </span>
+                  </div>
                 </div>
                 <Play className="w-4 h-4 text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
               </button>

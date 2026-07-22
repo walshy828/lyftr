@@ -28,7 +28,7 @@ export function FeelingBadge({ feeling }: { feeling?: number }) {
   )
 }
 
-export function FocusBadge({ workout }: { workout: types.Workout }) {
+export function FocusBadge({ workout }: { workout: types.Workout | types.Program }) {
   const focus = computeWorkoutFocus(workout)
   if (!focus) return null
   return (
