@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { format, startOfWeek, subDays, isAfter } from 'date-fns'
-import { Dumbbell, Plus, Play, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, ChevronRight, MoreVertical } from 'lucide-react'
+import { format, startOfWeek, subDays, isAfter, isBefore } from 'date-fns'
+import { Dumbbell, Plus, Play, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, TrendingDown, Minus, ChevronRight, MoreVertical } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Loading from '../components/Loading'
 import EmptyState from '../components/ui/EmptyState'
@@ -38,6 +38,7 @@ function WorkoutCard({ workout, onEdit, onDelete }: { workout: types.Workout; on
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+  const startedAt = new Date(workout.started_at)
   const durationMin = Math.round(workout.duration / 60)
   const totalVolume = displayVolume(
     workout.exercises?.reduce((total, e) =>
@@ -86,30 +87,22 @@ function WorkoutCard({ workout, onEdit, onDelete }: { workout: types.Workout; on
   return (
     <div className="card group active:scale-[0.99] transition-transform">
       <div className="flex items-center p-4 gap-3">
-        {/* Thumbnail — tappable, navigates to detail */}
+        {/* Day/date tile — tappable, navigates to detail */}
         <button
           onClick={() => navigate(`/workouts/${workout.id}`)}
           className="flex-1 flex items-center gap-3 min-w-0 text-left"
         >
-          {workout.exercises?.[0]?.exercise?.image_url ? (
-            <img
-              src={workout.exercises[0].exercise.image_url}
-              alt=""
-              className="w-11 h-11 rounded-xl object-cover flex-shrink-0 bg-surface-muted"
-              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
-          ) : (
-            <div className="w-11 h-11 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
-              <Dumbbell className="w-5 h-5 text-brand-500" strokeWidth={2} />
-            </div>
-          )}
+          <div className="w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/20 flex flex-col items-center justify-center flex-shrink-0 leading-none">
+            <span className="text-[9px] font-bold text-brand-500 uppercase tracking-wide">{format(startedAt, 'EEE')}</span>
+            <span className="text-base font-bold text-tx-primary mt-0.5">{format(startedAt, 'd')}</span>
+          </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-tx-primary truncate">{workout.name}</p>
+            <p className="text-sm font-semibold text-tx-primary whitespace-nowrap">{format(startedAt, 'MMM d, yyyy')}</p>
+            <div className="flex items-center gap-2 mt-0.5 min-w-0">
+              <p className="text-xs text-tx-muted truncate">{workout.name}</p>
               <FocusBadge workout={workout} />
             </div>
-            <p className="text-xs text-tx-muted mt-0.5 whitespace-nowrap">{format(new Date(workout.started_at), 'MMM d, yyyy')}</p>
-            <div className="flex items-center gap-x-2 mt-0.5 min-w-0 overflow-hidden">
+            <div className="flex items-center gap-x-2 mt-1 min-w-0 overflow-hidden">
               {durationMin > 0 && (
                 <span className="flex items-center gap-1 text-xs text-tx-muted whitespace-nowrap">
                   <Clock className="w-3 h-3 flex-shrink-0" />{durationMin} min
@@ -242,7 +235,13 @@ export default function Workouts() {
   }
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+  const lastWeekStart = subDays(weekStart, 7)
   const thisWeek = workouts.filter(w => isAfter(new Date(w.started_at), weekStart))
+  const lastWeek = workouts.filter(w => {
+    const d = new Date(w.started_at)
+    return !isBefore(d, lastWeekStart) && isBefore(d, weekStart)
+  })
+  const weekDelta = thisWeek.length - lastWeek.length
   const thisWeekIds = new Set(thisWeek.map(w => w.id))
   const periodDays = PERIOD_DAYS[period]
   const periodCutoff = periodDays != null ? subDays(new Date(), periodDays) : null
@@ -267,23 +266,43 @@ export default function Workouts() {
         }
       />
 
-      {/* Summary */}
+      {/* Summary — this week vs last week trend */}
       <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Total', value: workouts.length.toString(), unit: 'logged' },
-          { label: 'This Week', value: thisWeek.length.toString(), unit: 'sessions' },
-          { label: 'Avg Time', value: workouts.length > 0 ? Math.round(workouts.reduce((sum, w) => sum + w.duration, 0) / workouts.length / 60).toString() : '0', unit: 'min' },
-        ].map(s => (
-          <div key={s.label} className="card p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className="stat-label truncate">{s.label}</span>
-            </div>
-            <div className="flex items-end gap-1 min-w-0">
-              <span className="stat-value text-xl">{s.value}</span>
-              <span className="text-xs text-tx-muted mb-0.5 truncate">{s.unit}</span>
-            </div>
+        <div className="card p-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="stat-label truncate">This Week</span>
           </div>
-        ))}
+          <div className="flex items-end gap-1 min-w-0">
+            <span className="stat-value text-xl">{thisWeek.length}</span>
+            <span className="text-xs text-tx-muted mb-0.5 truncate">sessions</span>
+          </div>
+          {lastWeek.length > 0 || thisWeek.length > 0 ? (
+            <div className={`flex items-center gap-1 mt-1.5 text-xs font-medium ${
+              weekDelta > 0 ? 'text-success-500' : weekDelta < 0 ? 'text-error-400' : 'text-tx-muted'
+            }`}>
+              {weekDelta > 0 ? <TrendingUp className="w-3 h-3 flex-shrink-0" /> : weekDelta < 0 ? <TrendingDown className="w-3 h-3 flex-shrink-0" /> : <Minus className="w-3 h-3 flex-shrink-0" />}
+              <span className="truncate">{weekDelta === 0 ? 'same as' : `${weekDelta > 0 ? '+' : ''}${weekDelta} vs`} last wk</span>
+            </div>
+          ) : null}
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="stat-label truncate">Last Week</span>
+          </div>
+          <div className="flex items-end gap-1 min-w-0">
+            <span className="stat-value text-xl">{lastWeek.length}</span>
+            <span className="text-xs text-tx-muted mb-0.5 truncate">sessions</span>
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="stat-label truncate">Avg Time</span>
+          </div>
+          <div className="flex items-end gap-1 min-w-0">
+            <span className="stat-value text-xl">{workouts.length > 0 ? Math.round(workouts.reduce((sum, w) => sum + w.duration, 0) / workouts.length / 60) : 0}</span>
+            <span className="text-xs text-tx-muted mb-0.5 truncate">min</span>
+          </div>
+        </div>
       </div>
 
       {/* Search */}
