@@ -3,8 +3,10 @@ package controllers
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
@@ -172,6 +174,20 @@ func (h *Handler) setProgramShared(c *gin.Context, shared bool) {
 	utils.OK(c, p)
 }
 
+// truncateErr renders a provider error safely for display in an API response.
+// The underlying SDK errors are HTTP-status/message text (invalid model,
+// rate limit, schema rejection, etc.) with no secrets embedded, but callers
+// can be verbose (e.g. echoing a full request body), so this caps length
+// and collapses newlines to keep the response a single readable line.
+func truncateErr(err error) string {
+	s := strings.ReplaceAll(err.Error(), "\n", " ")
+	const max = 200
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
+}
+
 // GenerateProgram proposes one or more draft workout programs from a
 // free-text description of goals/focus areas/equipment/time period, via the
 // same configured vision/AI provider as the food-vision endpoints. The
@@ -215,11 +231,12 @@ func (h *Handler) GenerateProgram(c *gin.Context) {
 	})
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("[programs/generate] timed out after 20s")
 			utils.ServiceUnavailable(c, "program generation timed out — try again or build manually")
 			return
 		}
 		log.Printf("[programs/generate] vision error: %v", err)
-		utils.ServiceUnavailable(c, "could not generate a program — try again or build manually")
+		utils.ServiceUnavailable(c, fmt.Sprintf("could not generate a program — try again or build manually (%s)", truncateErr(err)))
 		return
 	}
 	utils.OK(c, gin.H{"programs": programs})
