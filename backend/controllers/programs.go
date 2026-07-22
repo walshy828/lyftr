@@ -218,7 +218,13 @@ func (h *Handler) GenerateProgram(c *gin.Context) {
 		refs[i] = vision.ExerciseRef{ID: e.ID, Name: e.Name, MuscleGroup: e.MuscleGroup, Equipment: e.Equipment, Category: e.Category}
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	// 60s, not 20s: this prompt embeds the full exercise catalog (hundreds of
+	// entries) and can ask for up to 14 days of programs, so it runs longer
+	// than the other AI endpoints. As with RecommendMeals (see food.go), the
+	// SDKs propagate our ctx deadline upstream as the request's own deadline,
+	// so a too-short budget here surfaces as an upstream 504/DEADLINE_EXCEEDED
+	// from the provider rather than our own "timed out" message.
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 	defer cancel()
 
 	programs, err := h.vision.GenerateProgram(ctx, vision.GenerateProgramRequest{
