@@ -361,6 +361,17 @@ type CreateProgramSetReq struct {
 	TargetWeight float64 `json:"target_weight"`
 }
 
+// GenerateProgramRequest is the input to the AI program builder (POST
+// /programs/generate). It never persists anything itself — see
+// controllers.GenerateProgram.
+type GenerateProgramRequest struct {
+	Goals        string `json:"goals" validate:"required"`
+	FocusAreas   string `json:"focus_areas"`
+	Equipment    string `json:"equipment"`
+	TimePeriod   string `json:"time_period"`
+	NumberOfDays int    `json:"number_of_days" validate:"required,gte=1,lte=14"`
+}
+
 type DailyStats struct {
 	Date             string  `json:"date"`
 	TotalCalories    float64 `json:"total_calories"`

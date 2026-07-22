@@ -159,6 +159,50 @@ func (p *geminiProvider) AnalyzeMealPhoto(ctx context.Context, imageBase64Data, 
 	return out, nil
 }
 
+func (p *geminiProvider) GenerateProgram(ctx context.Context, req GenerateProgramRequest) ([]DraftProgram, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gemini client: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromText(generateProgramPrompt(req)),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: draftProgramJSONSchema(),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gemini generate program call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return nil, fmt.Errorf("gemini generate program call: empty response text")
+	}
+
+	var out struct {
+		Programs []DraftProgram `json:"programs"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		// Gemini has been observed returning a bare top-level array despite
+		// the schema — accept that shape too.
+		var bare []DraftProgram
+		if arrErr := json.Unmarshal([]byte(text), &bare); arrErr == nil {
+			return bare, nil
+		}
+		return nil, fmt.Errorf("gemini generate program call: unmarshal structured output: %w", err)
+	}
+	return out.Programs, nil
+}
+
 func (p *geminiProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  p.apiKey,

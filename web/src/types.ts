@@ -244,6 +244,25 @@ export interface Program {
 
 export type ProgramSort = 'smart' | 'name' | 'created'
 
+export interface DraftProgramSet {
+  set_number: number
+  target_reps: number
+  target_weight: number
+}
+
+export interface DraftProgramExercise {
+  exercise_id: number
+  notes?: string
+  rest_seconds?: number
+  sets: DraftProgramSet[]
+}
+
+export interface DraftProgram {
+  name: string
+  notes?: string
+  exercises: DraftProgramExercise[]
+}
+
 export interface ActiveSessionSet {
   set_number: number
   target_reps: number

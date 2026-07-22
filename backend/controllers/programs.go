@@ -1,13 +1,17 @@
 package controllers
 
 import (
+	"context"
 	"database/sql"
+	"log"
 	"strconv"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
 	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/Cawlumm/lyftr-backend/utils"
+	"github.com/Cawlumm/lyftr-backend/vision"
 	"github.com/gin-gonic/gin"
 )
 
@@ -166,6 +170,59 @@ func (h *Handler) setProgramShared(c *gin.Context, shared bool) {
 		return
 	}
 	utils.OK(c, p)
+}
+
+// GenerateProgram proposes one or more draft workout programs from a
+// free-text description of goals/focus areas/equipment/time period, via the
+// same configured vision/AI provider as the food-vision endpoints. The
+// result is always a suggestion: nothing is written to the programs table
+// here — the frontend reviews/edits each draft and creates it via the
+// existing CreateProgram endpoint.
+func (h *Handler) GenerateProgram(c *gin.Context) {
+	var req models.GenerateProgramRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	if h.vision == nil {
+		utils.ServiceUnavailable(c, "AI program builder is not configured on this server")
+		return
+	}
+
+	catalog, err := h.s.Exercise.List(stores.ExerciseFilter{Limit: 1000})
+	if utils.DBError(c, err) {
+		return
+	}
+	refs := make([]vision.ExerciseRef, len(catalog))
+	for i, e := range catalog {
+		refs[i] = vision.ExerciseRef{ID: e.ID, Name: e.Name, MuscleGroup: e.MuscleGroup, Equipment: e.Equipment, Category: e.Category}
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	defer cancel()
+
+	programs, err := h.vision.GenerateProgram(ctx, vision.GenerateProgramRequest{
+		Goals:        req.Goals,
+		FocusAreas:   req.FocusAreas,
+		Equipment:    req.Equipment,
+		TimePeriod:   req.TimePeriod,
+		NumberOfDays: req.NumberOfDays,
+		Catalog:      refs,
+	})
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			utils.ServiceUnavailable(c, "program generation timed out — try again or build manually")
+			return
+		}
+		log.Printf("[programs/generate] vision error: %v", err)
+		utils.ServiceUnavailable(c, "could not generate a program — try again or build manually")
+		return
+	}
+	utils.OK(c, gin.H{"programs": programs})
 }
 
 func (h *Handler) CopyProgram(c *gin.Context) {

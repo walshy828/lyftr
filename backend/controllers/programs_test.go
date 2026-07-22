@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/Cawlumm/lyftr-backend/db"
+	"github.com/Cawlumm/lyftr-backend/stores"
+	"github.com/Cawlumm/lyftr-backend/vision"
 )
 
 func TestListPrograms_empty(t *testing.T) {
@@ -571,5 +573,116 @@ func TestListPrograms_smartSortToleratesLegacyTimeFormat(t *testing.T) {
 	data := decodeResponse(t, w)["data"].([]any)
 	if len(data) != 1 {
 		t.Fatalf("expected 1 program, got %d", len(data))
+	}
+}
+
+func TestGenerateProgram_success(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	exID := createTestExercise(t)
+
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{
+		generatedPrograms: []vision.DraftProgram{
+			{
+				Name:  "Hockey Strength — Day 1 of 2",
+				Notes: "Lower body power",
+				Exercises: []vision.DraftProgramExercise{
+					{ExerciseID: exID, RestSeconds: 90, Sets: []vision.DraftProgramSet{{SetNumber: 1, TargetReps: 5, TargetWeight: 0}}},
+				},
+			},
+			{
+				Name:  "Hockey Strength — Day 2 of 2",
+				Notes: "Upper body + agility",
+				Exercises: []vision.DraftProgramExercise{
+					{ExerciseID: exID, RestSeconds: 60, Sets: []vision.DraftProgramSet{{SetNumber: 1, TargetReps: 10, TargetWeight: 0}}},
+				},
+			},
+		},
+	})
+
+	body := map[string]any{
+		"goals":          "strength and agility for hockey",
+		"focus_areas":    "legs, core",
+		"equipment":      "barbell, dumbbells",
+		"time_period":    "6 weeks",
+		"number_of_days": 2,
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/programs/generate", body)
+	h.GenerateProgram(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].(map[string]any)
+	programs, ok := data["programs"].([]any)
+	if !ok || len(programs) != 2 {
+		t.Fatalf("expected 2 programs, got %v", data["programs"])
+	}
+	first := programs[0].(map[string]any)
+	if first["name"] != "Hockey Strength — Day 1 of 2" {
+		t.Errorf("expected first program name to match, got %v", first["name"])
+	}
+
+	var count int
+	db.DB.QueryRow(`SELECT COUNT(*) FROM programs WHERE user_id = ?`, uid).Scan(&count)
+	if count != 0 {
+		t.Errorf("expected no programs persisted, got %d", count)
+	}
+}
+
+func TestGenerateProgram_notConfigured(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	h := NewHandler(stores.New(db.DB), nil)
+	body := map[string]any{"goals": "get stronger", "number_of_days": 1}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/programs/generate", body)
+	h.GenerateProgram(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGenerateProgram_providerError(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{generateErr: fmt.Errorf("boom")})
+	body := map[string]any{"goals": "get stronger", "number_of_days": 1}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/programs/generate", body)
+	h.GenerateProgram(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGenerateProgram_missingGoals(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+	body := map[string]any{"number_of_days": 1}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/programs/generate", body)
+	h.GenerateProgram(c)
+
+	if w.Code != http.StatusUnprocessableEntity && w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400/422, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGenerateProgram_dayCountOutOfRange(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+	body := map[string]any{"goals": "get stronger", "number_of_days": 15}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/programs/generate", body)
+	h.GenerateProgram(c)
+
+	if w.Code != http.StatusUnprocessableEntity && w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400/422, got %d: %s", w.Code, w.Body.String())
 	}
 }

@@ -182,6 +182,8 @@ export const programAPI = {
   share:   (id: number) => api.post<{ data: types.Program }>(`/programs/${id}/share`).then(res => unwrap(res)),
   unshare: (id: number) => api.post<{ data: types.Program }>(`/programs/${id}/unshare`).then(res => unwrap(res)),
   copy:    (id: number) => api.post<{ data: types.Program }>(`/programs/${id}/copy`).then(res => unwrap(res)),
+  generate: (data: { goals: string; focus_areas?: string; equipment?: string; time_period?: string; number_of_days: number }) =>
+    api.post<{ data: { programs: types.DraftProgram[] } }>('/programs/generate', data).then(res => unwrap(res)),
 }
 
 export const weightAPI = {

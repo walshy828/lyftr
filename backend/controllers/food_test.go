@@ -1038,6 +1038,17 @@ type fakeVisionProvider struct {
 	// mealPhotoDescription captures the description the handler passed
 	// through, so tests can assert text is threaded alongside the photo.
 	mealPhotoDescription string
+
+	generatedPrograms []vision.DraftProgram
+	generateErr       error
+	// generateReq captures what the handler asked for, so tests can assert
+	// the catalog and request fields were threaded through correctly.
+	generateReq vision.GenerateProgramRequest
+}
+
+func (f *fakeVisionProvider) GenerateProgram(_ context.Context, req vision.GenerateProgramRequest) ([]vision.DraftProgram, error) {
+	f.generateReq = req
+	return f.generatedPrograms, f.generateErr
 }
 
 func (f *fakeVisionProvider) AnalyzeLabel(_ context.Context, _, _ string) (vision.NutritionExtraction, error) {

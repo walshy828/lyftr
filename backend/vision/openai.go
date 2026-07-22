@@ -144,6 +144,38 @@ func (p *openAIProvider) AnalyzeMealPhoto(ctx context.Context, imageBase64, medi
 	return out, nil
 }
 
+func (p *openAIProvider) GenerateProgram(ctx context.Context, req GenerateProgramRequest) ([]DraftProgram, error) {
+	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: p.model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(generateProgramPrompt(req)),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+				JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:   "generate_program",
+					Schema: draftProgramJSONSchema(),
+					Strict: openai.Bool(true),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("openai generate program call: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("openai generate program call: no choices in response")
+	}
+
+	var out struct {
+		Programs []DraftProgram `json:"programs"`
+	}
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &out); err != nil {
+		return nil, fmt.Errorf("openai generate program call: unmarshal structured output: %w", err)
+	}
+	return out.Programs, nil
+}
+
 func (p *openAIProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
 	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Model: p.model,

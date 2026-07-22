@@ -94,6 +94,7 @@ func Setup(r *gin.Engine, h *controllers.Handler) {
 		// Programs
 		protected.GET("programs", h.ListPrograms)
 		protected.POST("programs", h.CreateProgram)
+		protected.POST("programs/generate", h.GenerateProgram) // static path before :id wildcard
 		protected.GET("programs/shared", h.ListSharedPrograms) // static path before :id wildcard
 		protected.GET("programs/:id", h.GetProgram)
 		protected.PUT("programs/:id", h.UpdateProgram)

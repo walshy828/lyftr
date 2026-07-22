@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, Plus, Dumbbell, Search } from 'lucide-react'
+import { BookOpen, Plus, Dumbbell, Search, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Loading from '../components/Loading'
 import PageHeader from '../components/ui/PageHeader'
@@ -45,9 +45,14 @@ export default function Programs() {
         title="Programs"
         subtitle="Reusable workout templates"
         action={
-          <button onClick={() => navigate('/programs/new')} className="btn-primary btn-sm">
-            <Plus className="w-4 h-4" /> New Program
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => navigate('/programs/ai-new')} className="btn-secondary btn-sm">
+              <Sparkles className="w-4 h-4" /> AI Program
+            </button>
+            <button onClick={() => navigate('/programs/new')} className="btn-primary btn-sm">
+              <Plus className="w-4 h-4" /> New Program
+            </button>
+          </div>
         }
       />
 

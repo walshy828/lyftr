@@ -145,6 +145,48 @@ func (p *anthropicProvider) AnalyzeMealPhoto(ctx context.Context, imageBase64, m
 	return out, nil
 }
 
+func (p *anthropicProvider) GenerateProgram(ctx context.Context, req GenerateProgramRequest) ([]DraftProgram, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model: p.model,
+		// 4096: a multi-day request returns several full exercise/set lists,
+		// larger than any single meal-related response.
+		MaxTokens: 4096,
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortLow,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: draftProgramJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(generateProgramPrompt(req)),
+			),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("anthropic generate program call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return nil, fmt.Errorf("anthropic generate program call: no text content in response")
+	}
+
+	var out struct {
+		Programs []DraftProgram `json:"programs"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return nil, fmt.Errorf("anthropic generate program call: unmarshal structured output: %w", err)
+	}
+	return out.Programs, nil
+}
+
 func (p *anthropicProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model: p.model,

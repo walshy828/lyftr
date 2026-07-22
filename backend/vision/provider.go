@@ -100,6 +100,57 @@ type MealPhotoAnalysis struct {
 	Assessment string          `json:"assessment,omitempty"` // one or two sentences of overall nutritional commentary
 }
 
+// ExerciseRef is the compact per-exercise projection injected into the
+// program-generation prompt so the model can only ever reference exercises
+// that actually exist — the full Exercise record (description, images,
+// video) is intentionally omitted to keep the catalog small.
+type ExerciseRef struct {
+	ID          int64
+	Name        string
+	MuscleGroup string
+	Equipment   string
+	Category    string
+}
+
+// GenerateProgramRequest carries everything the model needs to propose one
+// or more workout programs. The controller assembles Catalog server-side
+// (the full exercise library) so providers stay stateless and never invent
+// an exercise_id that doesn't exist.
+type GenerateProgramRequest struct {
+	Goals        string // required — the program's overall objective
+	FocusAreas   string // free text, e.g. "strength and agility"
+	Equipment    string // free text list of available equipment
+	TimePeriod   string // free text, e.g. "6 weeks"
+	NumberOfDays int    // number of distinct programs (days) to generate, >= 1
+	Catalog      []ExerciseRef
+}
+
+// DraftProgramSet mirrors models.CreateProgramSetReq so a DraftProgram can be
+// handed to the existing program-create endpoint unchanged once the user
+// accepts it.
+type DraftProgramSet struct {
+	SetNumber    int     `json:"set_number"`
+	TargetReps   int     `json:"target_reps"`
+	TargetWeight float64 `json:"target_weight"`
+}
+
+// DraftProgramExercise mirrors models.CreateProgramExerciseReq.
+type DraftProgramExercise struct {
+	ExerciseID  int64             `json:"exercise_id"`
+	Notes       string            `json:"notes"`
+	RestSeconds int               `json:"rest_seconds"`
+	Sets        []DraftProgramSet `json:"sets"`
+}
+
+// DraftProgram mirrors models.CreateProgramRequest. Like every other vision
+// result, it is always a best-effort suggestion — never persisted directly
+// by the provider or the controller that calls it.
+type DraftProgram struct {
+	Name      string                 `json:"name"`
+	Notes     string                 `json:"notes"`
+	Exercises []DraftProgramExercise `json:"exercises"`
+}
+
 // Provider is implemented once per vision backend (Anthropic/OpenAI/Gemini).
 type Provider interface {
 	// AnalyzeLabel takes a base64-encoded photo of a nutrition facts label
@@ -134,6 +185,15 @@ type Provider interface {
 	// error — an error is reserved for genuine provider/network/auth
 	// failures.
 	AnalyzeMealPhoto(ctx context.Context, imageBase64, mediaType, description string) (MealPhotoAnalysis, error)
+
+	// GenerateProgram proposes one or more draft workout programs from a
+	// free-text description of goals/focus areas/equipment/time period,
+	// grounded in the exercise catalog passed in req.Catalog so every
+	// returned exercise_id is guaranteed to exist. Like every other vision
+	// result this is always a suggestion — the caller is responsible for
+	// persisting any draft the user accepts. Implementations should return
+	// exactly req.NumberOfDays program drafts.
+	GenerateProgram(ctx context.Context, req GenerateProgramRequest) ([]DraftProgram, error)
 }
 
 // Config carries the selected provider, all three providers' API keys — only
@@ -324,6 +384,90 @@ func mealRecommendJSONSchema() map[string]any {
 			},
 		},
 		"required":             []string{"recommendations"},
+		"additionalProperties": false,
+	}
+}
+
+// generateProgramPrompt builds the shared GenerateProgram prompt — one
+// builder used by all three providers so their prompts can't drift apart.
+// The exercise catalog is serialized as "id: name (muscle_group, equipment,
+// category)" lines, one per exercise, so the model can pick real IDs while
+// reasoning over the same fields a human would.
+func generateProgramPrompt(req GenerateProgramRequest) string {
+	var b strings.Builder
+	if req.NumberOfDays > 1 {
+		fmt.Fprintf(&b, "Design a %d-day workout program split, returning exactly %d separate program objects (one per day). Name each program \"<short theme> — Day X of %d\" using a consistent theme across all %d, e.g. \"Hockey Strength — Day 1 of %d\".\n\n", req.NumberOfDays, req.NumberOfDays, req.NumberOfDays, req.NumberOfDays, req.NumberOfDays)
+	} else {
+		b.WriteString("Design a single workout program, returning exactly one program object. Give it a short, descriptive name with no day/number suffix.\n\n")
+	}
+
+	fmt.Fprintf(&b, "Goals: %s\n", req.Goals)
+	if req.FocusAreas != "" {
+		fmt.Fprintf(&b, "Focus areas: %s\n", req.FocusAreas)
+	}
+	if req.Equipment != "" {
+		fmt.Fprintf(&b, "Available equipment: %s\n", req.Equipment)
+	}
+	if req.TimePeriod != "" {
+		fmt.Fprintf(&b, "Intended time period to run this program: %s\n", req.TimePeriod)
+	}
+
+	b.WriteString("\nEach program needs a notes field (one or two sentences summarizing that day's focus) and an ordered list of exercises. For each exercise return: exercise_id (an integer — you MUST choose only from the catalog below, never invent one), notes (a short coaching cue, may be empty), rest_seconds (typical rest between sets for this goal, e.g. 60-180), and sets — a list of {set_number, target_reps, target_weight}. Always set target_weight to 0; the user fills in their own working weights. Choose target_reps appropriate to the stated goals (e.g. lower reps for strength/power, higher reps for endurance/conditioning). Prefer exercises whose equipment matches what's available; if no equipment is listed, prefer bodyweight exercises. Only use exercises from the catalog below — every exercise_id in your response must be one of the ids listed.\n\nExercise catalog (id: name (muscle_group, equipment, category)):\n")
+	for _, e := range req.Catalog {
+		fmt.Fprintf(&b, "%d: %s (%s, %s, %s)\n", e.ID, e.Name, e.MuscleGroup, e.Equipment, e.Category)
+	}
+	return b.String()
+}
+
+// draftProgramJSONSchema is the JSON schema all three providers' structured
+// output requests should target for GenerateProgram.
+func draftProgramJSONSchema() map[string]any {
+	setSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"set_number":    map[string]any{"type": "integer"},
+			"target_reps":   map[string]any{"type": "integer"},
+			"target_weight": map[string]any{"type": "number"},
+		},
+		"required":             []string{"set_number", "target_reps", "target_weight"},
+		"additionalProperties": false,
+	}
+	exerciseSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"exercise_id":  map[string]any{"type": "integer"},
+			"notes":        map[string]any{"type": "string"},
+			"rest_seconds": map[string]any{"type": "integer"},
+			"sets": map[string]any{
+				"type":  "array",
+				"items": setSchema,
+			},
+		},
+		"required":             []string{"exercise_id", "rest_seconds", "sets"},
+		"additionalProperties": false,
+	}
+	programSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":  map[string]any{"type": "string"},
+			"notes": map[string]any{"type": "string"},
+			"exercises": map[string]any{
+				"type":  "array",
+				"items": exerciseSchema,
+			},
+		},
+		"required":             []string{"name", "exercises"},
+		"additionalProperties": false,
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"programs": map[string]any{
+				"type":  "array",
+				"items": programSchema,
+			},
+		},
+		"required":             []string{"programs"},
 		"additionalProperties": false,
 	}
 }

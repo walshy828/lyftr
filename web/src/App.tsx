@@ -17,6 +17,7 @@ const Workouts = lazy(() => import('./pages/Workouts'))
 const Programs = lazy(() => import('./pages/Programs'))
 const ExerciseDetail = lazy(() => import('./pages/ExerciseDetail'))
 const AddProgram = lazy(() => import('./pages/AddProgram'))
+const AddAIProgram = lazy(() => import('./pages/AddAIProgram'))
 const EditProgram = lazy(() => import('./pages/EditProgram'))
 const AddWorkout = lazy(() => import('./pages/AddWorkout'))
 const EditWorkout = lazy(() => import('./pages/EditWorkout'))
@@ -61,6 +62,7 @@ function App() {
             <Route path="/workouts/:id/edit" element={<EditWorkout />} />
             <Route path="/programs" element={<Programs />} />
             <Route path="/programs/new" element={<AddProgram />} />
+            <Route path="/programs/ai-new" element={<AddAIProgram />} />
             <Route path="/programs/:id" element={<ProgramDetail />} />
             <Route path="/programs/:id/edit" element={<EditProgram />} />
             <Route path="/workout/start" element={<StartWorkout />} />
