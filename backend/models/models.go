@@ -86,6 +86,7 @@ type Set struct {
 	Distance          float64 `json:"distance,omitempty" db:"distance"` // meters
 	RPE               float64 `json:"rpe,omitempty" db:"rpe"`
 	IsWarmup          bool    `json:"is_warmup" db:"is_warmup"`
+	Completed         bool    `json:"completed" db:"completed"`
 }
 
 type WeightLog struct {
@@ -211,6 +212,9 @@ type CreateSetReq struct {
 	Distance  float64 `json:"distance"`
 	RPE       float64 `json:"rpe"`
 	IsWarmup  bool    `json:"is_warmup"`
+	// Pointer so "omitted" (older clients, manual add/edit forms) is
+	// distinguishable from an explicit false — nil defaults to true.
+	Completed *bool `json:"completed,omitempty"`
 }
 
 type LogWeightRequest struct {

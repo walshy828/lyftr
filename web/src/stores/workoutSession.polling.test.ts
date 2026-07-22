@@ -52,7 +52,12 @@ describe('startActiveSessionPolling', () => {
   })
 
   it('polls at the active cadence (8s) while a session exists', async () => {
-    useWorkoutSession.setState({ session: { name: 'T', exercises: [] } as any })
+    // The server must keep echoing the same session back — a mocked `null`
+    // here would (correctly) read as "ended remotely" and drop the session,
+    // switching to the idle cadence this test isn't exercising.
+    const session = { name: 'T', exercises: [], started_at: new Date().toISOString() }
+    getMock.mockResolvedValue({ data: JSON.stringify(session) })
+    useWorkoutSession.setState({ session: session as any })
     stop = startActiveSessionPolling()
     await advance(8000)
     expect(getMock).toHaveBeenCalledTimes(1)
@@ -68,7 +73,11 @@ describe('startActiveSessionPolling', () => {
   })
 
   it('stops polling when the tab becomes hidden and hydrates once on return', async () => {
-    useWorkoutSession.setState({ session: { name: 'T', exercises: [] } as any })
+    // Same reasoning as above: the mock must keep echoing the session so the
+    // hidden->visible catch-up hydrate doesn't read as a remote end.
+    const session = { name: 'T', exercises: [], started_at: new Date().toISOString() }
+    getMock.mockResolvedValue({ data: JSON.stringify(session) })
+    useWorkoutSession.setState({ session: session as any })
     stop = startActiveSessionPolling()
     await advance(8000)
     expect(getMock).toHaveBeenCalledTimes(1)

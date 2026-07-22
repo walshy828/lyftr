@@ -225,6 +225,7 @@ object SessionRepository {
                             set_number = si + 1,
                             reps = if (actualReps > 0) actualReps else set["target_reps"]?.jsonPrimitive?.intOrNull ?: 0,
                             weight = if (actualWeight > 0) actualWeight else set["target_weight"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
+                            completed = set["completed"]?.jsonPrimitive?.booleanOrNull == true,
                         )
                     },
                 )

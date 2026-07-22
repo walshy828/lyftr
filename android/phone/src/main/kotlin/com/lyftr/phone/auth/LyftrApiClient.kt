@@ -34,6 +34,7 @@ data class CreateSetReq(
     val set_number: Int,
     val reps: Int,
     val weight: Double,
+    val completed: Boolean,
 )
 
 @Serializable

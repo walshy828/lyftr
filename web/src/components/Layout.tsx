@@ -11,6 +11,7 @@ import { useWorkoutSession } from '../stores/workoutSession'
 import { useRestTimer } from '../hooks/useRestTimer'
 import { fmtClock } from '../utils/workoutSets'
 import { useSettingsStore, weightShort } from '../stores/settings'
+import { workoutAPI } from '../services/api'
 import GymModeWorkout from '../pages/GymModeWorkout'
 import RestTimerBanner from './RestTimerBanner'
 import Logo from './Logo'
@@ -174,9 +175,25 @@ function UserMenu() {
 
 export default function Layout() {
   const { pathname } = useLocation()
-  const { session, gymOpen, gymPhase } = useWorkoutSession()
+  const { session, gymOpen, gymPhase, endedRemotely, clearEndedRemotely } = useWorkoutSession()
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
+  const navigate = useNavigate()
+
+  // A workout ended on another device (paired watch/phone, or another tab) —
+  // find the workout it produced and land the user on its summary instead of
+  // leaving them wherever they happened to be.
+  useEffect(() => {
+    if (!endedRemotely) return
+    const endedStartedAt = new Date(endedRemotely).getTime()
+    workoutAPI.list({ limit: 5 })
+      .then(workouts => {
+        const match = workouts.find(w => new Date(w.started_at).getTime() === endedStartedAt)
+        navigate(match ? `/workouts/${match.id}` : '/workouts')
+      })
+      .catch(() => navigate('/workouts'))
+      .finally(() => clearEndedRemotely())
+  }, [endedRemotely, navigate, clearEndedRemotely])
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-base">

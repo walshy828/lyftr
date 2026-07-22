@@ -44,6 +44,8 @@ export interface Set {
   distance?: number
   rpe?: number
   is_warmup?: boolean
+  // Absent on legacy rows / manual add-edit sets — treat as completed.
+  completed?: boolean
 }
 
 export interface WorkoutExercise {

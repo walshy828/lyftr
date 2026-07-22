@@ -12,13 +12,17 @@ import { muscleColor } from '../utils/exerciseUtils'
 import { FeelingBadge, FocusBadge } from '../components/WorkoutBadges'
 
 function SetChip({ set, isBest, unit }: { set: types.Set; isBest: boolean; unit: string }) {
+  const skipped = set.completed === false
   return (
-    <div className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold tabular-nums leading-none ${
-      isBest
+    <div className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold tabular-nums leading-none flex items-center gap-1 ${
+      skipped
+        ? 'bg-surface-raised/50 text-tx-muted opacity-60'
+        : isBest
         ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/25'
         : 'bg-surface-raised text-tx-secondary'
     }`}>
       {set.reps > 0 ? set.reps : '—'} × {set.weight > 0 ? `${displayWeight(set.weight, unit)} ${unit}` : 'BW'}
+      {skipped && <span className="font-normal">· skipped</span>}
     </div>
   )
 }

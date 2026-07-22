@@ -58,6 +58,12 @@ interface WorkoutSessionStore {
   removeExercise: (exIdx: number) => void
   buildPayload: () => any
   cancelSession: () => void
+  // Set when a poll finds the server's active session gone while this tab
+  // still has one locally (e.g. ended from a paired watch/phone or another
+  // tab) — holds the ended session's started_at so a listener (Layout) can
+  // look up the resulting workout and navigate to its summary.
+  endedRemotely: string | null
+  clearEndedRemotely: () => void
   openGym: () => void
   minimizeGym: () => void
   setGymState: (phase: GymPhase, exIdx: number, setIdx: number) => void
@@ -135,6 +141,8 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
   gymExIdx: _savedGymUi.exIdx,
   gymSetIdx: _savedGymUi.setIdx,
   ...CLEARED_REST,
+  endedRemotely: null,
+  clearEndedRemotely: () => set({ endedRemotely: null }),
 
   startRest: (durationSec, exIdx, setIdx) => {
     set({ restEndsAt: Date.now() + durationSec * 1000, restDurationSec: durationSec, restExIdx: exIdx, restSetIdx: setIdx, restPausedRemainingMs: null })
@@ -345,6 +353,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
           set_number: i + 1,
           reps: s.actual_reps || s.target_reps,
           weight: s.actual_weight || s.target_weight,
+          completed: s.completed,
         })),
       })),
     }
@@ -377,7 +386,18 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
 export async function hydrateActiveSessionFromServer() {
   try {
     const result = await activeSessionAPI.get()
-    if (!result?.data) return
+    if (!result?.data) {
+      // Server has no session, but this tab still thinks one is running —
+      // it was ended elsewhere (a paired watch/phone, or another tab).
+      // Tear down local state and leave a breadcrumb so a listener can
+      // navigate to the resulting workout's summary.
+      const localSession = useWorkoutSession.getState().session
+      if (localSession) {
+        clearLocalSession()
+        useWorkoutSession.setState({ endedRemotely: localSession.started_at })
+      }
+      return
+    }
     // Server holds exactly what this tab last pushed (or adopted) — our own
     // echo, nothing foreign to pull and nothing missing to push.
     if (result.data === _lastSyncedJson) return

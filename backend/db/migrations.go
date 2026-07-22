@@ -97,6 +97,13 @@ func alterMigrations() {
 	// 2=moderate, 3=intense.
 	ensureColumn("workouts", "feeling", `ALTER TABLE workouts ADD COLUMN feeling INTEGER NOT NULL DEFAULT 0`)
 
+	// Per-set completion, so a saved workout can distinguish a genuinely
+	// completed set from one left at its target values by an early finish
+	// (watch or web). Default 1 (true): every pre-existing row, and any
+	// client that doesn't send this field, reads as completed — matching
+	// what was implicitly assumed before this column existed.
+	ensureColumn("sets", "completed", `ALTER TABLE sets ADD COLUMN completed INTEGER NOT NULL DEFAULT 1`)
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a
@@ -202,7 +209,8 @@ CREATE TABLE IF NOT EXISTS sets (
   duration            INTEGER NOT NULL DEFAULT 0,
   distance            REAL    NOT NULL DEFAULT 0,
   rpe                 REAL    NOT NULL DEFAULT 0,
-  is_warmup           INTEGER NOT NULL DEFAULT 0
+  is_warmup           INTEGER NOT NULL DEFAULT 0,
+  completed           INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS weight_logs (

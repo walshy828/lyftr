@@ -175,10 +175,14 @@ func insertWorkoutExercises(tx *sql.Tx, wid int64, exercises []models.CreateWork
 			return err
 		}
 		for j, st := range ex.Sets {
+			completed := true
+			if st.Completed != nil {
+				completed = *st.Completed
+			}
 			if _, err := tx.Exec(
-				`INSERT INTO sets (workout_exercise_id, set_number, reps, weight, duration, distance, rpe, is_warmup)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				weid, j+1, st.Reps, st.Weight, st.Duration, st.Distance, st.RPE, st.IsWarmup,
+				`INSERT INTO sets (workout_exercise_id, set_number, reps, weight, duration, distance, rpe, is_warmup, completed)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				weid, j+1, st.Reps, st.Weight, st.Duration, st.Distance, st.RPE, st.IsWarmup, completed,
 			); err != nil {
 				return err
 			}
@@ -263,7 +267,7 @@ func (s *WorkoutStore) loadSetsFor(exercises []models.WorkoutExercise) (map[int6
 	}
 	placeholders, args := inArgs(ids)
 	rows, err := s.db.Query(
-		`SELECT id, workout_exercise_id, set_number, reps, weight, duration, distance, rpe, is_warmup
+		`SELECT id, workout_exercise_id, set_number, reps, weight, duration, distance, rpe, is_warmup, completed
 		 FROM sets WHERE workout_exercise_id IN (`+placeholders+`) ORDER BY workout_exercise_id, set_number`,
 		args...,
 	)
@@ -273,7 +277,7 @@ func (s *WorkoutStore) loadSetsFor(exercises []models.WorkoutExercise) (map[int6
 	defer rows.Close()
 	for rows.Next() {
 		var st models.Set
-		if err := rows.Scan(&st.ID, &st.WorkoutExerciseID, &st.SetNumber, &st.Reps, &st.Weight, &st.Duration, &st.Distance, &st.RPE, &st.IsWarmup); err != nil {
+		if err := rows.Scan(&st.ID, &st.WorkoutExerciseID, &st.SetNumber, &st.Reps, &st.Weight, &st.Duration, &st.Distance, &st.RPE, &st.IsWarmup, &st.Completed); err != nil {
 			return nil, err
 		}
 		bySet[st.WorkoutExerciseID] = append(bySet[st.WorkoutExerciseID], st)
