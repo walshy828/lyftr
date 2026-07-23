@@ -104,6 +104,27 @@ func alterMigrations() {
 	// what was implicitly assumed before this column existed.
 	ensureColumn("sets", "completed", `ALTER TABLE sets ADD COLUMN completed INTEGER NOT NULL DEFAULT 1`)
 
+	// Personal access tokens (#mcpTokens): long-lived bearer tokens for
+	// non-interactive clients (MCP server, scripts) that can't do an
+	// interactive JWT login. token_prefix is stored in cleartext purely for
+	// display ("lyftr_pat_AbCd12...") in the token list.
+	if _, err := DB.Exec(`
+CREATE TABLE IF NOT EXISTS personal_access_tokens (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  token_prefix  TEXT NOT NULL,
+  token_hash    TEXT NOT NULL UNIQUE,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_used_at  DATETIME,
+  expires_at    DATETIME,
+  revoked_at    DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_pat_user ON personal_access_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_pat_hash ON personal_access_tokens(token_hash);`); err != nil {
+		log.Fatalf("create personal_access_tokens: %v", err)
+	}
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a

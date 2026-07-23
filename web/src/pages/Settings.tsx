@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/auth'
 import { useServerStore } from '../stores/server'
 import { useServerInfo } from '../hooks/useServerInfo'
@@ -11,7 +12,7 @@ import PageHeader from '../components/ui/PageHeader'
 import ServerSettings from '../components/ServerSettings'
 import {
   User, Shield, Target, Moon, Sun, Server, LogOut, Trash2, ChevronRight, Check, AlertCircle, Loader,
-  Dumbbell, RefreshCw, Pencil, Clock, Minus, Plus,
+  Dumbbell, RefreshCw, Pencil, Clock, Minus, Plus, KeyRound,
 } from 'lucide-react'
 
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
@@ -40,6 +41,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function Settings() {
+  const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const serverUrl = useServerStore(s => s.serverUrl)
   const serverInfo = useServerInfo()
@@ -185,6 +187,11 @@ export default function Settings() {
           <span className="text-sm text-tx-muted">
             {user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '—'}
           </span>
+        </SettingRow>
+        <SettingRow label="Personal access tokens" description="Let external clients, like the MCP server, read and write your data">
+          <button onClick={() => navigate('/settings/tokens')} className="btn-secondary btn-sm">
+            <KeyRound className="w-3.5 h-3.5" /> Manage
+          </button>
         </SettingRow>
       </Section>
 
