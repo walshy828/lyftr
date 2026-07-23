@@ -247,14 +247,16 @@ type LogWeightRequest struct {
 	LoggedAt time.Time `json:"logged_at"`
 }
 
-// UserProfile carries the demographic facts (age/sex/height/activity level)
-// used for BMI, healthy-weight-range, and AI weight-loss-plan generation.
-// Sex is a BMR-formula input only, not a gender-identity field. One row per
-// user, like UserSettings.
+// UserProfile carries the demographic facts (birth date/sex/height/activity
+// level) used for BMI, healthy-weight-range, and AI weight-loss-plan
+// generation. Sex is a BMR-formula input only, not a gender-identity field.
+// One row per user, like UserSettings. BirthDate is stored (and computed
+// against "now") rather than a static age, so age stays correct over time —
+// see utils.AgeFromBirthDate.
 type UserProfile struct {
 	UserID        int64   `json:"user_id" db:"user_id"`
-	Age           int     `json:"age" db:"age"`
-	Sex           string  `json:"sex" db:"sex"` // "male" | "female"
+	BirthDate     string  `json:"birth_date" db:"birth_date"` // "YYYY-MM-DD", "" if unset
+	Sex           string  `json:"sex" db:"sex"`               // "male" | "female"
 	HeightInches  float64 `json:"height_inches" db:"height_inches"`
 	ActivityLevel string  `json:"activity_level" db:"activity_level"` // "sedentary"|"light"|"moderate"|"active"|"very_active"
 }
@@ -267,8 +269,12 @@ func DefaultUserProfile(uid int64) UserProfile {
 
 // UpsertProfileRequest is a PATCH: every field is a pointer so a nil (absent)
 // field is COALESCEd over the existing/default value rather than zeroing it.
+// The frontend must omit rather than send a zero/empty value for a field the
+// user hasn't set — go-playground/validator's `omitempty` only treats a nil
+// pointer as absent, not a non-nil pointer to a zero value, so e.g. a
+// non-nil pointer to "" still fails `oneof`.
 type UpsertProfileRequest struct {
-	Age           *int     `json:"age" validate:"omitempty,gte=13,lte=120"`
+	BirthDate     *string  `json:"birth_date" validate:"omitempty,datetime=2006-01-02"`
 	Sex           *string  `json:"sex" validate:"omitempty,oneof=male female"`
 	HeightInches  *float64 `json:"height_inches" validate:"omitempty,gt=0,lte=120"`
 	ActivityLevel *string  `json:"activity_level" validate:"omitempty,oneof=sedentary light moderate active very_active"`

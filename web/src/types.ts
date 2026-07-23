@@ -215,7 +215,7 @@ export interface WeightStats {
 
 export interface UserProfile {
   user_id: number
-  age: number
+  birth_date: string // 'YYYY-MM-DD', '' if unset
   sex: '' | 'male' | 'female'
   height_inches: number
   activity_level: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
@@ -229,6 +229,7 @@ export interface BMIInfo {
 }
 
 export interface ProfileWithBMI extends UserProfile {
+  age: number // computed server-side from birth_date as of now
   bmi: BMIInfo
 }
 

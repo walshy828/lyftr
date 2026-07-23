@@ -12,14 +12,14 @@ type ProfileStore struct{ db *sql.DB }
 
 func NewProfileStore(db *sql.DB) *ProfileStore { return &ProfileStore{db: db} }
 
-const profileSelect = `SELECT user_id, age, sex, height_inches, activity_level FROM user_profile`
+const profileSelect = `SELECT user_id, birth_date, sex, height_inches, activity_level FROM user_profile`
 
 // Get returns the user's profile row, or sql.ErrNoRows if none (the
 // controller owns the default fallback, mirroring GetSettings).
 func (s *ProfileStore) Get(uid int64) (models.UserProfile, error) {
 	var p models.UserProfile
 	err := s.db.QueryRow(profileSelect+` WHERE user_id = ?`, uid).
-		Scan(&p.UserID, &p.Age, &p.Sex, &p.HeightInches, &p.ActivityLevel)
+		Scan(&p.UserID, &p.BirthDate, &p.Sex, &p.HeightInches, &p.ActivityLevel)
 	return p, err
 }
 
@@ -30,21 +30,21 @@ func (s *ProfileStore) Upsert(uid int64, req models.UpsertProfileRequest) (model
 	d := models.DefaultUserProfile(uid)
 	var p models.UserProfile
 	err := s.db.QueryRow(
-		`INSERT INTO user_profile (user_id, age, sex, height_inches, activity_level)
+		`INSERT INTO user_profile (user_id, birth_date, sex, height_inches, activity_level)
 		 VALUES (?, COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?))
 		 ON CONFLICT(user_id) DO UPDATE SET
-		   age            = COALESCE(?, user_profile.age),
+		   birth_date     = COALESCE(?, user_profile.birth_date),
 		   sex            = COALESCE(?, user_profile.sex),
 		   height_inches  = COALESCE(?, user_profile.height_inches),
 		   activity_level = COALESCE(?, user_profile.activity_level)
-		 RETURNING user_id, age, sex, height_inches, activity_level`,
+		 RETURNING user_id, birth_date, sex, height_inches, activity_level`,
 		uid,
-		req.Age, d.Age,
+		req.BirthDate, d.BirthDate,
 		req.Sex, d.Sex,
 		req.HeightInches, d.HeightInches,
 		req.ActivityLevel, d.ActivityLevel,
-		req.Age, req.Sex, req.HeightInches, req.ActivityLevel,
-	).Scan(&p.UserID, &p.Age, &p.Sex, &p.HeightInches, &p.ActivityLevel)
+		req.BirthDate, req.Sex, req.HeightInches, req.ActivityLevel,
+	).Scan(&p.UserID, &p.BirthDate, &p.Sex, &p.HeightInches, &p.ActivityLevel)
 	if err != nil {
 		return models.UserProfile{}, err
 	}

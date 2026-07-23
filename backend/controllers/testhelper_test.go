@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS saved_foods (
 );
 CREATE TABLE IF NOT EXISTS user_profile (
   user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  age             INTEGER NOT NULL DEFAULT 0,
+  birth_date      TEXT    NOT NULL DEFAULT '',
   sex             TEXT    NOT NULL DEFAULT '',
   height_inches   REAL    NOT NULL DEFAULT 0,
   activity_level  TEXT    NOT NULL DEFAULT 'moderate'

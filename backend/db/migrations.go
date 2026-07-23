@@ -133,7 +133,7 @@ CREATE INDEX IF NOT EXISTS idx_pat_hash ON personal_access_tokens(token_hash);`)
 	if _, err := DB.Exec(`
 CREATE TABLE IF NOT EXISTS user_profile (
   user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  age             INTEGER NOT NULL DEFAULT 0,
+  birth_date      TEXT    NOT NULL DEFAULT '',
   sex             TEXT    NOT NULL DEFAULT '',
   height_inches   REAL    NOT NULL DEFAULT 0,
   activity_level  TEXT    NOT NULL DEFAULT 'moderate'

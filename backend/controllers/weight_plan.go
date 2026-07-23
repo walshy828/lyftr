@@ -42,7 +42,12 @@ func (h *Handler) GenerateWeightPlan(c *gin.Context) {
 		return
 	}
 	if profile.HeightInches <= 0 {
-		utils.BadRequest(c, "set your height, age, and sex in your profile before generating a plan")
+		utils.BadRequest(c, "set your height, birth date, and sex in your profile before generating a plan")
+		return
+	}
+	age, ok := utils.AgeFromBirthDate(profile.BirthDate, time.Now())
+	if !ok {
+		utils.BadRequest(c, "set your birth date in your profile before generating a plan")
 		return
 	}
 
@@ -64,7 +69,7 @@ func (h *Handler) GenerateWeightPlan(c *gin.Context) {
 	defer cancel()
 
 	plan, err := h.vision.GenerateWeightPlan(ctx, vision.GenerateWeightPlanRequest{
-		Age:              profile.Age,
+		Age:              age,
 		Sex:              profile.Sex,
 		ActivityLevel:    profile.ActivityLevel,
 		HeightInches:     profile.HeightInches,

@@ -9,7 +9,9 @@ import { exerciseAPI, profileAPI } from '../services/api'
 import * as types from '../types'
 import { HelpTip } from '../components/Tooltip'
 import PageHeader from '../components/ui/PageHeader'
+import DateInput from '../components/ui/DateInput'
 import ServerSettings from '../components/ServerSettings'
+import { todayStr } from '../utils/dateUtils'
 import {
   User, Shield, Target, Moon, Sun, Server, LogOut, Trash2, ChevronRight, Check, AlertCircle, Loader,
   Dumbbell, RefreshCw, Pencil, Clock, Minus, Plus, KeyRound, HeartPulse,
@@ -59,27 +61,55 @@ export default function Settings() {
 
   const [profile, setProfile] = useState<types.ProfileWithBMI | null>(null)
   const [profileForm, setProfileForm] = useState<types.UserProfile>({
-    user_id: 0, age: 0, sex: '', height_inches: 0, activity_level: 'moderate',
+    user_id: 0, birth_date: '', sex: '', height_inches: 0, activity_level: 'moderate',
   })
+  // Height entered as feet + inches for readability; height_inches on
+  // profileForm stays the canonical total the API expects.
+  const [heightFeet, setHeightFeet] = useState('')
+  const [heightInchesPart, setHeightInchesPart] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileSuccess, setProfileSuccess] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
 
   const loadProfile = useCallback(async () => {
     try {
       const p = await profileAPI.get()
       setProfile(p)
-      setProfileForm({ user_id: p.user_id, age: p.age, sex: p.sex, height_inches: p.height_inches, activity_level: p.activity_level })
+      setProfileForm({ user_id: p.user_id, birth_date: p.birth_date, sex: p.sex, height_inches: p.height_inches, activity_level: p.activity_level })
+      if (p.height_inches > 0) {
+        setHeightFeet(String(Math.floor(p.height_inches / 12)))
+        setHeightInchesPart(String(Math.round(p.height_inches % 12)))
+      }
     } catch {}
   }, [])
 
+  const setHeight = (feet: string, inches: string) => {
+    setHeightFeet(feet)
+    setHeightInchesPart(inches)
+    const totalInches = (parseInt(feet) || 0) * 12 + (parseInt(inches) || 0)
+    setProfileForm(prev => ({ ...prev, height_inches: totalInches }))
+  }
+
   const handleSaveProfile = async () => {
     setProfileSaving(true)
+    setProfileError(null)
     try {
-      await profileAPI.update(profileForm)
+      // Partial update: the backend treats an omitted key as "leave
+      // unchanged" (COALESCE over the existing row), but a present key with
+      // an empty/zero value fails validation (e.g. sex must be 'male' or
+      // 'female', never ''). Only send fields the user has actually set,
+      // otherwise an untouched field silently rejects the whole save.
+      const patch: Partial<types.UserProfile> = { activity_level: profileForm.activity_level }
+      if (profileForm.birth_date) patch.birth_date = profileForm.birth_date
+      if (profileForm.sex) patch.sex = profileForm.sex
+      if (profileForm.height_inches > 0) patch.height_inches = profileForm.height_inches
+      await profileAPI.update(patch)
       await loadProfile()
       setProfileSuccess(true)
       setTimeout(() => setProfileSuccess(false), 3000)
-    } catch {} finally {
+    } catch (err: any) {
+      setProfileError(err?.response?.data?.error || 'Failed to save profile')
+    } finally {
       setProfileSaving(false)
     }
   }
@@ -437,16 +467,26 @@ export default function Settings() {
 
       {/* Profile — demographic facts used for BMI and the AI weight-loss plan */}
       <Section title="Profile">
-        <SettingRow label="Age" description="Used for BMI and plan calculations">
-          <input
-            type="number"
-            value={profileForm.age || ''}
-            onChange={e => setProfileForm({ ...profileForm, age: parseInt(e.target.value) || 0 })}
-            className="input w-20 text-right"
-            min={13}
-            max={120}
-          />
+        {profileError && (
+          <div className="py-3">
+            <div className="alert-error" role="alert">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{profileError}</span>
+            </div>
+          </div>
+        )}
+
+        <SettingRow label="Birth date" description="Used to calculate age for BMI and plan calculations">
+          <div className="w-40">
+            <DateInput value={profileForm.birth_date} onChange={v => setProfileForm({ ...profileForm, birth_date: v })} max={todayStr()} />
+          </div>
         </SettingRow>
+
+        {profile && profile.age > 0 && (
+          <SettingRow label="Age" description="Calculated from your birth date">
+            <span className="text-sm text-tx-muted">{profile.age}</span>
+          </SettingRow>
+        )}
 
         <SettingRow label="Sex" description="Used for BMR-based plan calculations">
           <div className="flex gap-1 bg-surface-overlay rounded-lg p-1 border border-surface-border">
@@ -470,11 +510,22 @@ export default function Settings() {
           <div className="flex items-center gap-2">
             <input
               type="number"
-              value={profileForm.height_inches || ''}
-              onChange={e => setProfileForm({ ...profileForm, height_inches: parseFloat(e.target.value) || 0 })}
-              className="input w-20 text-right"
-              min={1}
-              max={120}
+              value={heightFeet}
+              onChange={e => setHeight(e.target.value, heightInchesPart)}
+              className="input w-14 text-right"
+              min={0}
+              max={9}
+              placeholder="ft"
+            />
+            <span className="text-xs text-tx-muted">ft</span>
+            <input
+              type="number"
+              value={heightInchesPart}
+              onChange={e => setHeight(heightFeet, e.target.value)}
+              className="input w-14 text-right"
+              min={0}
+              max={11}
+              placeholder="in"
             />
             <span className="text-xs text-tx-muted">in</span>
           </div>

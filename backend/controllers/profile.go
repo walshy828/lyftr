@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
@@ -35,9 +36,12 @@ func (h *Handler) GetProfile(c *gin.Context) {
 		bmi.HealthyRangeLow, bmi.HealthyRangeHigh = utils.HealthyWeightRangeLbs(p.HeightInches)
 	}
 
+	age, _ := utils.AgeFromBirthDate(p.BirthDate, time.Now())
+
 	utils.OK(c, gin.H{
 		"user_id":        p.UserID,
-		"age":            p.Age,
+		"birth_date":     p.BirthDate,
+		"age":            age,
 		"sex":            p.Sex,
 		"height_inches":  p.HeightInches,
 		"activity_level": p.ActivityLevel,
