@@ -284,10 +284,21 @@ type UpsertProfileRequest struct {
 // computed server-side so both the profile endpoint and plan generation share
 // one source of truth.
 type BMIResult struct {
-	BMI              float64 `json:"bmi"`
-	Category         string  `json:"category"`
-	HealthyRangeLow  float64 `json:"healthy_range_low"`  // lbs
-	HealthyRangeHigh float64 `json:"healthy_range_high"` // lbs
+	BMI              float64            `json:"bmi"`
+	Category         string             `json:"category"`
+	HealthyRangeLow  float64            `json:"healthy_range_low"`  // lbs
+	HealthyRangeHigh float64            `json:"healthy_range_high"` // lbs
+	LossGuidance     WeeklyLossGuidance `json:"loss_guidance"`
+}
+
+// WeeklyLossGuidance is the deterministic, BMI-category-based safe pace of
+// weight loss (lbs/week bounds for the sustainable phase, after the initial
+// water-weight drop) plus a plain-language note — see
+// utils.WeeklyLossGuidanceFor, which populates this.
+type WeeklyLossGuidance struct {
+	LowLbsPerWeek  float64 `json:"low_lbs_per_week"`
+	HighLbsPerWeek float64 `json:"high_lbs_per_week"`
+	Note           string  `json:"note"`
 }
 
 // NutritionGoal is one append-only row in the nutrition-goal history: never

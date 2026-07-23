@@ -221,11 +221,18 @@ export interface UserProfile {
   activity_level: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
 }
 
+export interface WeeklyLossGuidance {
+  low_lbs_per_week: number
+  high_lbs_per_week: number
+  note: string
+}
+
 export interface BMIInfo {
   bmi: number
   category: 'unknown' | 'underweight' | 'healthy' | 'overweight' | 'obese'
   healthy_range_low: number
   healthy_range_high: number
+  loss_guidance: WeeklyLossGuidance
 }
 
 export interface ProfileWithBMI extends UserProfile {

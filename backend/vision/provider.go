@@ -165,6 +165,14 @@ type GenerateWeightPlanRequest struct {
 	TimeframeWeeks   int     // 0 = no preference, let the model choose a safe pace
 	HealthyRangeLow  float64 // lbs
 	HealthyRangeHigh float64 // lbs
+	// BMICategory and the loss-rate bounds are computed deterministically by
+	// the controller (utils.BMICategory/WeeklyLossGuidanceFor) from the
+	// user's current BMI — they set the sustainable-phase pace the model
+	// should taper toward, scaled to how much this person's starting point
+	// can safely sustain.
+	BMICategory            string
+	SustainedLossLowPerWk  float64 // lbs/week
+	SustainedLossHighPerWk float64 // lbs/week
 }
 
 // WeightPlanWeek is one week of the AI-projected weight trajectory.
@@ -535,7 +543,12 @@ func draftProgramJSONSchema() map[string]any {
 
 // weightPlanPrompt builds the shared GenerateWeightPlan prompt — one builder
 // used by all three providers so their prompts can't drift apart. States the
-// safety envelope explicitly so a good-faith model won't propose a crash diet.
+// safety envelope explicitly so a good-faith model won't propose a crash
+// diet, and explicitly asks for a non-linear, front-loaded-then-tapering
+// trajectory instead of a flat straight-line decline — real weight loss
+// isn't linear (a bigger drop in week 1-2 from water/glycogen depletion,
+// then a steadier sustainable rate, then further tapering as the body
+// adapts and there's less left to safely lose near the target).
 func weightPlanPrompt(req GenerateWeightPlanRequest) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Design a weight-loss nutrition plan for a %d-year-old %s, %.0f inches tall, currently weighing %.0f lbs, with a %s activity level. They want to reach %.0f lbs", req.Age, req.Sex, req.HeightInches, req.CurrentWeight, req.ActivityLevel, req.TargetWeight)
@@ -546,9 +559,13 @@ func weightPlanPrompt(req GenerateWeightPlanRequest) string {
 
 	fmt.Fprintf(&b, "The generally recognized healthy weight range for this height is %.0f-%.0f lbs. If the requested target weight falls outside this range, propose a plan that instead targets the nearer edge of the healthy range, and explain this adjustment in safety_notes.\n\n", req.HealthyRangeLow, req.HealthyRangeHigh)
 
-	b.WriteString("Safety constraints (do not violate these): the rate of loss must never exceed about 2 lbs per week (a slower, sustainable rate is preferred for smaller total losses); daily calorie_target must never go below 1500 for a male or 1200 for a female, regardless of how aggressive the timeframe request is. If a safe plan can't reach the target in the requested timeframe, extend the trajectory and say so in rationale rather than dropping calories further.\n\n")
+	fmt.Fprintf(&b, "This person's BMI category is %q. A sustainable steady-state pace for that category is about %.1f-%.1f lbs/week — use that as the target rate for the bulk of the plan, not a single universal number.\n\n", req.BMICategory, req.SustainedLossLowPerWk, req.SustainedLossHighPerWk)
 
-	b.WriteString("Return: calorie_target (integer kcal/day), protein_target, carb_target, fat_target (integer grams/day, roughly consistent with the calorie target), weekly_trajectory (an array of {week, expected_weight} starting at week 0 with the user's current weight and continuing at a realistic weekly pace to the plan's final target weight — one entry per week), rationale (one short paragraph explaining the calorie/macro choices and the pace), and safety_notes (any caveats, including a target adjustment if you moved it toward the healthy range, or a recommendation to consult a doctor for large or rapid changes).")
+	b.WriteString("IMPORTANT — make the weekly_trajectory realistic, not a flat straight-line decline: real weight loss is front-loaded and then tapers. Structure it in three phases: (1) weeks 1-2: a faster initial drop (roughly 1.5-2x the steady-state rate above) mostly from water weight and glycogen depletion — say so in rationale; (2) the middle of the plan: settle into the steady-state rate range given above; (3) the final ~20% of the plan (or once within about 5 lbs of the target): taper the weekly loss down further (metabolic adaptation and less excess to lose) so the curve visibly flattens as it approaches the target rather than hitting it in one last big drop. The result should look like a decelerating curve, never a straight line and never faster in later weeks than earlier weeks.\n\n")
+
+	b.WriteString("Safety constraints (do not violate these): the rate of loss must never exceed about 2 lbs/week in any single week, even in the faster initial phase; daily calorie_target must never go below 1500 for a male or 1200 for a female, regardless of how aggressive the timeframe request is. If a safe, properly-tapered plan can't reach the target in the requested timeframe, extend the trajectory and say so in rationale rather than dropping calories further or exceeding the safe weekly rate.\n\n")
+
+	b.WriteString("Return: calorie_target (integer kcal/day), protein_target, carb_target, fat_target (integer grams/day, roughly consistent with the calorie target), weekly_trajectory (an array of {week, expected_weight} starting at week 0 with the user's current weight and following the three-phase tapering pace described above to the plan's final target weight — one entry per week), rationale (one short paragraph explaining the calorie/macro choices and why the pace is shaped the way it is), and safety_notes (any caveats, including a target adjustment if you moved it toward the healthy range, or a recommendation to consult a doctor for large or rapid changes).")
 	return b.String()
 }
 

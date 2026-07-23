@@ -61,6 +61,8 @@ func (h *Handler) GenerateWeightPlan(c *gin.Context) {
 	}
 
 	low, high := utils.HealthyWeightRangeLbs(profile.HeightInches)
+	bmiCategory := utils.BMICategory(utils.BMI(stats.Latest, profile.HeightInches))
+	pace := utils.WeeklyLossGuidanceFor(bmiCategory, stats.Latest)
 
 	// 60s, not 20s: this prompt asks for a full weekly trajectory alongside
 	// macro targets and runs longer than the shorter single-item AI endpoints
@@ -69,15 +71,18 @@ func (h *Handler) GenerateWeightPlan(c *gin.Context) {
 	defer cancel()
 
 	plan, err := h.vision.GenerateWeightPlan(ctx, vision.GenerateWeightPlanRequest{
-		Age:              age,
-		Sex:              profile.Sex,
-		ActivityLevel:    profile.ActivityLevel,
-		HeightInches:     profile.HeightInches,
-		CurrentWeight:    stats.Latest,
-		TargetWeight:     req.TargetWeight,
-		TimeframeWeeks:   req.TimeframeWeeks,
-		HealthyRangeLow:  low,
-		HealthyRangeHigh: high,
+		Age:                    age,
+		Sex:                    profile.Sex,
+		ActivityLevel:          profile.ActivityLevel,
+		HeightInches:           profile.HeightInches,
+		CurrentWeight:          stats.Latest,
+		TargetWeight:           req.TargetWeight,
+		TimeframeWeeks:         req.TimeframeWeeks,
+		HealthyRangeLow:        low,
+		HealthyRangeHigh:       high,
+		BMICategory:            bmiCategory,
+		SustainedLossLowPerWk:  pace.LowLbsPerWeek,
+		SustainedLossHighPerWk: pace.HighLbsPerWeek,
 	})
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {

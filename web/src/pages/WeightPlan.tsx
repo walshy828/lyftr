@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import {
   Target, Sparkles, AlertCircle, Check, TrendingUp, TrendingDown, Flame,
-  Utensils, Dumbbell, History, ArrowLeft, ShieldAlert,
+  Utensils, Dumbbell, History, ArrowLeft, ShieldAlert, Gauge,
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
@@ -187,7 +187,7 @@ export default function WeightPlan() {
         </div>
       )}
 
-      {/* BMI readout */}
+      {/* BMI readout + pace guidance */}
       {hasProfile && bmi && bmi.bmi > 0 && (
         <div className="card p-5">
           <SectionHeader icon={Target} title="Your BMI" />
@@ -198,6 +198,20 @@ export default function WeightPlan() {
           <p className="text-xs text-tx-muted mt-2">
             Healthy weight range for your height: {Math.round(bmi.healthy_range_low)}–{Math.round(bmi.healthy_range_high)} lbs
           </p>
+          {bmi.loss_guidance.high_lbs_per_week > 0 && (
+            <div className="flex items-start gap-2 text-xs text-tx-secondary bg-surface-overlay border border-surface-border rounded-lg p-3 mt-3">
+              <Gauge className="w-3.5 h-3.5 text-brand-400 flex-shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-tx-primary">Recommended pace: {bmi.loss_guidance.low_lbs_per_week.toFixed(1)}–{bmi.loss_guidance.high_lbs_per_week.toFixed(1)} lbs/week.</strong> {bmi.loss_guidance.note}
+              </span>
+            </div>
+          )}
+          {bmi.loss_guidance.high_lbs_per_week === 0 && (
+            <div className="flex items-start gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mt-3">
+              <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span>{bmi.loss_guidance.note}</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -229,7 +243,7 @@ export default function WeightPlan() {
               />
             </div>
           </div>
-          <button type="submit" disabled={generating || !hasProfile} className="btn-primary w-full">
+          <button type="submit" disabled={generating || !hasProfile} className="btn-primary btn-md w-full">
             <Sparkles className="w-4 h-4" /> {generating ? 'Generating…' : 'Generate Plan'}
           </button>
         </form>
@@ -257,7 +271,7 @@ export default function WeightPlan() {
                 <span>{draft.safety_notes}</span>
               </div>
             )}
-            <button onClick={handleAccept} disabled={accepting} className="btn-primary w-full">
+            <button onClick={handleAccept} disabled={accepting} className="btn-primary btn-md w-full">
               <Check className="w-4 h-4" /> {accepting ? 'Saving…' : 'Accept & Import to Settings'}
             </button>
           </div>

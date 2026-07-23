@@ -32,6 +32,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 		if stats.Latest > 0 {
 			bmi.BMI = utils.BMI(stats.Latest, p.HeightInches)
 			bmi.Category = utils.BMICategory(bmi.BMI)
+			bmi.LossGuidance = utils.WeeklyLossGuidanceFor(bmi.Category, stats.Latest)
 		}
 		bmi.HealthyRangeLow, bmi.HealthyRangeHigh = utils.HealthyWeightRangeLbs(p.HeightInches)
 	}

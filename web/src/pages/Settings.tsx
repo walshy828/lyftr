@@ -546,9 +546,14 @@ export default function Settings() {
         </SettingRow>
 
         {profile && profile.bmi.bmi > 0 && (
-          <SettingRow label="BMI" description={`Healthy range: ${profile.bmi.healthy_range_low.toFixed(0)}-${profile.bmi.healthy_range_high.toFixed(0)} lbs`}>
-            <span className="text-sm font-mono text-tx-primary capitalize">{profile.bmi.bmi.toFixed(1)} · {profile.bmi.category}</span>
-          </SettingRow>
+          <>
+            <SettingRow label="BMI" description={`Healthy range: ${profile.bmi.healthy_range_low.toFixed(0)}-${profile.bmi.healthy_range_high.toFixed(0)} lbs`}>
+              <span className="text-sm font-mono text-tx-primary capitalize">{profile.bmi.bmi.toFixed(1)} · {profile.bmi.category}</span>
+            </SettingRow>
+            <div className="py-3">
+              <p className="text-xs text-tx-muted">{profile.bmi.loss_guidance.note}</p>
+            </div>
+          </>
         )}
 
         <div className="py-3 flex items-center justify-between">

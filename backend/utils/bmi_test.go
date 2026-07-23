@@ -43,3 +43,32 @@ func TestHealthyWeightRangeLbs(t *testing.T) {
 		t.Errorf("HealthyWeightRangeLbs(0) = (%v, %v), want (0, 0)", l, h)
 	}
 }
+
+func TestWeeklyLossGuidanceFor(t *testing.T) {
+	// Obese category should permit a faster sustained pace than overweight,
+	// which in turn permits faster than healthy; underweight/unknown should
+	// recommend against loss entirely (zero bounds).
+	obese := WeeklyLossGuidanceFor("obese", 230)
+	overweight := WeeklyLossGuidanceFor("overweight", 190)
+	healthy := WeeklyLossGuidanceFor("healthy", 160)
+	underweight := WeeklyLossGuidanceFor("underweight", 110)
+
+	if obese.LowLbsPerWeek <= 0 || obese.HighLbsPerWeek <= obese.LowLbsPerWeek {
+		t.Fatalf("obese guidance = %+v, want positive increasing range", obese)
+	}
+	if obese.HighLbsPerWeek > 2 {
+		t.Errorf("obese.HighLbsPerWeek = %v, want <= 2 (safety cap)", obese.HighLbsPerWeek)
+	}
+	if overweight.HighLbsPerWeek >= obese.HighLbsPerWeek {
+		t.Errorf("overweight pace (%v) should be slower than obese pace (%v)", overweight.HighLbsPerWeek, obese.HighLbsPerWeek)
+	}
+	if healthy.HighLbsPerWeek >= overweight.HighLbsPerWeek {
+		t.Errorf("healthy pace (%v) should be slower than overweight pace (%v)", healthy.HighLbsPerWeek, overweight.HighLbsPerWeek)
+	}
+	if underweight.LowLbsPerWeek != 0 || underweight.HighLbsPerWeek != 0 {
+		t.Errorf("underweight guidance = %+v, want zero bounds", underweight)
+	}
+	if underweight.Note == "" || obese.Note == "" {
+		t.Errorf("expected non-empty guidance notes")
+	}
+}
