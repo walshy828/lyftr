@@ -175,6 +175,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_motivation_notes_user_week ON motivation_n
 		log.Fatalf("create weight-plan tables: %v", err)
 	}
 
+	// user_profile originally stored a static "age" column; replaced with
+	// birth_date (#weightPlan) so age can be computed dynamically over time
+	// instead of going stale. The CREATE TABLE above only applies to brand-new
+	// databases — an existing user_profile table from before this change
+	// needs birth_date added explicitly. The old age column, if present, is
+	// simply left unused rather than dropped (SQLite DROP COLUMN support is
+	// version-dependent, and an unused column is harmless).
+	ensureColumn("user_profile", "birth_date", `ALTER TABLE user_profile ADD COLUMN birth_date TEXT NOT NULL DEFAULT ''`)
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a

@@ -507,12 +507,12 @@ export default function Settings() {
         </SettingRow>
 
         <SettingRow label="Height" description="Used for BMI and healthy-weight range">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <input
               type="number"
               value={heightFeet}
               onChange={e => setHeight(e.target.value, heightInchesPart)}
-              className="input w-14 text-right"
+              className="input w-16 px-2 text-center"
               min={0}
               max={9}
               placeholder="ft"
@@ -522,7 +522,7 @@ export default function Settings() {
               type="number"
               value={heightInchesPart}
               onChange={e => setHeight(heightFeet, e.target.value)}
-              className="input w-14 text-right"
+              className="input w-16 px-2 text-center"
               min={0}
               max={11}
               placeholder="in"
@@ -535,7 +535,7 @@ export default function Settings() {
           <select
             value={profileForm.activity_level}
             onChange={e => setProfileForm({ ...profileForm, activity_level: e.target.value as types.UserProfile['activity_level'] })}
-            className="input w-40"
+            className="input w-full sm:w-52 text-sm"
           >
             <option value="sedentary">Sedentary</option>
             <option value="light">Lightly active</option>
