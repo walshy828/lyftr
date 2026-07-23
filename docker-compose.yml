@@ -24,6 +24,31 @@ services:
       timeout: 10s
       retries: 3
 
+  mcp:
+    image: cwlumm/lyftr-mcp:latest
+    build: ./mcp
+    restart: unless-stopped
+    # Optional: only needed if you want an MCP client on another machine (e.g.
+    # a laptop with Claude Desktop) to connect over the network via the
+    # mcp-remote bridge — see mcp/README.md. Skip this service entirely if you
+    # only ever run lyftr-mcp as a local stdio subprocess on the same machine
+    # as your MCP client.
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_LISTEN_ADDR=:8811
+      # backend:3000 is reachable on the internal Docker network directly —
+      # unlike an external client, this container doesn't need to go through
+      # the frontend's nginx proxy.
+      - LYFTR_API_URL=http://backend:3000/api/v1
+      # Create this in the web app under Settings > Personal access tokens,
+      # then set it in your .env file.
+      - LYFTR_TOKEN=${LYFTR_MCP_TOKEN}
+    ports:
+      - "${MCP_PORT:-8811}:8811"
+    depends_on:
+      backend:
+        condition: service_healthy
+
   frontend:
     image: cwlumm/lyftr-frontend:latest
     build: ./web
