@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 
@@ -55,7 +54,7 @@ func registerWorkouts(server *mcp.Server, c *client.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_workouts",
 		Description: "List the user's logged workouts, most recent first.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in listWorkoutsInput) (*mcp.CallToolResult, json.RawMessage, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in listWorkoutsInput) (*mcp.CallToolResult, any, error) {
 		q := url.Values{}
 		setIfPositive(q, "limit", in.Limit)
 		setIfPositive(q, "offset", in.Offset)
@@ -67,7 +66,7 @@ func registerWorkouts(server *mcp.Server, c *client.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_workout",
 		Description: "Get one workout, including its exercises and sets.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in getWorkoutInput) (*mcp.CallToolResult, json.RawMessage, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in getWorkoutInput) (*mcp.CallToolResult, any, error) {
 		data, err := c.Get(ctx, fmt.Sprintf("/workouts/%d", in.ID), nil)
 		return nil, data, err
 	})
@@ -75,7 +74,7 @@ func registerWorkouts(server *mcp.Server, c *client.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_workout",
 		Description: "Log a completed workout with its exercises and sets.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in createWorkoutInput) (*mcp.CallToolResult, json.RawMessage, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in createWorkoutInput) (*mcp.CallToolResult, any, error) {
 		data, err := c.Post(ctx, "/workouts", in)
 		return nil, data, err
 	})
@@ -83,7 +82,7 @@ func registerWorkouts(server *mcp.Server, c *client.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_workout",
 		Description: "Update an existing workout (replaces its exercises/sets with the given ones).",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in updateWorkoutInput) (*mcp.CallToolResult, json.RawMessage, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in updateWorkoutInput) (*mcp.CallToolResult, any, error) {
 		data, err := c.Put(ctx, fmt.Sprintf("/workouts/%d", in.ID), in.createWorkoutInput)
 		return nil, data, err
 	})

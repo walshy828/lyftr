@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"net/url"
 
 	"github.com/Cawlumm/lyftr-mcp/client"
@@ -25,7 +24,7 @@ func registerWeight(server *mcp.Server, c *client.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_weight_logs",
 		Description: "List the user's body-weight log entries, most recent first.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in listWeightInput) (*mcp.CallToolResult, json.RawMessage, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in listWeightInput) (*mcp.CallToolResult, any, error) {
 		q := url.Values{}
 		setIfPositive(q, "limit", in.Limit)
 		setIfNonEmpty(q, "from", in.From)
@@ -37,7 +36,7 @@ func registerWeight(server *mcp.Server, c *client.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "log_weight",
 		Description: "Log the user's body weight for a day (one entry per calendar day; logging again the same day overwrites it).",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in logWeightInput) (*mcp.CallToolResult, json.RawMessage, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in logWeightInput) (*mcp.CallToolResult, any, error) {
 		data, err := c.Post(ctx, "/weight", in)
 		return nil, data, err
 	})
@@ -45,7 +44,7 @@ func registerWeight(server *mcp.Server, c *client.Client) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_weight_stats",
 		Description: "Get summary weight stats: latest, starting, min, max, average, and 7/30-day change.",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, json.RawMessage, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
 		data, err := c.Get(ctx, "/weight/stats", nil)
 		return nil, data, err
 	})
