@@ -186,30 +186,6 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
-// PersonalAccessToken is what list/create responses expose — metadata only,
-// never the hash or plaintext value.
-type PersonalAccessToken struct {
-	ID          int64      `json:"id"`
-	Name        string     `json:"name"`
-	TokenPrefix string     `json:"token_prefix"`
-	CreatedAt   time.Time  `json:"created_at"`
-	LastUsedAt  *time.Time `json:"last_used_at"`
-	ExpiresAt   *time.Time `json:"expires_at"`
-}
-
-type CreateTokenRequest struct {
-	Name string `json:"name" validate:"required,min=1,max=100"`
-	// ExpiresInDays is nil for a token that never expires.
-	ExpiresInDays *int `json:"expires_in_days"`
-}
-
-// CreateTokenResponse is the only response in the system that ever carries a
-// plaintext secret — shown to the caller exactly once, at creation.
-type CreateTokenResponse struct {
-	Token PersonalAccessToken `json:"token"`
-	Value string              `json:"value"`
-}
-
 type CreateWorkoutRequest struct {
 	Name      string                     `json:"name" validate:"required"`
 	Notes     string                     `json:"notes"`

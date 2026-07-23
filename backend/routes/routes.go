@@ -8,12 +8,11 @@ import (
 	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/controllers"
 	"github.com/Cawlumm/lyftr-backend/middleware"
-	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
-func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
+func Setup(r *gin.Engine, h *controllers.Handler) {
 	r.Use(cors.New(corsConfig()))
 
 	r.GET("/health", func(c *gin.Context) {
@@ -37,21 +36,13 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 
 	// Protected routes
 	protected := api.Group("/")
-	protected.Use(middleware.Auth(s))
+	protected.Use(middleware.Auth())
 	{
 		// User
 		protected.GET("me", h.GetMe)
 		protected.GET("settings", h.GetSettings)
 		protected.PUT("settings", h.UpdateSettings)
 		protected.DELETE("me", h.DeleteAccount)
-
-		// Personal access tokens — long-lived bearer tokens for non-interactive
-		// clients (MCP server, scripts). Management itself requires JWT auth
-		// (enforced in the handlers): a PAT must never be usable to mint, list,
-		// or revoke tokens, including itself.
-		protected.GET("tokens", h.ListTokens)
-		protected.POST("tokens", h.CreateToken)
-		protected.DELETE("tokens/:id", h.RevokeToken)
 
 		// Workouts
 		protected.GET("workouts", h.ListWorkouts)

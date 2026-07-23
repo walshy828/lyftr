@@ -228,24 +228,6 @@ export const savedFoodsAPI = {
   delete: (id: number) => api.delete(`/food/saved/${id}`),
 }
 
-export interface PersonalAccessToken {
-  id: number
-  name: string
-  token_prefix: string
-  created_at: string
-  last_used_at: string | null
-  expires_at: string | null
-}
-
-export const tokenAPI = {
-  list: () => api.get<{ data: PersonalAccessToken[] }>('/tokens').then(res => unwrap(res)),
-  create: (name: string, expiresInDays: number | null) =>
-    api.post<{ data: { token: PersonalAccessToken; value: string } }>('/tokens', {
-      name, expires_in_days: expiresInDays,
-    }).then(res => unwrap(res)),
-  revoke: (id: number) => api.delete(`/tokens/${id}`),
-}
-
 export const activeSessionAPI = {
   get: () => api.get<{ data: { data: string | null; updated_at?: string } | null }>('/active-session').then(res => unwrap(res)),
   put: (data: types.ActiveSession) => api.put('/active-session', { data: JSON.stringify(data) }),

@@ -57,7 +57,7 @@ func main() {
 	}
 
 	h := controllers.NewHandler(s, visionProvider)
-	routes.Setup(r, h, s)
+	routes.Setup(r, h)
 
 	addr := ":" + config.C.Port
 	log.Printf("lyftr API listening on %s (env=%s)", addr, config.C.Env)

@@ -164,17 +164,6 @@ CREATE TABLE IF NOT EXISTS active_sessions (
   data       TEXT    NOT NULL,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS personal_access_tokens (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name          TEXT NOT NULL,
-  token_prefix  TEXT NOT NULL,
-  token_hash    TEXT NOT NULL UNIQUE,
-  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  last_used_at  DATETIME,
-  expires_at    DATETIME,
-  revoked_at    DATETIME
-);
 CREATE TABLE IF NOT EXISTS saved_foods (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -235,9 +224,6 @@ func newContext(userID int64, method, path string, body any) (*gin.Context, *htt
 	c.Request, _ = http.NewRequest(method, path, bytes.NewBuffer(bodyBytes))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("user_id", userID)
-	// Every other test in this package simulates an authenticated web/app
-	// session (JWT); tests targeting PAT-only behavior override this.
-	c.Set("auth_method", "jwt")
 	return c, w
 }
 
