@@ -5,14 +5,14 @@ import { useServerStore } from '../stores/server'
 import { useServerInfo } from '../hooks/useServerInfo'
 import { useSettingsStore } from '../stores/settings'
 import { useTheme } from '../hooks/useTheme'
-import { exerciseAPI } from '../services/api'
+import { exerciseAPI, profileAPI } from '../services/api'
 import * as types from '../types'
 import { HelpTip } from '../components/Tooltip'
 import PageHeader from '../components/ui/PageHeader'
 import ServerSettings from '../components/ServerSettings'
 import {
   User, Shield, Target, Moon, Sun, Server, LogOut, Trash2, ChevronRight, Check, AlertCircle, Loader,
-  Dumbbell, RefreshCw, Pencil, Clock, Minus, Plus, KeyRound,
+  Dumbbell, RefreshCw, Pencil, Clock, Minus, Plus, KeyRound, HeartPulse,
 } from 'lucide-react'
 
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
@@ -56,6 +56,33 @@ export default function Settings() {
   const [seedStatus, setSeedStatus] = useState<{ count: number; in_progress: boolean } | null>(null)
   const [seedAction, setSeedAction] = useState<'sync' | null>(null)
   const [seedMsg, setSeedMsg] = useState<string | null>(null)
+
+  const [profile, setProfile] = useState<types.ProfileWithBMI | null>(null)
+  const [profileForm, setProfileForm] = useState<types.UserProfile>({
+    user_id: 0, age: 0, sex: '', height_inches: 0, activity_level: 'moderate',
+  })
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileSuccess, setProfileSuccess] = useState(false)
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const p = await profileAPI.get()
+      setProfile(p)
+      setProfileForm({ user_id: p.user_id, age: p.age, sex: p.sex, height_inches: p.height_inches, activity_level: p.activity_level })
+    } catch {}
+  }, [])
+
+  const handleSaveProfile = async () => {
+    setProfileSaving(true)
+    try {
+      await profileAPI.update(profileForm)
+      await loadProfile()
+      setProfileSuccess(true)
+      setTimeout(() => setProfileSuccess(false), 3000)
+    } catch {} finally {
+      setProfileSaving(false)
+    }
+  }
 
   const [formData, setFormData] = useState({
     weight_unit: storedSettings.weight_unit,
@@ -103,7 +130,8 @@ export default function Settings() {
     }
     load()
     loadSeedStatus()
-  }, [loadSeedStatus])
+    loadProfile()
+  }, [loadSeedStatus, loadProfile])
 
   // Poll while seeding in progress
   useEffect(() => {
@@ -403,6 +431,82 @@ export default function Settings() {
             className="btn-primary btn-sm"
           >
             <Check className="w-3.5 h-3.5" /> {saving ? 'Saving...' : 'Save targets'}
+          </button>
+        </div>
+      </Section>
+
+      {/* Profile — demographic facts used for BMI and the AI weight-loss plan */}
+      <Section title="Profile">
+        <SettingRow label="Age" description="Used for BMI and plan calculations">
+          <input
+            type="number"
+            value={profileForm.age || ''}
+            onChange={e => setProfileForm({ ...profileForm, age: parseInt(e.target.value) || 0 })}
+            className="input w-20 text-right"
+            min={13}
+            max={120}
+          />
+        </SettingRow>
+
+        <SettingRow label="Sex" description="Used for BMR-based plan calculations">
+          <div className="flex gap-1 bg-surface-overlay rounded-lg p-1 border border-surface-border">
+            {(['male', 'female'] as const).map(sex => (
+              <button
+                key={sex}
+                onClick={() => setProfileForm({ ...profileForm, sex })}
+                className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${
+                  profileForm.sex === sex
+                    ? 'bg-surface-raised border border-surface-border text-tx-primary shadow-sm'
+                    : 'text-tx-muted hover:text-tx-primary'
+                }`}
+              >
+                {sex}
+              </button>
+            ))}
+          </div>
+        </SettingRow>
+
+        <SettingRow label="Height" description="Used for BMI and healthy-weight range">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={profileForm.height_inches || ''}
+              onChange={e => setProfileForm({ ...profileForm, height_inches: parseFloat(e.target.value) || 0 })}
+              className="input w-20 text-right"
+              min={1}
+              max={120}
+            />
+            <span className="text-xs text-tx-muted">in</span>
+          </div>
+        </SettingRow>
+
+        <SettingRow label="Activity level" description="Used to estimate calorie needs">
+          <select
+            value={profileForm.activity_level}
+            onChange={e => setProfileForm({ ...profileForm, activity_level: e.target.value as types.UserProfile['activity_level'] })}
+            className="input w-40"
+          >
+            <option value="sedentary">Sedentary</option>
+            <option value="light">Lightly active</option>
+            <option value="moderate">Moderately active</option>
+            <option value="active">Active</option>
+            <option value="very_active">Very active</option>
+          </select>
+        </SettingRow>
+
+        {profile && profile.bmi.bmi > 0 && (
+          <SettingRow label="BMI" description={`Healthy range: ${profile.bmi.healthy_range_low.toFixed(0)}-${profile.bmi.healthy_range_high.toFixed(0)} lbs`}>
+            <span className="text-sm font-mono text-tx-primary capitalize">{profile.bmi.bmi.toFixed(1)} · {profile.bmi.category}</span>
+          </SettingRow>
+        )}
+
+        <div className="py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <HeartPulse className="w-3.5 h-3.5 text-tx-muted" />
+            <p className="text-xs text-tx-muted">{profileSuccess ? 'Profile saved' : 'Used by BMI and the AI weight-loss plan'}</p>
+          </div>
+          <button onClick={handleSaveProfile} disabled={profileSaving} className="btn-primary btn-sm">
+            <Check className="w-3.5 h-3.5" /> {profileSaving ? 'Saving...' : 'Save profile'}
           </button>
         </div>
       </Section>

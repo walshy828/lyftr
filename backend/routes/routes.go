@@ -44,6 +44,8 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("settings", h.GetSettings)
 		protected.PUT("settings", h.UpdateSettings)
 		protected.DELETE("me", h.DeleteAccount)
+		protected.GET("profile", h.GetProfile)
+		protected.PUT("profile", h.UpdateProfile)
 
 		// Personal access tokens — long-lived bearer tokens for non-interactive
 		// clients (MCP server, scripts). Management itself requires JWT auth
@@ -64,6 +66,14 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("weight", h.ListWeightLogs)
 		protected.POST("weight", h.LogWeight)
 		protected.GET("weight/stats", h.GetWeightStats)
+
+		// Weight-loss plan — static sub-paths must be registered before weight/:id
+		protected.POST("weight/plan/generate", h.GenerateWeightPlan)
+		protected.POST("weight/plan/accept", h.AcceptWeightPlan)
+		protected.GET("weight/plan/current", h.GetCurrentNutritionGoal)
+		protected.GET("weight/plan/goals", h.GetNutritionGoalHistory)
+		protected.GET("weight/plan/adherence", h.GetWeightPlanAdherence)
+
 		protected.GET("weight/:id", h.GetWeightLog)
 		protected.PATCH("weight/:id", h.UpdateWeightLog)
 		protected.DELETE("weight/:id", h.DeleteWeightLog)

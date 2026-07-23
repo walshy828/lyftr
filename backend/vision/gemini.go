@@ -203,6 +203,80 @@ func (p *geminiProvider) GenerateProgram(ctx context.Context, req GenerateProgra
 	return out.Programs, nil
 }
 
+func (p *geminiProvider) GenerateWeightPlan(ctx context.Context, req GenerateWeightPlanRequest) (DraftWeightPlan, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return DraftWeightPlan{}, fmt.Errorf("gemini client: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromText(weightPlanPrompt(req)),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: weightPlanJSONSchema(),
+		},
+	)
+	if err != nil {
+		return DraftWeightPlan{}, fmt.Errorf("gemini generate weight plan call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return DraftWeightPlan{}, fmt.Errorf("gemini generate weight plan call: empty response text")
+	}
+
+	var out DraftWeightPlan
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return DraftWeightPlan{}, fmt.Errorf("gemini generate weight plan call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}
+
+func (p *geminiProvider) GenerateMotivationNote(ctx context.Context, req MotivationNoteRequest) (string, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return "", fmt.Errorf("gemini client: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromText(motivationNotePrompt(req)),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: motivationNoteJSONSchema(),
+		},
+	)
+	if err != nil {
+		return "", fmt.Errorf("gemini motivation note call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return "", fmt.Errorf("gemini motivation note call: empty response text")
+	}
+
+	var out struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return "", fmt.Errorf("gemini motivation note call: unmarshal structured output: %w", err)
+	}
+	return out.Message, nil
+}
+
 func (p *geminiProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  p.apiKey,

@@ -151,6 +151,51 @@ type DraftProgram struct {
 	Exercises []DraftProgramExercise `json:"exercises"`
 }
 
+// GenerateWeightPlanRequest carries everything the model needs to propose a
+// weight-loss nutrition plan. BMI and the healthy weight range are computed
+// deterministically by the controller (utils.BMI/HealthyWeightRangeLbs) and
+// passed in rather than left for the model to compute.
+type GenerateWeightPlanRequest struct {
+	Age              int
+	Sex              string // "male" or "female"
+	ActivityLevel    string // "sedentary"|"light"|"moderate"|"active"|"very_active"
+	HeightInches     float64
+	CurrentWeight    float64 // lbs
+	TargetWeight     float64 // lbs, as requested by the user
+	TimeframeWeeks   int     // 0 = no preference, let the model choose a safe pace
+	HealthyRangeLow  float64 // lbs
+	HealthyRangeHigh float64 // lbs
+}
+
+// WeightPlanWeek is one week of the AI-projected weight trajectory.
+type WeightPlanWeek struct {
+	Week           int     `json:"week"`
+	ExpectedWeight float64 `json:"expected_weight"`
+}
+
+// DraftWeightPlan is the AI's proposed nutrition plan — like every other
+// vision result, always a suggestion, never persisted by the provider.
+type DraftWeightPlan struct {
+	CalorieTarget    int              `json:"calorie_target"`
+	ProteinTarget    int              `json:"protein_target"`
+	CarbTarget       int              `json:"carb_target"`
+	FatTarget        int              `json:"fat_target"`
+	WeeklyTrajectory []WeightPlanWeek `json:"weekly_trajectory"`
+	Rationale        string           `json:"rationale"`
+	SafetyNotes      string           `json:"safety_notes"`
+}
+
+// MotivationNoteRequest carries the adherence signals and today's date so the
+// model can write one short, timely, encouraging message — including
+// seasonal/holiday context when it naturally fits.
+type MotivationNoteRequest struct {
+	CurrentDate   string // e.g. "2026-07-23" — lets the model reason about season/holidays
+	BehindPlan    bool
+	VarianceLbs   float64 // actual minus expected weight; positive = behind (heavier than planned)
+	Drivers       []string
+	WeeksIntoPlan int
+}
+
 // Provider is implemented once per vision backend (Anthropic/OpenAI/Gemini).
 type Provider interface {
 	// AnalyzeLabel takes a base64-encoded photo of a nutrition facts label
@@ -194,6 +239,22 @@ type Provider interface {
 	// persisting any draft the user accepts. Implementations should return
 	// exactly req.NumberOfDays program drafts.
 	GenerateProgram(ctx context.Context, req GenerateProgramRequest) ([]DraftProgram, error)
+
+	// GenerateWeightPlan proposes daily nutrition targets and a week-by-week
+	// expected-weight trajectory toward req.TargetWeight, honoring a safe
+	// maximum rate of loss (~1-2 lbs/week) and a safe minimum calorie floor.
+	// If the requested target falls outside req.HealthyRangeLow/High, the
+	// model should aim for the nearer healthy-range boundary instead and say
+	// so in Rationale/SafetyNotes. Like every other vision result this is
+	// always a suggestion — the caller persists it only if the user accepts.
+	GenerateWeightPlan(ctx context.Context, req GenerateWeightPlanRequest) (DraftWeightPlan, error)
+
+	// GenerateMotivationNote writes one short, encouraging message (1-3
+	// sentences) grounded in the user's actual adherence data, optionally
+	// weaving in relevant seasonal/holiday context for req.CurrentDate when
+	// it fits naturally. Called at most once per user per calendar week by
+	// the caller (results are cached) — never invoke this on every page load.
+	GenerateMotivationNote(ctx context.Context, req MotivationNoteRequest) (string, error)
 }
 
 // Config carries the selected provider, all three providers' API keys — only
@@ -468,6 +529,85 @@ func draftProgramJSONSchema() map[string]any {
 			},
 		},
 		"required":             []string{"programs"},
+		"additionalProperties": false,
+	}
+}
+
+// weightPlanPrompt builds the shared GenerateWeightPlan prompt — one builder
+// used by all three providers so their prompts can't drift apart. States the
+// safety envelope explicitly so a good-faith model won't propose a crash diet.
+func weightPlanPrompt(req GenerateWeightPlanRequest) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Design a weight-loss nutrition plan for a %d-year-old %s, %.0f inches tall, currently weighing %.0f lbs, with a %s activity level. They want to reach %.0f lbs", req.Age, req.Sex, req.HeightInches, req.CurrentWeight, req.ActivityLevel, req.TargetWeight)
+	if req.TimeframeWeeks > 0 {
+		fmt.Fprintf(&b, " within about %d weeks", req.TimeframeWeeks)
+	}
+	b.WriteString(".\n\n")
+
+	fmt.Fprintf(&b, "The generally recognized healthy weight range for this height is %.0f-%.0f lbs. If the requested target weight falls outside this range, propose a plan that instead targets the nearer edge of the healthy range, and explain this adjustment in safety_notes.\n\n", req.HealthyRangeLow, req.HealthyRangeHigh)
+
+	b.WriteString("Safety constraints (do not violate these): the rate of loss must never exceed about 2 lbs per week (a slower, sustainable rate is preferred for smaller total losses); daily calorie_target must never go below 1500 for a male or 1200 for a female, regardless of how aggressive the timeframe request is. If a safe plan can't reach the target in the requested timeframe, extend the trajectory and say so in rationale rather than dropping calories further.\n\n")
+
+	b.WriteString("Return: calorie_target (integer kcal/day), protein_target, carb_target, fat_target (integer grams/day, roughly consistent with the calorie target), weekly_trajectory (an array of {week, expected_weight} starting at week 0 with the user's current weight and continuing at a realistic weekly pace to the plan's final target weight — one entry per week), rationale (one short paragraph explaining the calorie/macro choices and the pace), and safety_notes (any caveats, including a target adjustment if you moved it toward the healthy range, or a recommendation to consult a doctor for large or rapid changes).")
+	return b.String()
+}
+
+// weightPlanJSONSchema is the JSON schema all three providers' structured
+// output requests should target for GenerateWeightPlan.
+func weightPlanJSONSchema() map[string]any {
+	weekSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"week":            map[string]any{"type": "integer"},
+			"expected_weight": map[string]any{"type": "number"},
+		},
+		"required":             []string{"week", "expected_weight"},
+		"additionalProperties": false,
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"calorie_target": map[string]any{"type": "integer"},
+			"protein_target": map[string]any{"type": "integer"},
+			"carb_target":    map[string]any{"type": "integer"},
+			"fat_target":     map[string]any{"type": "integer"},
+			"weekly_trajectory": map[string]any{
+				"type":  "array",
+				"items": weekSchema,
+			},
+			"rationale":    map[string]any{"type": "string"},
+			"safety_notes": map[string]any{"type": "string"},
+		},
+		"required":             []string{"calorie_target", "protein_target", "carb_target", "fat_target", "weekly_trajectory", "rationale"},
+		"additionalProperties": false,
+	}
+}
+
+// motivationNotePrompt builds the shared GenerateMotivationNote prompt.
+func motivationNotePrompt(req MotivationNoteRequest) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Today's date is %s. Write one short, warm, motivating message (1-3 sentences) for someone %d weeks into a weight-loss plan.", req.CurrentDate, req.WeeksIntoPlan)
+	if req.BehindPlan {
+		fmt.Fprintf(&b, " They're currently about %.1f lbs behind where their plan expected them to be.", req.VarianceLbs)
+	} else {
+		b.WriteString(" They're currently on track or ahead of their plan.")
+	}
+	if len(req.Drivers) > 0 {
+		fmt.Fprintf(&b, " Contributing factors observed this week: %s.", strings.Join(req.Drivers, "; "))
+	}
+	b.WriteString(" If today's date is near a well-known holiday or seasonal moment, you may naturally weave that in (e.g. a tip for navigating holiday meals, or a fresh-season nudge) — but only if it fits naturally, not every time. Be encouraging and specific, never preachy or generic. Return just the message text as a JSON object with a single \"message\" field.")
+	return b.String()
+}
+
+// motivationNoteJSONSchema is the JSON schema all three providers' structured
+// output requests should target for GenerateMotivationNote.
+func motivationNoteJSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"message": map[string]any{"type": "string"},
+		},
+		"required":             []string{"message"},
 		"additionalProperties": false,
 	}
 }

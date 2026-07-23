@@ -157,6 +157,19 @@ func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, err
 	return points, rows.Err()
 }
 
+// LoggedDaysCount returns how many distinct calendar days in the last `days`
+// days have at least one food_logs entry — the logging-consistency signal
+// for the weight-plan adherence panel.
+func (s *FoodStore) LoggedDaysCount(uid int64, days int) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(DISTINCT substr(logged_at, 1, 10)) FROM food_logs
+		 WHERE user_id = ? AND logged_at >= date('now', ?)`,
+		uid, fmt.Sprintf("-%d days", days),
+	).Scan(&n)
+	return n, err
+}
+
 const savedFoodSelect = `SELECT id, user_id, name, brand, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, serving_size, barcode, image_url, created_at FROM saved_foods`
 
 func scanSavedFood(row interface{ Scan(...any) error }, f *models.SavedFood) error {

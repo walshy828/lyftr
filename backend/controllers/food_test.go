@@ -1044,6 +1044,14 @@ type fakeVisionProvider struct {
 	// generateReq captures what the handler asked for, so tests can assert
 	// the catalog and request fields were threaded through correctly.
 	generateReq vision.GenerateProgramRequest
+
+	weightPlan    vision.DraftWeightPlan
+	weightPlanErr error
+	weightPlanReq vision.GenerateWeightPlanRequest
+
+	motivationNote string
+	motivationErr  error
+	motivationReq  vision.MotivationNoteRequest
 }
 
 func (f *fakeVisionProvider) GenerateProgram(_ context.Context, req vision.GenerateProgramRequest) ([]vision.DraftProgram, error) {
@@ -1067,6 +1075,16 @@ func (f *fakeVisionProvider) RecommendMeals(_ context.Context, req vision.Recomm
 func (f *fakeVisionProvider) AnalyzeMealPhoto(_ context.Context, _, _, description string) (vision.MealPhotoAnalysis, error) {
 	f.mealPhotoDescription = description
 	return f.mealPhotoResult, f.mealPhotoErr
+}
+
+func (f *fakeVisionProvider) GenerateWeightPlan(_ context.Context, req vision.GenerateWeightPlanRequest) (vision.DraftWeightPlan, error) {
+	f.weightPlanReq = req
+	return f.weightPlan, f.weightPlanErr
+}
+
+func (f *fakeVisionProvider) GenerateMotivationNote(_ context.Context, req vision.MotivationNoteRequest) (string, error) {
+	f.motivationReq = req
+	return f.motivationNote, f.motivationErr
 }
 
 func TestAnalyzeFoodLabel_success(t *testing.T) {

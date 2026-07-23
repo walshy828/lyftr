@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { TrendingDown, TrendingUp, Minus, Plus, Calendar, Sunrise, AlertCircle, ChevronRight, Scale, Activity, ArrowDown, ArrowUp, X } from 'lucide-react'
+import { TrendingDown, TrendingUp, Minus, Plus, Calendar, Sunrise, AlertCircle, ChevronRight, Scale, Activity, ArrowDown, ArrowUp, X, Sparkles } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { HelpTip } from '../components/Tooltip'
@@ -461,6 +461,21 @@ export default function Weight() {
           </p>
         </form>
       </div>
+
+      {/* Weight-loss plan entry point */}
+      <Link
+        to="/weight/plan"
+        className="card group active:scale-[0.99] transition-transform flex items-center p-4 gap-3 border-brand-500/20 bg-brand-500/5"
+      >
+        <div className="w-11 h-11 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-5 h-5 text-brand-500" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-tx-primary">Build a weight-loss plan</p>
+          <p className="text-xs text-tx-muted mt-0.5">AI nutrition targets, weekly trajectory &amp; adherence tracking</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
+      </Link>
 
       {/* Current weight hero */}
       <div className="card p-6 border-brand-500/20 bg-brand-500/5">

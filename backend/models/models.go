@@ -247,6 +247,112 @@ type LogWeightRequest struct {
 	LoggedAt time.Time `json:"logged_at"`
 }
 
+// UserProfile carries the demographic facts (age/sex/height/activity level)
+// used for BMI, healthy-weight-range, and AI weight-loss-plan generation.
+// Sex is a BMR-formula input only, not a gender-identity field. One row per
+// user, like UserSettings.
+type UserProfile struct {
+	UserID        int64   `json:"user_id" db:"user_id"`
+	Age           int     `json:"age" db:"age"`
+	Sex           string  `json:"sex" db:"sex"` // "male" | "female"
+	HeightInches  float64 `json:"height_inches" db:"height_inches"`
+	ActivityLevel string  `json:"activity_level" db:"activity_level"` // "sedentary"|"light"|"moderate"|"active"|"very_active"
+}
+
+// DefaultUserProfile is the zero-value fallback returned when no profile row
+// exists yet, mirroring DefaultUserSettings.
+func DefaultUserProfile(uid int64) UserProfile {
+	return UserProfile{UserID: uid, ActivityLevel: "moderate"}
+}
+
+// UpsertProfileRequest is a PATCH: every field is a pointer so a nil (absent)
+// field is COALESCEd over the existing/default value rather than zeroing it.
+type UpsertProfileRequest struct {
+	Age           *int     `json:"age" validate:"omitempty,gte=13,lte=120"`
+	Sex           *string  `json:"sex" validate:"omitempty,oneof=male female"`
+	HeightInches  *float64 `json:"height_inches" validate:"omitempty,gt=0,lte=120"`
+	ActivityLevel *string  `json:"activity_level" validate:"omitempty,oneof=sedentary light moderate active very_active"`
+}
+
+// BMIResult is the deterministic (non-AI) BMI + healthy-weight-range readout,
+// computed server-side so both the profile endpoint and plan generation share
+// one source of truth.
+type BMIResult struct {
+	BMI              float64 `json:"bmi"`
+	Category         string  `json:"category"`
+	HealthyRangeLow  float64 `json:"healthy_range_low"`  // lbs
+	HealthyRangeHigh float64 `json:"healthy_range_high"` // lbs
+}
+
+// NutritionGoal is one append-only row in the nutrition-goal history: never
+// UPDATEd once inserted. The "current" goal is the latest row by EffectiveAt.
+// Accepting a plan also writes these four targets into UserSettings so the
+// rest of the app (food logging, meal recommender) keeps reading from a
+// single current-settings row.
+type NutritionGoal struct {
+	ID            int64     `json:"id" db:"id"`
+	UserID        int64     `json:"user_id" db:"user_id"`
+	CalorieTarget int       `json:"calorie_target" db:"calorie_target"`
+	ProteinTarget int       `json:"protein_target" db:"protein_target"`
+	CarbTarget    int       `json:"carb_target" db:"carb_target"`
+	FatTarget     int       `json:"fat_target" db:"fat_target"`
+	TargetWeight  float64   `json:"target_weight" db:"target_weight"` // lbs, canonical unit like weight_logs
+	Source        string    `json:"source" db:"source"`               // "ai" (no manual entry path in v1)
+	Notes         string    `json:"notes" db:"notes"`                 // AI rationale/safety caveats
+	EffectiveAt   time.Time `json:"effective_at" db:"effective_at"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+}
+
+// WeightPlanProjectionPoint is one week of the AI-projected weight trajectory
+// tied to the NutritionGoal that produced it.
+type WeightPlanProjectionPoint struct {
+	ID              int64     `json:"id" db:"id"`
+	NutritionGoalID int64     `json:"nutrition_goal_id" db:"nutrition_goal_id"`
+	Week            int       `json:"week" db:"week"` // 0 = plan start
+	ExpectedWeight  float64   `json:"expected_weight" db:"expected_weight"`
+	ExpectedDate    time.Time `json:"expected_date" db:"expected_date"`
+}
+
+// MotivationNote is a weekly-cached AI-authored encouragement message, keyed
+// by the Monday that starts its coverage week — at most one AI call per user
+// per week, regardless of how many times the adherence panel is viewed.
+type MotivationNote struct {
+	ID        int64     `json:"id" db:"id"`
+	UserID    int64     `json:"user_id" db:"user_id"`
+	WeekStart time.Time `json:"week_start" db:"week_start"`
+	Message   string    `json:"message" db:"message"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
+// GenerateWeightPlanRequest is what the user submits to kick off AI plan
+// generation: just the target weight (and optional timeframe preference) —
+// everything else the model needs is assembled server-side from the profile,
+// latest weight, and settings.
+type GenerateWeightPlanRequest struct {
+	TargetWeight   float64 `json:"target_weight" validate:"required,gt=0,lte=2000"`
+	TimeframeWeeks int     `json:"timeframe_weeks" validate:"omitempty,gte=1,lte=104"`
+}
+
+// DraftWeightPlanWeek is one week of the AI-projected trajectory returned in
+// a draft plan (pre-acceptance).
+type DraftWeightPlanWeek struct {
+	Week           int     `json:"week"`
+	ExpectedWeight float64 `json:"expected_weight"`
+}
+
+// AcceptWeightPlanRequest persists a (possibly user-edited) draft plan: the
+// frontend echoes back the reviewed draft plus the target weight it was
+// generated for.
+type AcceptWeightPlanRequest struct {
+	CalorieTarget    int                   `json:"calorie_target" validate:"required,gte=800,lte=6000"`
+	ProteinTarget    int                   `json:"protein_target" validate:"required,gte=0"`
+	CarbTarget       int                   `json:"carb_target" validate:"required,gte=0"`
+	FatTarget        int                   `json:"fat_target" validate:"required,gte=0"`
+	TargetWeight     float64               `json:"target_weight" validate:"required,gt=0,lte=2000"`
+	Notes            string                `json:"notes"`
+	WeeklyTrajectory []DraftWeightPlanWeek `json:"weekly_trajectory" validate:"required,min=1,dive"`
+}
+
 type LogFoodRequest struct {
 	Name        string    `json:"name" validate:"required"`
 	Brand       string    `json:"brand"`

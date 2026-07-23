@@ -20,6 +20,9 @@ type Stores struct {
 	Workout       *WorkoutStore
 	Program       *ProgramStore
 	Token         *TokenStore
+	Profile       *ProfileStore
+	NutritionGoal *NutritionGoalStore
+	Motivation    *MotivationStore
 }
 
 func New(db *sql.DB) *Stores {
@@ -32,6 +35,9 @@ func New(db *sql.DB) *Stores {
 		Workout:       NewWorkoutStore(db),
 		Program:       NewProgramStore(db),
 		Token:         NewTokenStore(db),
+		Profile:       NewProfileStore(db),
+		NutritionGoal: NewNutritionGoalStore(db),
+		Motivation:    NewMotivationStore(db),
 	}
 }
 

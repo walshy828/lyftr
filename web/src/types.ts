@@ -213,6 +213,71 @@ export interface WeightStats {
   change_30d: number
 }
 
+export interface UserProfile {
+  user_id: number
+  age: number
+  sex: '' | 'male' | 'female'
+  height_inches: number
+  activity_level: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
+}
+
+export interface BMIInfo {
+  bmi: number
+  category: 'unknown' | 'underweight' | 'healthy' | 'overweight' | 'obese'
+  healthy_range_low: number
+  healthy_range_high: number
+}
+
+export interface ProfileWithBMI extends UserProfile {
+  bmi: BMIInfo
+}
+
+export interface NutritionGoal {
+  id: number
+  user_id: number
+  calorie_target: number
+  protein_target: number
+  carb_target: number
+  fat_target: number
+  target_weight: number
+  source: 'ai'
+  notes: string
+  effective_at: string
+  created_at: string
+}
+
+export interface WeightPlanProjectionPoint {
+  week: number
+  expected_weight: number
+  expected_date?: string
+}
+
+export interface DraftWeightPlan {
+  calorie_target: number
+  protein_target: number
+  carb_target: number
+  fat_target: number
+  weekly_trajectory: WeightPlanProjectionPoint[]
+  rationale: string
+  safety_notes: string
+}
+
+export interface CurrentNutritionGoal {
+  goal: NutritionGoal
+  projections: WeightPlanProjectionPoint[]
+}
+
+export interface WeightPlanAdherence {
+  behind_plan: boolean
+  variance_lbs: number
+  drivers: string[]
+  motivational_note: string
+  days_logged_food: number
+  avg_calories: number
+  workouts_last_7d: number
+  weeks_into_plan: number
+}
+
 export interface ProgramSet {
   id?: number
   set_number: number

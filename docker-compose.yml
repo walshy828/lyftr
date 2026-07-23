@@ -26,7 +26,8 @@ services:
 
   mcp:
     image: cwlumm/lyftr-mcp:latest
-    build: ./mcp
+    build:
+      context: https://github.com/walshy828/lyftr.git#main:mcp
     restart: unless-stopped
     # Optional: only needed if you want an MCP client on another machine (e.g.
     # a laptop with Claude Desktop) to connect over the network via the

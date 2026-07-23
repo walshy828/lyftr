@@ -176,6 +176,68 @@ func (p *openAIProvider) GenerateProgram(ctx context.Context, req GenerateProgra
 	return out.Programs, nil
 }
 
+func (p *openAIProvider) GenerateWeightPlan(ctx context.Context, req GenerateWeightPlanRequest) (DraftWeightPlan, error) {
+	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: p.model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(weightPlanPrompt(req)),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+				JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:   "generate_weight_plan",
+					Schema: weightPlanJSONSchema(),
+					Strict: openai.Bool(true),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return DraftWeightPlan{}, fmt.Errorf("openai generate weight plan call: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return DraftWeightPlan{}, fmt.Errorf("openai generate weight plan call: no choices in response")
+	}
+
+	var out DraftWeightPlan
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &out); err != nil {
+		return DraftWeightPlan{}, fmt.Errorf("openai generate weight plan call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}
+
+func (p *openAIProvider) GenerateMotivationNote(ctx context.Context, req MotivationNoteRequest) (string, error) {
+	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: p.model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(motivationNotePrompt(req)),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+				JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:   "motivation_note",
+					Schema: motivationNoteJSONSchema(),
+					Strict: openai.Bool(true),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("openai motivation note call: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("openai motivation note call: no choices in response")
+	}
+
+	var out struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &out); err != nil {
+		return "", fmt.Errorf("openai motivation note call: unmarshal structured output: %w", err)
+	}
+	return out.Message, nil
+}
+
 func (p *openAIProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
 	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Model: p.model,

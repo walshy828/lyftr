@@ -192,7 +192,42 @@ CREATE TABLE IF NOT EXISTS saved_foods (
   barcode      TEXT    NOT NULL DEFAULT '',
   image_url    TEXT    NOT NULL DEFAULT '',
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);`
+);
+CREATE TABLE IF NOT EXISTS user_profile (
+  user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  age             INTEGER NOT NULL DEFAULT 0,
+  sex             TEXT    NOT NULL DEFAULT '',
+  height_inches   REAL    NOT NULL DEFAULT 0,
+  activity_level  TEXT    NOT NULL DEFAULT 'moderate'
+);
+CREATE TABLE IF NOT EXISTS nutrition_goals (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  calorie_target  INTEGER NOT NULL,
+  protein_target  INTEGER NOT NULL,
+  carb_target     INTEGER NOT NULL,
+  fat_target      INTEGER NOT NULL,
+  target_weight   REAL    NOT NULL,
+  source          TEXT    NOT NULL DEFAULT 'ai',
+  notes           TEXT    NOT NULL DEFAULT '',
+  effective_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS weight_plan_projections (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  nutrition_goal_id INTEGER NOT NULL REFERENCES nutrition_goals(id) ON DELETE CASCADE,
+  week              INTEGER NOT NULL,
+  expected_weight   REAL    NOT NULL,
+  expected_date     DATETIME NOT NULL
+);
+CREATE TABLE IF NOT EXISTS motivation_notes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  week_start DATE     NOT NULL,
+  message    TEXT     NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_motivation_notes_user_week ON motivation_notes(user_id, week_start);`
 	_, err := db.DB.Exec(schema)
 	return err
 }

@@ -187,6 +187,84 @@ func (p *anthropicProvider) GenerateProgram(ctx context.Context, req GeneratePro
 	return out.Programs, nil
 }
 
+func (p *anthropicProvider) GenerateWeightPlan(ctx context.Context, req GenerateWeightPlanRequest) (DraftWeightPlan, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     p.model,
+		MaxTokens: 2048,
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortLow,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: weightPlanJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(weightPlanPrompt(req)),
+			),
+		},
+	})
+	if err != nil {
+		return DraftWeightPlan{}, fmt.Errorf("anthropic generate weight plan call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return DraftWeightPlan{}, fmt.Errorf("anthropic generate weight plan call: no text content in response")
+	}
+
+	var out DraftWeightPlan
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return DraftWeightPlan{}, fmt.Errorf("anthropic generate weight plan call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}
+
+func (p *anthropicProvider) GenerateMotivationNote(ctx context.Context, req MotivationNoteRequest) (string, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     p.model,
+		MaxTokens: 512,
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortLow,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: motivationNoteJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(motivationNotePrompt(req)),
+			),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("anthropic motivation note call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return "", fmt.Errorf("anthropic motivation note call: no text content in response")
+	}
+
+	var out struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return "", fmt.Errorf("anthropic motivation note call: unmarshal structured output: %w", err)
+	}
+	return out.Message, nil
+}
+
 func (p *anthropicProvider) RecommendMeals(ctx context.Context, req RecommendRequest) ([]MealRecommendation, error) {
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model: p.model,

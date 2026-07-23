@@ -2,6 +2,7 @@ package stores
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 
 	"github.com/Cawlumm/lyftr-backend/models"
@@ -292,6 +293,19 @@ func (s *WorkoutStore) CountOn(uid int64, date string) (int, error) {
 	err := s.db.QueryRow(
 		`SELECT COUNT(*) FROM workouts WHERE user_id = ? AND substr(started_at, 1, 10) = ?`,
 		uid, date,
+	).Scan(&n)
+	return n, err
+}
+
+// CountSince returns how many distinct calendar days in the last `days` days
+// had at least one workout started — the workout-consistency signal for the
+// weight-plan adherence panel.
+func (s *WorkoutStore) CountSince(uid int64, days int) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(DISTINCT substr(started_at, 1, 10)) FROM workouts
+		 WHERE user_id = ? AND started_at >= date('now', ?)`,
+		uid, fmt.Sprintf("-%d days", days),
 	).Scan(&n)
 	return n, err
 }

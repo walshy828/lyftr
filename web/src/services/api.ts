@@ -198,6 +198,23 @@ export const weightAPI = {
   stats:  () => api.get<{ data: types.WeightStats }>('/weight/stats').then(res => unwrap(res)),
 }
 
+export const profileAPI = {
+  get:    () => api.get<{ data: types.ProfileWithBMI }>('/profile').then(res => unwrap(res)),
+  update: (data: Partial<types.UserProfile>) => api.put<{ data: types.UserProfile }>('/profile', data).then(res => unwrap(res)),
+}
+
+export const weightPlanAPI = {
+  generate: (data: { target_weight: number; timeframe_weeks?: number }) =>
+    api.post<{ data: types.DraftWeightPlan }>('/weight/plan/generate', data).then(res => unwrap(res)),
+  accept: (data: {
+    calorie_target: number; protein_target: number; carb_target: number; fat_target: number
+    target_weight: number; notes?: string; weekly_trajectory: types.WeightPlanProjectionPoint[]
+  }) => api.post<{ data: types.NutritionGoal }>('/weight/plan/accept', data).then(res => unwrap(res)),
+  current: () => api.get<{ data: types.CurrentNutritionGoal }>('/weight/plan/current').then(res => unwrap(res)),
+  history: () => api.get<{ data: types.NutritionGoal[] }>('/weight/plan/goals').then(res => unwrap(res)),
+  adherence: () => api.get<{ data: types.WeightPlanAdherence }>('/weight/plan/adherence').then(res => unwrap(res)),
+}
+
 export const foodAPI = {
   list:    (date?: string) => api.get<{ data: types.FoodLog[] }>('/food', { params: { date } }).then(res => unwrap(res)),
   log:     (data: any) => api.post<{ data: types.FoodLog }>('/food', data).then(res => unwrap(res)),

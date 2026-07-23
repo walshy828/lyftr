@@ -27,6 +27,7 @@ const Food = lazy(() => import('./pages/Food'))
 const LogFood = lazy(() => import('./pages/LogFood'))
 const Weight = lazy(() => import('./pages/Weight'))
 const WeightDetail = lazy(() => import('./pages/WeightDetail'))
+const WeightPlan = lazy(() => import('./pages/WeightPlan'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Tokens = lazy(() => import('./pages/Tokens'))
 const Register = lazy(() => import('./pages/Register'))
@@ -73,6 +74,7 @@ function App() {
             <Route path="/food" element={<Food />} />
             <Route path="/food/log" element={<LogFood />} />
             <Route path="/weight" element={<Weight />} />
+            <Route path="/weight/plan" element={<WeightPlan />} />
             <Route path="/weight/:id" element={<WeightDetail />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/settings/tokens" element={<Tokens />} />

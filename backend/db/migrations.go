@@ -125,6 +125,56 @@ CREATE INDEX IF NOT EXISTS idx_pat_hash ON personal_access_tokens(token_hash);`)
 		log.Fatalf("create personal_access_tokens: %v", err)
 	}
 
+	// Weight-loss plan (#weightPlan): demographic profile for BMR/BMI + AI plan
+	// generation, an append-only nutrition-goal history (never UPDATEd — the
+	// "current" goal is the latest row by effective_at), the AI-projected
+	// weekly trajectory tied to the goal that produced it, and a weekly-cached
+	// AI motivational note (at most one AI call per user per calendar week).
+	if _, err := DB.Exec(`
+CREATE TABLE IF NOT EXISTS user_profile (
+  user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  age             INTEGER NOT NULL DEFAULT 0,
+  sex             TEXT    NOT NULL DEFAULT '',
+  height_inches   REAL    NOT NULL DEFAULT 0,
+  activity_level  TEXT    NOT NULL DEFAULT 'moderate'
+);
+
+CREATE TABLE IF NOT EXISTS nutrition_goals (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  calorie_target  INTEGER NOT NULL,
+  protein_target  INTEGER NOT NULL,
+  carb_target     INTEGER NOT NULL,
+  fat_target      INTEGER NOT NULL,
+  target_weight   REAL    NOT NULL,
+  source          TEXT    NOT NULL DEFAULT 'ai',
+  notes           TEXT    NOT NULL DEFAULT '',
+  effective_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_nutrition_goals_user ON nutrition_goals(user_id, effective_at DESC);
+
+CREATE TABLE IF NOT EXISTS weight_plan_projections (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  nutrition_goal_id INTEGER NOT NULL REFERENCES nutrition_goals(id) ON DELETE CASCADE,
+  week              INTEGER NOT NULL,
+  expected_weight   REAL    NOT NULL,
+  expected_date     DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_weight_plan_projections_goal ON weight_plan_projections(nutrition_goal_id, week);
+
+CREATE TABLE IF NOT EXISTS motivation_notes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  week_start DATE     NOT NULL,
+  message    TEXT     NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_motivation_notes_user_week ON motivation_notes(user_id, week_start);
+`); err != nil {
+		log.Fatalf("create weight-plan tables: %v", err)
+	}
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a

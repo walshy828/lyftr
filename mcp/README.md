@@ -84,7 +84,8 @@ machine — the compose file already builds and runs `lyftr-mcp` for you.
            "-y", "mcp-remote",
            "http://<docker-host>:8811",
            "--header", "Authorization: Bearer lyftr_pat_...",
-           "--transport", "http-only"
+           "--transport", "http-only",
+           "--allow-http"
          ]
        }
      }
@@ -97,9 +98,16 @@ machine — the compose file already builds and runs `lyftr-mcp` for you.
    `<docker-host>` with however you reach that machine on your LAN (hostname
    or IP) and use the same token value from step 1.
 
+   `--allow-http` is required: `mcp-remote` refuses plain HTTP to anything
+   other than `localhost` by default (it doesn't want to send your bearer
+   token unencrypted without you opting in). That's a reasonable default to
+   override on a trusted home LAN, but it does mean the token and your Lyftr
+   data cross the network unencrypted — put a reverse proxy with TLS in front
+   of this port instead if that matters to you.
+
    For Claude Code, the equivalent is:
    ```bash
-   claude mcp add lyftr -- npx -y mcp-remote http://<docker-host>:8811 --header "Authorization: Bearer lyftr_pat_..." --transport http-only
+   claude mcp add lyftr -- npx -y mcp-remote http://<docker-host>:8811 --header "Authorization: Bearer lyftr_pat_..." --transport http-only --allow-http
    ```
 
 The `mcp` HTTP endpoint rejects any request whose `Authorization` header
