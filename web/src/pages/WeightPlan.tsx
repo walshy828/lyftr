@@ -6,7 +6,7 @@ import {
   Utensils, Dumbbell, History, ArrowLeft, ShieldAlert, Gauge, RefreshCw, Info, Calendar,
 } from 'lucide-react'
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, CartesianGrid,
 } from 'recharts'
 import Loading from '../components/Loading'
 import PageHeader from '../components/ui/PageHeader'
@@ -23,11 +23,20 @@ const ACTUAL_COLOR = '#6366f1'
 const FORECAST_COLOR = ACTUAL_COLOR
 
 const TOOLTIP_STYLE = {
-  background: 'var(--color-surface-raised, #1e1e2e)',
-  border: '1px solid var(--color-surface-border, #2d2d3a)',
+  background: 'var(--surface-raised)',
+  border: '1px solid var(--surface-border)',
   borderRadius: 8,
   fontSize: 11,
-  color: 'var(--color-tx-primary, #f1f5f9)',
+  color: 'var(--tx-primary)',
+}
+
+// BMI zone band colors (distinct from PLAN_COLOR/ACTUAL_COLOR so they read
+// as background context, not additional series).
+const ZONE_COLORS = {
+  underweight: '#0ea5e9',
+  healthy: '#10b981',
+  overweight: '#f59e0b',
+  obese: '#ef4444',
 }
 
 interface ChartRow {
@@ -36,6 +45,79 @@ interface ChartRow {
   plan?: number
   actual?: number
   forecast?: number
+}
+
+interface ChartTooltipProps {
+  active?: boolean
+  label?: string | number
+  payload?: { dataKey?: string; value?: number; color?: string }[]
+  wUnit: string
+}
+
+function deltaColor(delta: number): string {
+  // Below plan (losing faster/weighing less than planned) reads as ahead of
+  // a weight-loss goal — success color; above plan reads as behind.
+  return delta <= 0 ? 'var(--success-400, #34d399)' : 'var(--amber-400, #fbbf24)'
+}
+
+function ChartTooltip({ active, label, payload, wUnit }: ChartTooltipProps) {
+  if (!active || !payload?.length) return null
+  const byKey: Record<string, number> = {}
+  for (const p of payload) {
+    if (p.dataKey && p.value !== undefined) byKey[p.dataKey] = p.value
+  }
+  const rows: { name: string; value: number; color: string }[] = []
+  if (byKey.plan !== undefined) rows.push({ name: 'Plan', value: byKey.plan, color: PLAN_COLOR })
+  if (byKey.actual !== undefined) rows.push({ name: 'Actual', value: byKey.actual, color: ACTUAL_COLOR })
+  if (byKey.forecast !== undefined) rows.push({ name: 'Forecast', value: byKey.forecast, color: FORECAST_COLOR })
+
+  const deltas: { name: string; value: number }[] = []
+  if (byKey.actual !== undefined && byKey.plan !== undefined) {
+    deltas.push({ name: 'Actual vs plan', value: byKey.actual - byKey.plan })
+  }
+  if (byKey.forecast !== undefined && byKey.plan !== undefined) {
+    deltas.push({ name: 'Forecast vs plan', value: byKey.forecast - byKey.plan })
+  }
+
+  return (
+    <div style={TOOLTIP_STYLE} className="px-3 py-2">
+      <p className="font-medium mb-1">{label ? format(new Date(label), 'MMM d, yyyy') : ''}</p>
+      {rows.map(r => (
+        <p key={r.name} style={{ color: r.color }}>
+          {r.name}: {r.value.toFixed(1)} {wUnit}
+        </p>
+      ))}
+      {deltas.length > 0 && (
+        <div className="mt-1.5 pt-1.5 border-t" style={{ borderColor: 'var(--surface-border)' }}>
+          {deltas.map(d => (
+            <p key={d.name} style={{ color: deltaColor(d.value) }}>
+              {d.name}: {d.value > 0 ? '+' : ''}{d.value.toFixed(1)} {wUnit}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Linear interpolation across a sorted set of known points — used to fill in
+// a sensible plan/forecast value on chart rows that fall between two known
+// trajectory points (never extrapolated past the first/last known point).
+function interpolateAt(points: { ts: number; val: number }[], ts: number): number | undefined {
+  if (points.length === 0) return undefined
+  if (ts <= points[0].ts) return ts === points[0].ts ? points[0].val : undefined
+  const last = points[points.length - 1]
+  if (ts >= last.ts) return ts === last.ts ? last.val : undefined
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    if (ts >= a.ts && ts <= b.ts) {
+      if (b.ts === a.ts) return a.val
+      const frac = (ts - a.ts) / (b.ts - a.ts)
+      return a.val + (b.val - a.val) * frac
+    }
+  }
+  return undefined
 }
 
 export default function WeightPlan() {
@@ -151,24 +233,44 @@ export default function WeightPlan() {
 
   const chartData: ChartRow[] = useMemo(() => {
     const rows = new Map<string, ChartRow>()
+    const planPoints: { ts: number; val: number }[] = []
+    const forecastPoints: { ts: number; val: number }[] = []
     if (current) {
       for (const p of current.plan_timeline) {
         const d = p.expected_date ? p.expected_date.slice(0, 10) : ''
         if (!d) continue
         const ts = new Date(d).getTime()
-        rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, plan: lbsToDisplay(p.expected_weight, settings.weight_unit) })
+        const val = lbsToDisplay(p.expected_weight, settings.weight_unit)
+        planPoints.push({ ts, val })
+        rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, plan: val })
       }
       for (const p of current.actual_forecast) {
         const d = p.expected_date ? p.expected_date.slice(0, 10) : ''
         if (!d) continue
         const ts = new Date(d).getTime()
-        rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, forecast: lbsToDisplay(p.expected_weight, settings.weight_unit) })
+        const val = lbsToDisplay(p.expected_weight, settings.weight_unit)
+        forecastPoints.push({ ts, val })
+        rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, forecast: val })
       }
     }
     for (const l of actualLogs) {
       const d = l.logged_at.slice(0, 10)
       const ts = new Date(d).getTime()
       rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, actual: lbsToDisplay(l.weight, settings.weight_unit) })
+    }
+    planPoints.sort((a, b) => a.ts - b.ts)
+    forecastPoints.sort((a, b) => a.ts - b.ts)
+    // Fill in interpolated plan/forecast values on every row so hovering any
+    // actual-only date still shows a sensible plan/forecast comparison.
+    for (const row of rows.values()) {
+      if (row.plan === undefined) {
+        const v = interpolateAt(planPoints, row.ts)
+        if (v !== undefined) row.plan = v
+      }
+      if (row.forecast === undefined) {
+        const v = interpolateAt(forecastPoints, row.ts)
+        if (v !== undefined) row.forecast = v
+      }
     }
     return Array.from(rows.values()).sort((a, b) => a.ts - b.ts)
   }, [current, actualLogs, settings.weight_unit])
@@ -191,6 +293,24 @@ export default function WeightPlan() {
       : Math.abs(avgPerWeek) <= guidance.high_lbs_per_week * 1.15 // small headroom for early-phase tapering
     return { avgPerWeek, guidance, inRange }
   }, [current, profile])
+
+  // BMI zone boundaries in the user's display unit, derived from the
+  // server-computed lbs boundaries (utils.BMICategory's 18.5/25/30
+  // thresholds) — never re-declared here, just converted for display.
+  const bmiZones = useMemo(() => {
+    const b = profile?.bmi
+    if (!b || b.bmi <= 0) return null
+    const unit = settings.weight_unit
+    const lowDisp = lbsToDisplay(b.healthy_range_low, unit)
+    const highDisp = lbsToDisplay(b.healthy_range_high, unit)
+    const obeseDisp = lbsToDisplay(b.obese_min_lbs, unit)
+    return [
+      { key: 'underweight', label: 'Underweight', rangeText: `< ${Math.round(lowDisp)}`, y1: -1000, y2: lowDisp, color: ZONE_COLORS.underweight },
+      { key: 'healthy', label: 'Healthy', rangeText: `${Math.round(lowDisp)}–${Math.round(highDisp)}`, y1: lowDisp, y2: highDisp, color: ZONE_COLORS.healthy },
+      { key: 'overweight', label: 'Overweight', rangeText: `${Math.round(highDisp)}–${Math.round(obeseDisp)}`, y1: highDisp, y2: obeseDisp, color: ZONE_COLORS.overweight },
+      { key: 'obese', label: 'Obese', rangeText: `≥ ${Math.round(obeseDisp)}`, y1: obeseDisp, y2: obeseDisp + 1000, color: ZONE_COLORS.obese },
+    ] as const
+  }, [profile?.bmi, settings.weight_unit])
 
   if (loading) return <Loading />
 
@@ -237,9 +357,23 @@ export default function WeightPlan() {
             <span className="stat-value text-4xl">{bmi.bmi.toFixed(1)}</span>
             <span className="text-sm text-tx-muted capitalize mb-1">{bmi.category}</span>
           </div>
-          <p className="text-xs text-tx-muted mt-2">
-            Healthy weight range for your height: {Math.round(bmi.healthy_range_low)}–{Math.round(bmi.healthy_range_high)} lbs
-          </p>
+          {bmiZones && (
+            <div className="grid grid-cols-4 gap-2 mt-3">
+              {bmiZones.map(z => (
+                <div
+                  key={z.key}
+                  className={`rounded-lg p-2 text-center border ${
+                    z.key === bmi.category
+                      ? 'border-brand-400 bg-brand-500/10'
+                      : 'border-surface-border bg-surface-overlay'
+                  }`}
+                >
+                  <p className="text-[10px] uppercase text-tx-muted">{z.label}</p>
+                  <p className="text-xs font-medium text-tx-primary mt-0.5">{z.rangeText} {wUnit}</p>
+                </div>
+              ))}
+            </div>
+          )}
           {bmi.loss_guidance.high_lbs_per_week > 0 && (
             <div className="flex items-start gap-2 text-xs text-tx-secondary bg-surface-overlay border border-surface-border rounded-lg p-3 mt-3">
               <Gauge className="w-3.5 h-3.5 text-brand-400 flex-shrink-0 mt-0.5" />
@@ -350,10 +484,21 @@ export default function WeightPlan() {
             <div className="h-56 mt-3">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="4 4" stroke="var(--color-surface-border)" opacity={0.3} />
-                  <XAxis dataKey="date" tickFormatter={d => format(new Date(d), 'MMM d')} fontSize={11} stroke="var(--color-tx-muted)" />
-                  <YAxis fontSize={11} stroke="var(--color-tx-muted)" domain={['auto', 'auto']} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={d => format(new Date(d as string), 'MMM d, yyyy')} />
+                  <CartesianGrid strokeDasharray="4 4" stroke="var(--surface-border)" opacity={0.3} />
+                  <XAxis dataKey="date" tickFormatter={d => format(new Date(d), 'MMM d')} fontSize={11} stroke="var(--tx-secondary)" />
+                  <YAxis fontSize={11} stroke="var(--tx-secondary)" domain={['auto', 'auto']} />
+                  <Tooltip content={<ChartTooltip wUnit={wUnit} />} />
+                  {bmiZones?.map(z => (
+                    <ReferenceArea
+                      key={z.key}
+                      y1={z.y1}
+                      y2={z.y2}
+                      fill={z.color}
+                      fillOpacity={0.08}
+                      stroke="none"
+                      label={{ value: z.label, position: 'insideTopLeft', fontSize: 10, fill: z.color }}
+                    />
+                  ))}
                   <ReferenceLine y={lbsToDisplay(current.goal.target_weight, settings.weight_unit)} stroke={PLAN_COLOR} strokeDasharray="3 3" opacity={0.5} />
                   <Line type="monotone" dataKey="plan" name={`Plan (${wUnit})`} stroke={PLAN_COLOR} strokeWidth={2} dot={false} connectNulls />
                   <Line type="monotone" dataKey="actual" name={`Actual (${wUnit})`} stroke={ACTUAL_COLOR} strokeWidth={2} dot={{ r: 3 }} connectNulls />

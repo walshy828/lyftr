@@ -35,6 +35,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 			bmi.LossGuidance = utils.WeeklyLossGuidanceFor(bmi.Category, stats.Latest)
 		}
 		bmi.HealthyRangeLow, bmi.HealthyRangeHigh = utils.HealthyWeightRangeLbs(p.HeightInches)
+		bmi.ObeseMinLbs = utils.WeightAtBMI(p.HeightInches, 30)
 	}
 
 	age, _ := utils.AgeFromBirthDate(p.BirthDate, time.Now())

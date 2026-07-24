@@ -288,6 +288,7 @@ type BMIResult struct {
 	Category         string             `json:"category"`
 	HealthyRangeLow  float64            `json:"healthy_range_low"`  // lbs
 	HealthyRangeHigh float64            `json:"healthy_range_high"` // lbs
+	ObeseMinLbs      float64            `json:"obese_min_lbs"`      // lbs; weight at BMI 30, start of the obese zone
 	LossGuidance     WeeklyLossGuidance `json:"loss_guidance"`
 }
 

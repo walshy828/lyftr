@@ -232,6 +232,7 @@ export interface BMIInfo {
   category: 'unknown' | 'underweight' | 'healthy' | 'overweight' | 'obese'
   healthy_range_low: number
   healthy_range_high: number
+  obese_min_lbs: number
   loss_guidance: WeeklyLossGuidance
 }
 

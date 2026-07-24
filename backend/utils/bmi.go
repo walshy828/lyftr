@@ -73,6 +73,15 @@ func BMICategory(bmi float64) string {
 	}
 }
 
+// WeightAtBMI solves the BMI formula for weight in pounds at a given BMI
+// value and height in inches — the inverse of BMI().
+func WeightAtBMI(heightInches, bmi float64) float64 {
+	if heightInches <= 0 {
+		return 0
+	}
+	return bmi * heightInches * heightInches / 703
+}
+
 // HealthyWeightRangeLbs solves the BMI formula for weight at the standard
 // healthy-BMI bounds (18.5–24.9), returning the healthy weight range in
 // pounds for a given height.
@@ -80,8 +89,5 @@ func HealthyWeightRangeLbs(heightInches float64) (low, high float64) {
 	if heightInches <= 0 {
 		return 0, 0
 	}
-	sq := heightInches * heightInches
-	low = 18.5 * sq / 703
-	high = 24.9 * sq / 703
-	return low, high
+	return WeightAtBMI(heightInches, 18.5), WeightAtBMI(heightInches, 24.9)
 }

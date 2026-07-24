@@ -44,6 +44,22 @@ func TestHealthyWeightRangeLbs(t *testing.T) {
 	}
 }
 
+func TestWeightAtBMI(t *testing.T) {
+	// 70in @ BMI 30 should land right around the upper end of the healthy
+	// range's neighbor — sanity check against HealthyWeightRangeLbs.
+	_, healthyHigh := HealthyWeightRangeLbs(70)
+	obeseMin := WeightAtBMI(70, 30)
+	if obeseMin <= healthyHigh {
+		t.Errorf("WeightAtBMI(70, 30) = %v, want > healthy range high (%v)", obeseMin, healthyHigh)
+	}
+	if obeseMin < 200 || obeseMin > 220 {
+		t.Errorf("WeightAtBMI(70, 30) = %v, want ~209", obeseMin)
+	}
+	if got := WeightAtBMI(0, 30); got != 0 {
+		t.Errorf("WeightAtBMI with zero height = %v, want 0", got)
+	}
+}
+
 func TestWeeklyLossGuidanceFor(t *testing.T) {
 	// Obese category should permit a faster sustained pace than overweight,
 	// which in turn permits faster than healthy; underweight/unknown should
