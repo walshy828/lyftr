@@ -2,6 +2,7 @@ package stores
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/models"
 )
@@ -66,6 +67,63 @@ func (s *NutritionGoalStore) ListProjections(goalID int64) ([]models.WeightPlanP
 		points = append(points, p)
 	}
 	return points, rows.Err()
+}
+
+// Timeline returns the user's "Plan" line stitched across every goal they've
+// ever accepted: each goal's projections are clipped to the window it was
+// actually active for — [effective_at, next goal's effective_at) for all but
+// the latest, which is unbounded going forward — and concatenated in
+// chronological order. This lets the chart show one continuous plan line
+// across regenerations instead of only the latest plan's projections.
+func (s *NutritionGoalStore) Timeline(uid int64) ([]models.WeightPlanProjectionPoint, error) {
+	rows, err := s.db.Query(
+		`SELECT p.id, p.nutrition_goal_id, p.week, p.expected_weight, p.expected_date, g.effective_at
+		 FROM nutrition_goals g
+		 JOIN weight_plan_projections p ON p.nutrition_goal_id = g.id
+		 WHERE g.user_id = ?
+		 ORDER BY g.effective_at ASC, g.id ASC, p.week ASC`,
+		uid,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type row struct {
+		p           models.WeightPlanProjectionPoint
+		effectiveAt time.Time
+	}
+	var all []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.p.ID, &r.p.NutritionGoalID, &r.p.Week, &r.p.ExpectedWeight, &r.p.ExpectedDate, &r.effectiveAt); err != nil {
+			return nil, err
+		}
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	points := make([]models.WeightPlanProjectionPoint, 0, len(all))
+	for i, r := range all {
+		if i+1 < len(all) {
+			// Find this row's goal's cutover: the effective_at of the next
+			// *different* goal in the (already goal-ordered) result set.
+			var nextEffectiveAt time.Time
+			for j := i + 1; j < len(all); j++ {
+				if all[j].p.NutritionGoalID != r.p.NutritionGoalID {
+					nextEffectiveAt = all[j].effectiveAt
+					break
+				}
+			}
+			if !nextEffectiveAt.IsZero() && !r.p.ExpectedDate.Before(nextEffectiveAt) {
+				continue
+			}
+		}
+		points = append(points, r.p)
+	}
+	return points, nil
 }
 
 // Accept persists an accepted weight-loss plan atomically: inserts the goal

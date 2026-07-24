@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import {
   Target, Sparkles, AlertCircle, Check, TrendingUp, TrendingDown, Flame,
-  Utensils, Dumbbell, History, ArrowLeft, ShieldAlert, Gauge,
+  Utensils, Dumbbell, History, ArrowLeft, ShieldAlert, Gauge, RefreshCw, Info, Calendar,
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
@@ -16,8 +16,11 @@ import { profileAPI, weightPlanAPI, weightAPI, userAPI } from '../services/api'
 import { useSettingsStore, weightShort, lbsToDisplay, displayWeight } from '../stores/settings'
 import * as types from '../types'
 
-const EXPECTED_COLOR = '#10b981'
+const PLAN_COLOR = '#10b981'
 const ACTUAL_COLOR = '#6366f1'
+// The forecast is a projection of the *actual* trend, not a new series — same
+// hue as Actual, dashed and dimmer, reads as "this line continues."
+const FORECAST_COLOR = ACTUAL_COLOR
 
 const TOOLTIP_STYLE = {
   background: 'var(--color-surface-raised, #1e1e2e)',
@@ -30,8 +33,9 @@ const TOOLTIP_STYLE = {
 interface ChartRow {
   date: string
   ts: number
-  expected?: number
+  plan?: number
   actual?: number
+  forecast?: number
 }
 
 export default function WeightPlan() {
@@ -44,6 +48,7 @@ export default function WeightPlan() {
   const [adherence, setAdherence] = useState<types.WeightPlanAdherence | null>(null)
   const [actualLogs, setActualLogs] = useState<types.WeightLog[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshingAdherence, setRefreshingAdherence] = useState(false)
 
   const [targetWeight, setTargetWeight] = useState('')
   const [timeframeWeeks, setTimeframeWeeks] = useState('')
@@ -77,6 +82,18 @@ export default function WeightPlan() {
     if (!current) { setAdherence(null); return }
     weightPlanAPI.adherence().then(setAdherence).catch(() => setAdherence(null))
   }, [current])
+
+  const handleRefreshAdherence = async () => {
+    setRefreshingAdherence(true)
+    try {
+      const a = await weightPlanAPI.adherence(true)
+      setAdherence(a)
+    } catch {
+      // leave the existing adherence data in place on failure
+    } finally {
+      setRefreshingAdherence(false)
+    }
+  }
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -135,11 +152,17 @@ export default function WeightPlan() {
   const chartData: ChartRow[] = useMemo(() => {
     const rows = new Map<string, ChartRow>()
     if (current) {
-      for (const p of current.projections) {
+      for (const p of current.plan_timeline) {
         const d = p.expected_date ? p.expected_date.slice(0, 10) : ''
         if (!d) continue
         const ts = new Date(d).getTime()
-        rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, expected: lbsToDisplay(p.expected_weight, settings.weight_unit) })
+        rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, plan: lbsToDisplay(p.expected_weight, settings.weight_unit) })
+      }
+      for (const p of current.actual_forecast) {
+        const d = p.expected_date ? p.expected_date.slice(0, 10) : ''
+        if (!d) continue
+        const ts = new Date(d).getTime()
+        rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, forecast: lbsToDisplay(p.expected_weight, settings.weight_unit) })
       }
     }
     for (const l of actualLogs) {
@@ -149,6 +172,25 @@ export default function WeightPlan() {
     }
     return Array.from(rows.values()).sort((a, b) => a.ts - b.ts)
   }, [current, actualLogs, settings.weight_unit])
+
+  // Client-computed pace evaluation (#6): average lbs/week the accepted
+  // plan's own projections imply, compared against the BMI-based safe-pace
+  // guidance already fetched for the profile. Purely informational — the
+  // plan is already AI-constrained to sane bounds at generation time.
+  const planPace = useMemo(() => {
+    if (!current || current.projections.length < 2 || !profile?.bmi) return null
+    const pts = current.projections
+    const first = pts[0]
+    const last = pts[pts.length - 1]
+    if (first.week === last.week) return null
+    const weeks = last.week - first.week
+    const avgPerWeek = (first.expected_weight - last.expected_weight) / weeks
+    const guidance = profile.bmi.loss_guidance
+    const inRange = guidance.high_lbs_per_week <= 0
+      ? true // no guidance available (e.g. underweight/unknown) — nothing to flag
+      : Math.abs(avgPerWeek) <= guidance.high_lbs_per_week * 1.15 // small headroom for early-phase tapering
+    return { avgPerWeek, guidance, inRange }
+  }, [current, profile])
 
   if (loading) return <Loading />
 
@@ -216,7 +258,7 @@ export default function WeightPlan() {
       )}
 
       {/* Generate plan */}
-      <div className="card p-5">
+      <div id="generate-plan" className="card p-5 scroll-mt-4">
         <SectionHeader icon={Sparkles} title="Generate a Plan" />
         <form onSubmit={handleGenerate} className="space-y-3 mt-3">
           <div className="grid grid-cols-2 gap-3">
@@ -282,10 +324,26 @@ export default function WeightPlan() {
         )}
       </div>
 
-      {/* Actual vs expected chart */}
+      {/* Regenerate prompt (#1): a stale/expired/diverging plan */}
+      {current && adherence?.should_regenerate && (
+        <div className="card p-5 border-amber-500/20 bg-amber-500/5">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-tx-primary">Time to regenerate your plan</p>
+              <p className="text-xs text-tx-muted mt-1">{adherence.regenerate_reason}</p>
+              <a href="#generate-plan" className="btn-primary btn-sm mt-3 inline-flex">
+                <Sparkles className="w-3.5 h-3.5" /> Generate a new plan
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actual vs plan chart */}
       {current && (
         <div className="card p-5">
-          <SectionHeader icon={TrendingDown} title="Actual vs. Expected" />
+          <SectionHeader icon={TrendingDown} title="Actual vs. Plan" />
           {chartData.length < 2 ? (
             <div className="flex items-center justify-center h-40 text-tx-muted text-sm">Not enough data yet</div>
           ) : (
@@ -296,13 +354,50 @@ export default function WeightPlan() {
                   <XAxis dataKey="date" tickFormatter={d => format(new Date(d), 'MMM d')} fontSize={11} stroke="var(--color-tx-muted)" />
                   <YAxis fontSize={11} stroke="var(--color-tx-muted)" domain={['auto', 'auto']} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={d => format(new Date(d as string), 'MMM d, yyyy')} />
-                  <ReferenceLine y={lbsToDisplay(current.goal.target_weight, settings.weight_unit)} stroke={EXPECTED_COLOR} strokeDasharray="3 3" opacity={0.5} />
-                  <Line type="monotone" dataKey="expected" name={`Expected (${wUnit})`} stroke={EXPECTED_COLOR} strokeWidth={2} dot={false} connectNulls />
+                  <ReferenceLine y={lbsToDisplay(current.goal.target_weight, settings.weight_unit)} stroke={PLAN_COLOR} strokeDasharray="3 3" opacity={0.5} />
+                  <Line type="monotone" dataKey="plan" name={`Plan (${wUnit})`} stroke={PLAN_COLOR} strokeWidth={2} dot={false} connectNulls />
                   <Line type="monotone" dataKey="actual" name={`Actual (${wUnit})`} stroke={ACTUAL_COLOR} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                  <Line type="monotone" dataKey="forecast" name={`Forecast (${wUnit})`} stroke={FORECAST_COLOR} strokeOpacity={0.55} strokeDasharray="5 5" strokeWidth={2} dot={false} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Plan summary write-up (#5, #6, #8): explains the chart in plain language */}
+      {current && (
+        <div className="card p-5">
+          <SectionHeader icon={Info} title="Plan Summary" />
+          <div className="space-y-3 mt-3">
+            <div className="flex items-start gap-2 text-xs text-tx-secondary">
+              <Calendar className="w-3.5 h-3.5 text-tx-muted flex-shrink-0 mt-0.5" />
+              <span>
+                Active since {format(new Date(current.goal.effective_at), 'MMM d, yyyy')}
+                {current.projections.length > 0 && (
+                  <> · runs through {format(new Date(current.projections[current.projections.length - 1].expected_date ?? current.goal.effective_at), 'MMM d, yyyy')}</>
+                )} · target {displayWeight(current.goal.target_weight, settings.weight_unit)} {wUnit}
+              </span>
+            </div>
+
+            {current.goal.notes && <p className="text-sm text-tx-secondary">{current.goal.notes}</p>}
+
+            {planPace && (
+              <div className={`flex items-start gap-2 text-xs rounded-lg p-3 border ${planPace.inRange ? 'text-tx-secondary bg-surface-overlay border-surface-border' : 'text-amber-400 bg-amber-500/10 border-amber-500/20'}`}>
+                <Gauge className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                  This plan averages about {Math.abs(planPace.avgPerWeek).toFixed(1)} lbs/week.{' '}
+                  {planPace.inRange
+                    ? 'That’s within your recommended pace.'
+                    : `That's faster than the ${planPace.guidance.low_lbs_per_week.toFixed(1)}–${planPace.guidance.high_lbs_per_week.toFixed(1)} lbs/week generally recommended for your BMI — worth a second look.`}
+                </span>
+              </div>
+            )}
+
+            <p className="text-xs text-tx-muted">
+              Regenerate your plan once it reaches its target date, or sooner if your actual trend keeps drifting from the plan line above — the app will flag it here when that happens.
+            </p>
+          </div>
         </div>
       )}
 
@@ -313,9 +408,19 @@ export default function WeightPlan() {
             icon={Flame}
             title="Adherence"
             right={
-              <span className={`badge ${adherence.behind_plan ? 'bg-error-500/10 border border-error-500/20 text-error-400' : 'bg-success-500/10 border border-success-500/20 text-success-400'}`}>
-                {adherence.behind_plan ? 'Behind plan' : 'On track'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`badge ${adherence.behind_plan ? 'bg-error-500/10 border border-error-500/20 text-error-400' : 'bg-success-500/10 border border-success-500/20 text-success-400'}`}>
+                  {adherence.behind_plan ? 'Behind plan' : 'On track'}
+                </span>
+                <button
+                  onClick={handleRefreshAdherence}
+                  disabled={refreshingAdherence}
+                  className="btn-secondary btn-sm"
+                  aria-label="Refresh adherence tip"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshingAdherence ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             }
           />
           <div className="grid grid-cols-3 gap-3 mt-3">

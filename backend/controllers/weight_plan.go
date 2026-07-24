@@ -9,6 +9,7 @@ import (
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
+	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/Cawlumm/lyftr-backend/utils"
 	"github.com/Cawlumm/lyftr-backend/vision"
 	"github.com/gin-gonic/gin"
@@ -140,7 +141,13 @@ func (h *Handler) AcceptWeightPlan(c *gin.Context) {
 
 // GetCurrentNutritionGoal returns the user's latest accepted plan plus its
 // weekly projections in one response, so the frontend can render
-// actual-vs-expected without a second round trip.
+// actual-vs-plan without a second round trip. It also attaches plan_timeline
+// (the "Plan" line stitched across every goal the user has ever accepted,
+// each clipped to the window it was active for — see
+// NutritionGoalStore.Timeline) and actual_forecast (a clamped linear
+// projection of where the user's real weight trend is headed, see
+// utils.ForecastActualWeight), so the chart and regenerate-prompt logic both
+// have everything they need in this one round trip.
 func (h *Handler) GetCurrentNutritionGoal(c *gin.Context) {
 	uid := middleware.UserID(c)
 	goal, err := h.s.NutritionGoal.Current(uid)
@@ -155,7 +162,58 @@ func (h *Handler) GetCurrentNutritionGoal(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
-	utils.OK(c, gin.H{"goal": goal, "projections": projections})
+	timeline, err := h.s.NutritionGoal.Timeline(uid)
+	if utils.DBError(c, err) {
+		return
+	}
+	forecast, err := h.forecastActualWeight(uid, timeline)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, gin.H{
+		"goal":            goal,
+		"projections":     projections,
+		"plan_timeline":   timeline,
+		"actual_forecast": forecast,
+	})
+}
+
+// forecastActualWeight fetches the user's weight logs and BMI-based pace
+// guidance and hands them to utils.ForecastActualWeight, projecting out to
+// the end of the given plan timeline (or a fixed fallback horizon if the
+// user has no plan/timeline yet). Shared by GetCurrentNutritionGoal and
+// GetWeightPlanAdherence so both derive should-regenerate/forecast signals
+// from the same computation.
+func (h *Handler) forecastActualWeight(uid int64, timeline []models.WeightPlanProjectionPoint) ([]models.WeightPlanProjectionPoint, error) {
+	logs, err := h.s.Weight.List(uid, stores.WeightFilter{Limit: 200})
+	if err != nil {
+		return nil, err
+	}
+
+	profile, err := h.s.Profile.Get(uid)
+	if err == sql.ErrNoRows {
+		profile = models.DefaultUserProfile(uid)
+	} else if err != nil {
+		return nil, err
+	}
+
+	stats, err := h.s.Weight.Stats(uid)
+	if err != nil {
+		return nil, err
+	}
+	var guidance models.WeeklyLossGuidance
+	if profile.HeightInches > 0 && stats.Latest > 0 {
+		category := utils.BMICategory(utils.BMI(stats.Latest, profile.HeightInches))
+		guidance = utils.WeeklyLossGuidanceFor(category, stats.Latest)
+	}
+
+	now := time.Now().UTC()
+	horizonEnd := now.AddDate(0, 0, 56) // 8-week fallback horizon
+	if len(timeline) > 0 {
+		horizonEnd = timeline[len(timeline)-1].ExpectedDate
+	}
+
+	return utils.ForecastActualWeight(logs, guidance, horizonEnd), nil
 }
 
 // GetNutritionGoalHistory returns the user's nutrition-goal history,
@@ -279,7 +337,14 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 		drivers = append(drivers, fmt.Sprintf("no workouts logged in the last %d days", adherenceLookbackDays))
 	}
 
-	note := h.currentMotivationNote(c.Request.Context(), uid, now, behindPlan, variance, drivers, weeksIntoPlan)
+	forceRefresh := c.Query("refresh") == "1"
+	note := h.currentMotivationNote(c.Request.Context(), uid, now, behindPlan, variance, drivers, weeksIntoPlan, forceRefresh)
+
+	forecast, err := h.forecastActualWeight(uid, projections)
+	if utils.DBError(c, err) {
+		return
+	}
+	shouldRegenerate, regenerateReason := planRegenerateSignal(goal, projections, forecast, now)
 
 	utils.OK(c, gin.H{
 		"behind_plan":       behindPlan,
@@ -290,7 +355,54 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 		"avg_calories":      avgCalories,
 		"workouts_last_7d":  workoutDays,
 		"weeks_into_plan":   weeksIntoPlan,
+		"should_regenerate": shouldRegenerate,
+		"regenerate_reason": regenerateReason,
 	})
+}
+
+// planRegenerateStaleTargetLbs is how far the actual-weight forecast's
+// end-of-plan projection may diverge from the plan's target weight before
+// prompting the user to regenerate — small day-to-day variance is expected
+// and shouldn't trigger this, only a sustained trend that won't get there.
+const planRegenerateStaleTargetLbs = 5.0
+
+// planRegenerateSignal decides whether the current plan is stale enough to
+// prompt the user to regenerate it: either the plan's own timeline has run
+// out, or the actual-weight trend (already clamped/smoothed by
+// utils.ForecastActualWeight, so a single noisy week can't trigger this) is
+// projected to miss the target by more than planRegenerateStaleTargetLbs at
+// the plan's final projection date.
+func planRegenerateSignal(goal models.NutritionGoal, projections, forecast []models.WeightPlanProjectionPoint, now time.Time) (bool, string) {
+	if len(projections) == 0 {
+		return false, ""
+	}
+	last := projections[len(projections)-1]
+	if now.After(last.ExpectedDate) {
+		return true, fmt.Sprintf("Your plan's projections ended on %s — generate a new plan to keep your targets current.", last.ExpectedDate.Format("Jan 2, 2006"))
+	}
+	if len(forecast) == 0 {
+		return false, ""
+	}
+	// Find the forecast point nearest the plan's final projection date.
+	var atPlanEnd models.WeightPlanProjectionPoint
+	found := false
+	for _, f := range forecast {
+		if !f.ExpectedDate.After(last.ExpectedDate) {
+			atPlanEnd = f
+			found = true
+		}
+	}
+	if !found {
+		atPlanEnd = forecast[len(forecast)-1]
+	}
+	diff := atPlanEnd.ExpectedWeight - goal.TargetWeight
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > planRegenerateStaleTargetLbs {
+		return true, fmt.Sprintf("Your recent trend suggests you won't reach your target weight by %s — consider regenerating your plan.", last.ExpectedDate.Format("Jan 2, 2006"))
+	}
+	return false, ""
 }
 
 // canned rule-based fallback messages, used when no AI provider is
@@ -301,12 +413,16 @@ var cannedMotivationBehind = "Progress isn't always linear. Refocus on logging c
 
 // currentMotivationNote returns the cached note for this calendar week,
 // generating (and caching) a fresh one via AI at most once per user per
-// week. Falls back to a canned message if AI isn't configured or the call
-// fails — the adherence panel always has something to show.
-func (h *Handler) currentMotivationNote(ctx context.Context, uid int64, now time.Time, behindPlan bool, variance float64, drivers []string, weeksIntoPlan int) string {
+// week — unless forceRefresh is set (the adherence panel's manual refresh
+// button), which always calls the AI and overwrites the week's cached note.
+// Falls back to a canned message if AI isn't configured or the call fails —
+// the adherence panel always has something to show.
+func (h *Handler) currentMotivationNote(ctx context.Context, uid int64, now time.Time, behindPlan bool, variance float64, drivers []string, weeksIntoPlan int, forceRefresh bool) string {
 	ws := weekStart(now)
-	if cached, err := h.s.Motivation.CurrentForWeek(uid, ws); err == nil {
-		return cached.Message
+	if !forceRefresh {
+		if cached, err := h.s.Motivation.CurrentForWeek(uid, ws); err == nil {
+			return cached.Message
+		}
 	}
 
 	fallback := cannedMotivationOnTrack

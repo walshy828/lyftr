@@ -212,7 +212,8 @@ export const weightPlanAPI = {
   }) => api.post<{ data: types.NutritionGoal }>('/weight/plan/accept', data).then(res => unwrap(res)),
   current: () => api.get<{ data: types.CurrentNutritionGoal }>('/weight/plan/current').then(res => unwrap(res)),
   history: () => api.get<{ data: types.NutritionGoal[] }>('/weight/plan/goals').then(res => unwrap(res)),
-  adherence: () => api.get<{ data: types.WeightPlanAdherence }>('/weight/plan/adherence').then(res => unwrap(res)),
+  adherence: (refresh?: boolean) =>
+    api.get<{ data: types.WeightPlanAdherence }>('/weight/plan/adherence', { params: refresh ? { refresh: 1 } : undefined }).then(res => unwrap(res)),
 }
 
 export const foodAPI = {

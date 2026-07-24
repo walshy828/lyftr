@@ -273,6 +273,13 @@ export interface DraftWeightPlan {
 export interface CurrentNutritionGoal {
   goal: NutritionGoal
   projections: WeightPlanProjectionPoint[]
+  // plan_timeline is the "Plan" line stitched across every goal the user has
+  // ever accepted, each clipped to the window it was active for — use this
+  // (not `projections`, which is only the latest goal) for the chart.
+  plan_timeline: WeightPlanProjectionPoint[]
+  // actual_forecast is a clamped linear projection of where the user's
+  // actual weight trend is headed, or [] if there isn't enough data yet.
+  actual_forecast: WeightPlanProjectionPoint[]
 }
 
 export interface WeightPlanAdherence {
@@ -284,6 +291,8 @@ export interface WeightPlanAdherence {
   avg_calories: number
   workouts_last_7d: number
   weeks_into_plan: number
+  should_regenerate: boolean
+  regenerate_reason: string
 }
 
 export interface ProgramSet {
