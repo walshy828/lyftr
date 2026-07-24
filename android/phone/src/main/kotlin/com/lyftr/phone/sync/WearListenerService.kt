@@ -52,7 +52,12 @@ class WearListenerService : WearableListenerService() {
                 // restarted) — in that case don't push, or a stale watch
                 // action would resurrect the sync service for nothing.
                 if (SessionRepository.applyAction(action)) {
-                    SessionSyncService.pushChanges(applicationContext)
+                    // Rapid weight/reps taps are coalesced into one PUT after a
+                    // short quiet period (see SessionSyncService.PUSH_DEBOUNCE_MS);
+                    // every other action still pushes immediately.
+                    val immediate = action.type != WearActionType.UPDATE_WEIGHT &&
+                        action.type != WearActionType.UPDATE_REPS
+                    SessionSyncService.pushChanges(applicationContext, immediate)
                 } else if (SessionRepository.rawJsonString() == null) {
                     // Process died mid-workout and lost the in-memory session.
                     // The action itself can't be applied, but resync from the

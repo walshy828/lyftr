@@ -59,6 +59,17 @@ class SessionSyncService : Service() {
      */
     private var pushJob: Job? = null
 
+    /**
+     * Pending debounced push, scheduled by [ACTION_PUSH] when not immediate
+     * (i.e. UPDATE_WEIGHT/UPDATE_REPS — see [pushChanges]). Mirrors the web
+     * app's `scheduleSync` (web/src/stores/workoutSession.ts): a burst of
+     * rapid taps coalesces into a single backend PUT after a quiet period,
+     * instead of one PUT per tap. [SessionRepository.applyAction] still
+     * applies every action immediately in-memory; only the network write is
+     * delayed.
+     */
+    private var pushDebounceJob: Job? = null
+
     /** Consecutive polls that found no session on the backend. */
     private var missCount = 0
 
@@ -79,7 +90,19 @@ class SessionSyncService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_PUSH -> pushJob = scope.launch { pushLocalChanges() }
+            ACTION_PUSH -> {
+                if (intent.getBooleanExtra(EXTRA_IMMEDIATE, true)) {
+                    pushDebounceJob?.cancel()
+                    pushDebounceJob = null
+                    pushJob = scope.launch { pushLocalChanges() }
+                } else {
+                    pushDebounceJob?.cancel()
+                    pushDebounceJob = scope.launch {
+                        delay(PUSH_DEBOUNCE_MS)
+                        pushJob = launch { pushLocalChanges() }
+                    }
+                }
+            }
             ACTION_FINISH -> {
                 val feeling = intent.getIntExtra(EXTRA_FEELING, 0)
                 scope.launch { finishWorkout(feeling) }
@@ -175,6 +198,16 @@ class SessionSyncService : Service() {
         pushJob?.cancelAndJoin()
         pushJob = null
 
+        // A pending debounced push holds the most recent watch edit (e.g. the
+        // last weight tap before ending) that hasn't reached the backend yet.
+        // Cancel the timer and flush it directly (joined, not cancelled) so
+        // that edit isn't lost.
+        if (pushDebounceJob?.isActive == true) {
+            pushDebounceJob?.cancel()
+            pushDebounceJob = null
+            pushLocalChanges()
+        }
+
         if (SessionRepository.rawJsonString() == null) {
             // Cold-started by the watch's message waking a dead process —
             // resync from the backend before we have anything to finish.
@@ -213,17 +246,28 @@ class SessionSyncService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val POLL_INTERVAL_MS = 10_000L
         private const val MAX_MISSES = 2
+        /** Matches the web app's `scheduleSync` debounce (workoutSession.ts). */
+        private const val PUSH_DEBOUNCE_MS = 1_500L
         private const val ACTION_PUSH = "com.lyftr.phone.action.PUSH"
         private const val ACTION_FINISH = "com.lyftr.phone.action.FINISH"
         private const val EXTRA_FEELING = "feeling"
+        private const val EXTRA_IMMEDIATE = "immediate"
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, SessionSyncService::class.java))
         }
 
-        /** Called by [WearListenerService] after applying a watch action to [SessionRepository]. */
-        fun pushChanges(context: Context) {
-            val intent = Intent(context, SessionSyncService::class.java).setAction(ACTION_PUSH)
+        /**
+         * Called by [WearListenerService] after applying a watch action to
+         * [SessionRepository]. [immediate] should be false only for
+         * UPDATE_WEIGHT/UPDATE_REPS, whose rapid repeated taps are what the
+         * debounce coalesces — every other action (completing/skipping a set,
+         * rest adjustments) still pushes right away.
+         */
+        fun pushChanges(context: Context, immediate: Boolean = true) {
+            val intent = Intent(context, SessionSyncService::class.java)
+                .setAction(ACTION_PUSH)
+                .putExtra(EXTRA_IMMEDIATE, immediate)
             context.startForegroundService(intent)
         }
 

@@ -90,10 +90,10 @@ object SessionRepository {
      * watch). Returns false if the action's indices no longer match the
      * current session shape (e.g. a set was deleted on web mid-workout).
      *
-     * Note: unlike the web app's updateSet (web/src/stores/workoutSession.ts),
-     * this does not propagate a weight change forward onto later sets — that
-     * pyramid-preserving UX nuance was judged out of scope for the watch's
-     * core-loop v1.
+     * UPDATE_WEIGHT mirrors the web app's updateSet propagation
+     * (web/src/stores/workoutSession.ts): shifting a set's actual weight
+     * carries the same delta forward onto later, not-yet-completed sets in
+     * the same exercise.
      */
     fun applyAction(action: WearAction): Boolean {
         val obj = _raw.value ?: return false
@@ -142,7 +142,21 @@ object SessionRepository {
             // Rest/session-level actions returned above; unreachable.
             WearActionType.SKIP_REST, WearActionType.ADJUST_REST, WearActionType.END_WORKOUT -> return false
         }
-        val updatedSets = JsonArray(sets.mapIndexed { i, el -> if (i == setIdx) updatedSet else el })
+        // Predictive propagation (weight only, matching web's updateSet): carry
+        // the same delta forward onto later, not-yet-completed sets, floored at 0.
+        val weightDelta = if (action.type == WearActionType.UPDATE_WEIGHT) {
+            (action.value ?: 0.0) - (set["actual_weight"]?.jsonPrimitive?.doubleOrNull ?: 0.0)
+        } else 0.0
+        val updatedSets = JsonArray(sets.mapIndexed { i, el ->
+            when {
+                i == setIdx -> updatedSet
+                i > setIdx && weightDelta != 0.0 && el.jsonObject["completed"]?.jsonPrimitive?.booleanOrNull != true -> {
+                    val cur = el.jsonObject["actual_weight"]?.jsonPrimitive?.doubleOrNull ?: 0.0
+                    el.jsonObject.with("actual_weight", JsonPrimitive((cur + weightDelta).coerceAtLeast(0.0)))
+                }
+                else -> el
+            }
+        })
         val updatedExercise = exercise.with("sets", updatedSets)
         val updatedExercises = JsonArray(exercises.mapIndexed { i, el -> if (i == exIdx) updatedExercise else el })
 

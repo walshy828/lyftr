@@ -1,6 +1,7 @@
 package com.lyftr.wear.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +13,9 @@ import com.lyftr.shared.WearActionType
 import com.lyftr.wear.data.WearSessionClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** Locally-predicted weight/reps for the active set, rendered ahead of the phone's confirmation. */
+private data class SetOverride(val exIdx: Int, val setIdx: Int, val weight: Double?, val reps: Int?)
 
 /**
  * Top-level state machine: no active workout / active set / workout complete.
@@ -25,6 +29,7 @@ fun WearApp(client: WearSessionClient) {
     val scope = rememberCoroutineScope()
     var confirmingEnd by remember { mutableStateOf(false) }
     var ratingPending by remember { mutableStateOf(false) }
+    var override by remember { mutableStateOf<SetOverride?>(null) }
 
     val s = session
     if (s == null) {
@@ -90,10 +95,21 @@ fun WearApp(client: WearSessionClient) {
     val exIdx = s.current_exercise_idx
     val setIdx = s.current_set_idx
 
+    // The override only ever predicts the currently active set — once the
+    // watch moves on (complete/skip advances the index), drop it and let
+    // whatever the phone has confirmed for the new set render as-is.
+    LaunchedEffect(exIdx, setIdx) { override = null }
+
+    val displaySet = override?.let { o ->
+        if (o.exIdx == exIdx && o.setIdx == setIdx) {
+            set.copy(actual_weight = o.weight ?: set.actual_weight, actual_reps = o.reps ?: set.actual_reps)
+        } else null
+    } ?: set
+
     ActiveSetScreen(
         session = s,
         exercise = exercise,
-        set = set,
+        set = displaySet,
         onComplete = {
             scope.launch { client.sendAction(WearAction(WearActionType.COMPLETE_SET, exIdx, setIdx)) }
         },
@@ -101,9 +117,14 @@ fun WearApp(client: WearSessionClient) {
             scope.launch { client.sendAction(WearAction(WearActionType.SKIP_SET, exIdx, setIdx)) }
         },
         onWeightChange = { newWeight ->
+            // Update the on-screen value immediately — the network round trip
+            // (watch -> phone -> backend -> phone -> watch) shouldn't gate what
+            // the user sees after a tap, only when it's finally confirmed.
+            override = SetOverride(exIdx, setIdx, newWeight, override?.reps)
             scope.launch { client.sendAction(WearAction(WearActionType.UPDATE_WEIGHT, exIdx, setIdx, newWeight)) }
         },
         onRepsChange = { newReps ->
+            override = SetOverride(exIdx, setIdx, override?.weight, newReps)
             scope.launch { client.sendAction(WearAction(WearActionType.UPDATE_REPS, exIdx, setIdx, newReps.toDouble())) }
         },
         onSkipRest = {
