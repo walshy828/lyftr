@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { format, subDays, addDays } from 'date-fns'
 import {
@@ -10,7 +10,7 @@ import SectionHeader from '../components/ui/SectionHeader'
 import PageHeader from '../components/ui/PageHeader'
 import AuthedImg from '../components/ui/AuthedImg'
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts'
 import Loading from '../components/Loading'
 import MealRecommendations from '../components/MealRecommendations'
@@ -149,6 +149,29 @@ export default function Food() {
       setDeletingId(null)
     }
   }
+
+  const proteinTarget = settings?.protein_target ?? 150
+  const carbTarget = settings?.carb_target ?? 250
+  const historyCalTarget = settings?.calorie_target ?? 2000
+
+  const historyStats = useMemo(() => {
+    if (historyData.length === 0) return null
+    const n = historyData.length
+    const avgProtein = historyData.reduce((sum, d) => sum + d.protein, 0) / n
+    const avgCarbs = historyData.reduce((sum, d) => sum + d.carbs, 0) / n
+    const avgCalories = historyData.reduce((sum, d) => sum + d.calories, 0) / n
+    const composition = historyData.map(d => ({
+      date: d.date,
+      proteinCal: Math.round(d.protein * 4),
+      carbsCal: Math.round(d.carbs * 4),
+      fatCal: Math.round(d.fat * 9),
+      protein: d.protein,
+      carbs: d.carbs,
+      fat: d.fat,
+      calories: d.calories,
+    }))
+    return { avgProtein, avgCarbs, avgCalories, composition }
+  }, [historyData])
 
   if (loading && !hasLoadedRef.current) return <Loading />
 
@@ -443,74 +466,161 @@ export default function Food() {
 
         {historyLoading ? (
           <div className="flex items-center justify-center h-48 text-xs text-tx-muted">Loading…</div>
-        ) : historyData.length === 0 ? (
+        ) : historyData.length === 0 || !historyStats ? (
           <div className="flex flex-col items-center justify-center h-48 gap-2">
             <CalendarDays className="w-8 h-8 text-tx-muted opacity-40" />
             <p className="text-xs text-tx-muted">No data yet — start logging meals</p>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={historyData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gProtein" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={MACRO_COLORS.protein} stopOpacity={0.5} />
-                  <stop offset="100%" stopColor={MACRO_COLORS.protein} stopOpacity={0.1} />
-                </linearGradient>
-                <linearGradient id="gCarbs" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={MACRO_COLORS.carbs} stopOpacity={0.5} />
-                  <stop offset="100%" stopColor={MACRO_COLORS.carbs} stopOpacity={0.1} />
-                </linearGradient>
-                <linearGradient id="gFat" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={MACRO_COLORS.fat} stopOpacity={0.5} />
-                  <stop offset="100%" stopColor={MACRO_COLORS.fat} stopOpacity={0.1} />
-                </linearGradient>
-              </defs>
-              <XAxis
-                dataKey="date"
-                tickFormatter={d => format(new Date(d + 'T12:00:00'), 'M/d')}
-                tick={{ fontSize: 10, fill: 'var(--color-tx-muted)' }}
-                axisLine={false}
-                tickLine={false}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                tick={{ fontSize: 10, fill: 'var(--color-tx-muted)' }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={v => `${v}g`}
-                width={36}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: 'var(--color-surface-raised)',
-                  border: '1px solid var(--color-surface-border)',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  color: 'var(--color-tx-primary)',
-                }}
-                labelFormatter={d => format(new Date(d + 'T12:00:00'), 'MMM d')}
-                formatter={(val: number, name: string) => [`${Math.round(val)}g`, name]}
-                cursor={{ stroke: 'rgba(99,102,241,0.15)', strokeWidth: 1 }}
-              />
-              <Area type="monotone" dataKey="fat" stackId="macros" stroke={MACRO_COLORS.fat} strokeWidth={1.5} fill="url(#gFat)" name="Fat" dot={false} />
-              <Area type="monotone" dataKey="carbs" stackId="macros" stroke={MACRO_COLORS.carbs} strokeWidth={1.5} fill="url(#gCarbs)" name="Carbs" dot={false} />
-              <Area type="monotone" dataKey="protein" stackId="macros" stroke={MACRO_COLORS.protein} strokeWidth={1.5} fill="url(#gProtein)" name="Protein" dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
-
-        <div className="flex gap-4 justify-center mt-4">
-          {[
-            { color: MACRO_COLORS.protein, label: 'Protein' },
-            { color: MACRO_COLORS.carbs, label: 'Carbs' },
-            { color: MACRO_COLORS.fat, label: 'Fat' },
-          ].map(m => (
-            <div key={m.label} className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: m.color }} />
-              <span className="text-xs text-tx-muted">{m.label}</span>
+          <div className="space-y-7">
+            {/* Protein: total trend vs target */}
+            <div>
+              <div className="flex items-baseline justify-between mb-2">
+                <h4 className="text-xs font-semibold text-tx-secondary uppercase tracking-wide">Protein</h4>
+                <span className="text-xs tabular-nums">
+                  <span className="text-tx-primary font-medium">{Math.round(historyStats.avgProtein)}g</span>
+                  <span className="text-tx-muted"> avg/day · </span>
+                  <span className={historyStats.avgProtein >= proteinTarget ? 'text-emerald-400' : 'text-amber-400'}>
+                    {Math.round((historyStats.avgProtein / proteinTarget) * 100)}% of target
+                  </span>
+                </span>
+              </div>
+              <ResponsiveContainer width="100%" height={140}>
+                <AreaChart data={historyData} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gProteinTrend" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={MACRO_COLORS.protein} stopOpacity={0.45} />
+                      <stop offset="100%" stopColor={MACRO_COLORS.protein} stopOpacity={0.04} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={d => format(new Date(d + 'T12:00:00'), 'M/d')}
+                    tick={{ fontSize: 10, fill: 'var(--tx-secondary)' }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: 'var(--tx-secondary)' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={v => `${v}g`}
+                    width={36}
+                    domain={[0, (max: number) => Math.ceil(Math.max(max, proteinTarget) * 1.15)]}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--color-surface-raised)',
+                      border: '1px solid var(--color-surface-border)',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      color: 'var(--color-tx-primary)',
+                    }}
+                    labelFormatter={d => format(new Date(d + 'T12:00:00'), 'MMM d')}
+                    formatter={(val: number) => [`${Math.round(val)}g`, `Protein · target ${proteinTarget}g`]}
+                    cursor={{ stroke: 'rgba(99,102,241,0.15)', strokeWidth: 1 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="protein"
+                    stroke={MACRO_COLORS.protein}
+                    strokeWidth={2}
+                    fill="url(#gProteinTrend)"
+                    name="Protein"
+                    dot={{ r: 2.5, fill: MACRO_COLORS.protein, strokeWidth: 0 }}
+                    activeDot={{ r: 4 }}
+                  />
+                  <ReferenceLine
+                    y={proteinTarget}
+                    stroke="var(--tx-muted)"
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    label={{ value: 'Target', position: 'insideBottomLeft', fill: 'var(--tx-secondary)', fontSize: 10 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-          ))}
-        </div>
+
+            {/* Calories: composition (protein/carbs/fat share) + overall trend vs target */}
+            <div>
+              <div className="flex items-baseline justify-between mb-2">
+                <h4 className="text-xs font-semibold text-tx-secondary uppercase tracking-wide">Calories</h4>
+                <span className="text-xs tabular-nums">
+                  <span className="text-tx-primary font-medium">{Math.round(historyStats.avgCalories)}</span>
+                  <span className="text-tx-muted"> avg/day · </span>
+                  <span className={historyStats.avgCalories <= historyCalTarget ? 'text-emerald-400' : 'text-amber-400'}>
+                    {Math.round((historyStats.avgCalories / historyCalTarget) * 100)}% of target
+                  </span>
+                </span>
+              </div>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={historyStats.composition} margin={{ top: 16, right: 4, left: 0, bottom: 0 }} barCategoryGap="24%">
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={d => format(new Date(d + 'T12:00:00'), 'M/d')}
+                    tick={{ fontSize: 10, fill: 'var(--tx-secondary)' }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: 'var(--tx-secondary)' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={36}
+                    domain={[0, (max: number) => Math.ceil(Math.max(max, historyCalTarget) * 1.1)]}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--color-surface-raised)',
+                      border: '1px solid var(--color-surface-border)',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      color: 'var(--color-tx-primary)',
+                    }}
+                    labelFormatter={d => format(new Date(d + 'T12:00:00'), 'MMM d')}
+                    formatter={(val: number, name: string, item: any) => {
+                      const gramsKey = name === 'Protein' ? 'protein' : name === 'Carbs' ? 'carbs' : 'fat'
+                      const grams = item?.payload?.[gramsKey] ?? 0
+                      return [`${Math.round(grams)}g · ${Math.round(val)} kcal`, name]
+                    }}
+                    cursor={{ fill: 'var(--surface-muted)' }}
+                  />
+                  <Bar dataKey="proteinCal" stackId="cal" fill={MACRO_COLORS.protein} name="Protein" />
+                  <Bar dataKey="carbsCal" stackId="cal" fill={MACRO_COLORS.carbs} name="Carbs" />
+                  <Bar dataKey="fatCal" stackId="cal" fill={MACRO_COLORS.fat} name="Fat" radius={[3, 3, 0, 0]} />
+                  <ReferenceLine
+                    y={historyCalTarget}
+                    stroke="var(--tx-muted)"
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    label={{ value: 'Target', position: 'insideBottomLeft', fill: 'var(--tx-secondary)', fontSize: 10 }}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="text-[11px] text-tx-muted mt-1.5">
+                Carbs avg {Math.round(historyStats.avgCarbs)}g/day
+                <span className={historyStats.avgCarbs > carbTarget ? 'text-amber-400' : ''}>
+                  {' '}({Math.round((historyStats.avgCarbs / carbTarget) * 100)}% of {carbTarget}g target)
+                </span>
+              </p>
+            </div>
+
+            <div className="flex gap-4 justify-center">
+              {[
+                { color: MACRO_COLORS.protein, label: 'Protein' },
+                { color: MACRO_COLORS.carbs, label: 'Carbs' },
+                { color: MACRO_COLORS.fat, label: 'Fat' },
+              ].map(m => (
+                <div key={m.label} className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: m.color }} />
+                  <span className="text-xs text-tx-muted">{m.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {recommendMeal && (
