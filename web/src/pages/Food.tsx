@@ -8,6 +8,7 @@ import {
 import IconButton from '../components/ui/IconButton'
 import SectionHeader from '../components/ui/SectionHeader'
 import PageHeader from '../components/ui/PageHeader'
+import MacroBar from '../components/ui/MacroBar'
 import AuthedImg from '../components/ui/AuthedImg'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer,
@@ -33,37 +34,6 @@ const MEAL_COLORS: Record<string, string> = {
 }
 const HISTORY_PERIODS = ['7d', '30d', '90d'] as const
 type HistoryPeriod = typeof HISTORY_PERIODS[number]
-
-// ─── MacroBar ─────────────────────────────────────────────────────────────────
-// Compact linear alternative to a ring: shows label, value/target, and a thin
-// progress bar. Colors escalate amber (over target) → red (way over, >125%)
-// with an explicit "+X over" readout, since a capped ring can't distinguish
-// "just over" from "way over."
-
-function MacroBar({
-  value, target, color, label, unit = 'g',
-}: { value: number; target: number; color: string; label: string; unit?: string }) {
-  const pct = target > 0 ? (value / target) * 100 : 0
-  const over = pct > 100
-  const wayOver = pct > 125
-  const barColor = wayOver ? '#ef4444' : over ? '#f59e0b' : color
-  const textColor = wayOver ? 'text-error-400' : over ? 'text-amber-400' : 'text-tx-primary'
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-xs text-tx-muted">{label}</span>
-        <span className={`text-xs font-semibold tabular-nums ${textColor}`}>
-          {Math.round(value)}{unit}
-          <span className="text-tx-muted font-normal"> / {target}{unit}</span>
-          {over && <span className="ml-1">+{Math.round(value - target)}{unit} over</span>}
-        </span>
-      </div>
-      <div className="progress-track">
-        <div className="progress-bar" style={{ width: `${Math.min(100, pct)}%`, background: barColor }} />
-      </div>
-    </div>
-  )
-}
 
 // ─── Food page ────────────────────────────────────────────────────────────────
 
