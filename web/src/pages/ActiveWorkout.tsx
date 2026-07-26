@@ -8,11 +8,13 @@ import {
 import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore, weightShort, displayToLbs, displayWeight } from '../stores/settings'
 import WeightInput from '../components/WeightInput'
+import CardioEntry from '../components/CardioEntry'
 import ExercisePicker from '../components/ExercisePicker'
 import FeelingPicker from '../components/FeelingPicker'
 import { workoutAPI } from '../services/api'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
+import { isCardio } from '../utils/workoutSets'
 
 function ExerciseNotes({ exIdx, notes, onSave }: { exIdx: number; notes: string; onSave: (i: number, v: string) => void }) {
   const [editing, setEditing] = useState(false)
@@ -238,6 +240,7 @@ export default function ActiveWorkout() {
             const allSetsComplete = ex.sets.length > 0 && ex.sets.every(s => s.completed)
             const isActive = exIdx === activeExIdx
             const completedHere = ex.sets.filter(s => s.completed).length
+            const cardio = isCardio(ex.exercise)
 
             return (
               <div
@@ -286,7 +289,9 @@ export default function ActiveWorkout() {
                       <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${muscleColor(ex.exercise.muscle_group)}`}>
                         {ex.exercise.muscle_group}
                       </span>
-                      <span className="text-xs text-tx-muted tabular-nums">{completedHere}/{ex.sets.length} sets</span>
+                      <span className="text-xs text-tx-muted tabular-nums">
+                        {cardio ? (allSetsComplete ? 'logged' : 'cardio') : `${completedHere}/${ex.sets.length} sets`}
+                      </span>
                     </div>
                   </button>
 
@@ -311,7 +316,24 @@ export default function ActiveWorkout() {
 
                 {/* Sets */}
                 <div className="px-3 pb-3 space-y-2">
+                  {/* Cardio: a single time+distance+steps entry instead of sets */}
+                  {cardio && (
+                    <CardioEntry
+                      durationSec={ex.sets[0]?.actual_duration || 0}
+                      distanceMeters={ex.sets[0]?.actual_distance || 0}
+                      steps={ex.sets[0]?.actual_steps || 0}
+                      unit={wUnit}
+                      completed={ex.sets[0]?.completed ?? false}
+                      isNext={isActive}
+                      onDuration={v => updateSet(exIdx, 0, 'actual_duration', v)}
+                      onDistance={v => updateSet(exIdx, 0, 'actual_distance', v)}
+                      onSteps={v => updateSet(exIdx, 0, 'actual_steps', v)}
+                      onToggleComplete={() => handleCompleteSet(exIdx, 0)}
+                    />
+                  )}
+
                   {/* Column labels */}
+                  {!cardio && (
                   <div className="grid grid-cols-[2rem_1fr_1fr_3.5rem_2rem] gap-2 px-1">
                     <span className="text-xs text-tx-muted font-medium text-center">Set</span>
                     <span className="text-xs text-tx-muted font-medium text-center">Reps</span>
@@ -319,8 +341,9 @@ export default function ActiveWorkout() {
                     <span className="text-xs text-tx-muted font-medium text-center">Done</span>
                     <span />
                   </div>
+                  )}
 
-                  {ex.sets.map((set, setIdx) => {
+                  {!cardio && ex.sets.map((set, setIdx) => {
                     const isNextSet = isActive && !set.completed && ex.sets.slice(0, setIdx).every(s => s.completed)
                     return (
                       <div
@@ -401,13 +424,17 @@ export default function ActiveWorkout() {
                       </button>
                     )}
 
-                    <button
-                      onClick={() => addSet(exIdx)}
-                      className="flex-1 py-2.5 flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-surface-border hover:border-brand-500/40 hover:bg-brand-500/5 text-xs font-medium text-tx-muted hover:text-brand-400 transition-colors"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Add Set
-                    </button>
+                    {cardio ? (
+                      <div className="flex-1" />
+                    ) : (
+                      <button
+                        onClick={() => addSet(exIdx)}
+                        className="flex-1 py-2.5 flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-surface-border hover:border-brand-500/40 hover:bg-brand-500/5 text-xs font-medium text-tx-muted hover:text-brand-400 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add Set
+                      </button>
+                    )}
 
                     {isActive && exIdx < session.exercises.length - 1 && (
                       <button

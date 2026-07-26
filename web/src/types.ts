@@ -40,8 +40,9 @@ export interface Set {
   set_number: number
   reps: number
   weight: number
-  duration?: number
-  distance?: number
+  duration?: number  // seconds — cardio/timed sets
+  distance?: number  // meters — cardio sets
+  steps?: number     // step count — cardio sets (walks/runs)
   rpe?: number
   is_warmup?: boolean
   // Absent on legacy rows / manual add-edit sets — treat as completed.
@@ -352,6 +353,12 @@ export interface ActiveSessionSet {
   target_weight: number
   actual_reps: number
   actual_weight: number
+  // Cardio fields (present on sets belonging to a category === 'cardio'
+  // exercise). Duration in seconds, distance in meters — canonical units,
+  // converted to the display unit only in the UI. Absent/0 on strength sets.
+  actual_duration?: number
+  actual_distance?: number
+  actual_steps?: number
   completed: boolean
 }
 

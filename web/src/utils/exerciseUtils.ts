@@ -110,7 +110,7 @@ export type WorkoutFocus = 'balanced' | 'upper' | 'lower' | 'core'
 // Structural shape shared by Workout and Program — lets the same focus
 // computation summarize either a logged workout or a program template.
 interface FocusSource {
-  exercises?: { exercise: { muscle_group: string }; sets?: unknown[] }[]
+  exercises?: { exercise: { muscle_group: string; category?: string }; sets?: unknown[] }[]
 }
 
 // Buckets a workout's (or program's) sets by muscle region and calls it
@@ -121,6 +121,10 @@ export function computeWorkoutFocus(workout: FocusSource): WorkoutFocus | null {
   const counts: Record<MuscleRegion, number> = { upper: 0, lower: 0, core: 0 }
   let totalSets = 0
   for (const ex of workout.exercises ?? []) {
+    // Cardio (walk/run/bike) has no muscle-region focus — skip it so a
+    // cardio-only workout returns null (no badge) rather than defaulting
+    // to "upper".
+    if (ex.exercise?.category === 'cardio') continue
     const region = regionOf(ex.exercise?.muscle_group)
     const n = ex.sets?.length ?? 0
     counts[region] += n

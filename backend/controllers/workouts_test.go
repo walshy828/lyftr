@@ -66,6 +66,54 @@ func TestCreateWorkout_success(t *testing.T) {
 	}
 }
 
+func TestCreateWorkout_cardioMetricsRoundTrip(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	exID := createTestExercise(t)
+
+	body := map[string]any{
+		"name":     "Morning Walk",
+		"duration": 2700,
+		"exercises": []map[string]any{
+			{
+				"exercise_id": exID,
+				"sets": []map[string]any{
+					// A cardio effort: no reps/weight, but time + distance + steps.
+					{"set_number": 1, "duration": 2700, "distance": 3540.5, "steps": 5400},
+				},
+			},
+		},
+	}
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/workouts", body)
+	th.CreateWorkout(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	created := decodeResponse(t, w)["data"].(map[string]any)
+	wid := fmt.Sprint(int64(created["id"].(float64)))
+
+	// Read it back and confirm the cardio fields survived the store round-trip.
+	c2, w2 := newContext(uid, http.MethodGet, "/api/v1/workouts/"+wid, nil)
+	setParam(c2, "id", wid)
+	th.GetWorkout(c2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+	data := decodeResponse(t, w2)["data"].(map[string]any)
+	set := data["exercises"].([]any)[0].(map[string]any)["sets"].([]any)[0].(map[string]any)
+
+	if got := set["duration"].(float64); got != 2700 {
+		t.Errorf("duration: expected 2700, got %v", got)
+	}
+	if got := set["distance"].(float64); got != 3540.5 {
+		t.Errorf("distance: expected 3540.5, got %v", got)
+	}
+	if got := set["steps"].(float64); got != 5400 {
+		t.Errorf("steps: expected 5400, got %v", got)
+	}
+}
+
 func TestCreateWorkout_missingName(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)

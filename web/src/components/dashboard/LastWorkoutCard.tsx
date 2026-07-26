@@ -2,8 +2,9 @@ import { useNavigate, Link } from 'react-router-dom'
 import { Dumbbell, ArrowRight } from 'lucide-react'
 import { format } from 'date-fns'
 import * as types from '../../types'
-import { displayWeight, displayVolume, weightShort } from '../../stores/settings'
+import { displayWeight, displayVolume, weightShort, displayDistance, distanceShort } from '../../stores/settings'
 import { muscleColor } from '../../utils/exerciseUtils'
+import { isCardio, fmtClock } from '../../utils/workoutSets'
 import { calcVolume } from '../../utils/dashboardMetrics'
 import { FOCUS_HEX, focusOf, type FocusCategory } from '../../utils/chartTheme'
 
@@ -74,6 +75,7 @@ export default function LastWorkoutCard({ workouts, settings }: {
       <div className="divide-y divide-surface-border/60">
         {exs.slice(0, 4).map(ex => {
           const sets = ex.sets ?? []
+          const cardio = isCardio(ex.exercise)
           const best = sets.length > 0 ? sets.reduce((b, s) => (s.weight > b.weight ? s : b), sets[0]) : null
           return (
             <div key={ex.id} className="flex items-center gap-2.5 py-2.5">
@@ -90,7 +92,12 @@ export default function LastWorkoutCard({ workouts, settings }: {
                 <p className="text-sm text-tx-secondary truncate">{ex.exercise.name}</p>
                 <span className={`text-[10px] px-1 py-0.5 rounded ${muscleColor(ex.exercise.muscle_group)}`}>{ex.exercise.muscle_group}</span>
               </div>
-              {best && (
+              {cardio && best ? (
+                <span className="text-xs text-tx-muted tabular-nums flex-shrink-0">
+                  {best.duration ? fmtClock(best.duration) : ''}
+                  {best.distance ? `${best.duration ? ' · ' : ''}${displayDistance(best.distance, settings.weight_unit)} ${distanceShort(settings.weight_unit)}` : ''}
+                </span>
+              ) : best && (
                 <span className="text-xs text-tx-muted tabular-nums flex-shrink-0">
                   {sets.length}×{best.weight > 0 ? ` ${displayWeight(best.weight, settings.weight_unit)}${wUnit}` : ' BW'}
                 </span>

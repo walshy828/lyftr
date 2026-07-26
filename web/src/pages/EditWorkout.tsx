@@ -4,14 +4,25 @@ import { Plus, ArrowLeft, Trash2, AlertCircle, Dumbbell, Clock, FileText, Zap, T
 import { workoutAPI } from '../services/api'
 import { useSettingsStore, weightShort, lbsToDisplay, displayToLbs } from '../stores/settings'
 import WeightInput from '../components/WeightInput'
+import CardioEntry from '../components/CardioEntry'
 import ExercisePicker from '../components/ExercisePicker'
+import { isCardio } from '../utils/workoutSets'
 import * as types from '../types'
+
+interface WorkoutSet {
+  set_number: number
+  reps: number
+  weight: number
+  duration?: number
+  distance?: number
+  steps?: number
+}
 
 interface WorkoutFormData {
   name: string
   notes: string
   duration: number
-  exercises: { exercise_id: number; notes: string; sets: { set_number: number; reps: number; weight: number }[] }[]
+  exercises: { exercise_id: number; notes: string; sets: WorkoutSet[] }[]
 }
 
 export default function EditWorkout() {
@@ -45,7 +56,7 @@ export default function EditWorkout() {
           exercises: (workout.exercises || []).map(ex => ({
             exercise_id: ex.exercise_id,
             notes: ex.notes || '',
-            sets: (ex.sets || []).map(s => ({ set_number: s.set_number, reps: s.reps, weight: lbsToDisplay(s.weight, settings.weight_unit) })),
+            sets: (ex.sets || []).map(s => ({ set_number: s.set_number, reps: s.reps, weight: lbsToDisplay(s.weight, settings.weight_unit), duration: s.duration, distance: s.distance, steps: s.steps })),
           })),
         })
       })
@@ -218,6 +229,18 @@ export default function EditWorkout() {
                     <input type="text" value={workoutEx.notes} onChange={e => { const ex = [...formData.exercises]; ex[exIdx].notes = e.target.value; setFormData(p => ({ ...p, exercises: ex })) }} className="input text-sm" />
                   </div>
 
+                  {isCardio(exercise) ? (
+                    <CardioEntry
+                      durationSec={workoutEx.sets[0]?.duration || 0}
+                      distanceMeters={workoutEx.sets[0]?.distance || 0}
+                      steps={workoutEx.sets[0]?.steps || 0}
+                      unit={wUnit}
+                      onDuration={v => updateSet(exIdx, 0, 'duration', v)}
+                      onDistance={v => updateSet(exIdx, 0, 'distance', v)}
+                      onSteps={v => updateSet(exIdx, 0, 'steps', v)}
+                    />
+                  ) : (
+                  <>
                   <div className="space-y-2 mb-3">
                     <div className="flex items-center justify-between">
                       <label className="text-xs text-tx-muted font-medium uppercase tracking-wider">Sets</label>
@@ -248,6 +271,8 @@ export default function EditWorkout() {
                     <Plus className="w-3.5 h-3.5" />
                     Add Set
                   </button>
+                  </>
+                  )}
                 </div>
               )
             })}

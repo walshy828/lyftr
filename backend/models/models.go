@@ -82,8 +82,9 @@ type Set struct {
 	SetNumber         int     `json:"set_number" db:"set_number"`
 	Reps              int     `json:"reps,omitempty" db:"reps"`
 	Weight            float64 `json:"weight,omitempty" db:"weight"`     // raw value in user's preferred unit (lbs or kg)
-	Duration          int     `json:"duration,omitempty" db:"duration"` // seconds, for timed sets
-	Distance          float64 `json:"distance,omitempty" db:"distance"` // meters
+	Duration          int     `json:"duration,omitempty" db:"duration"` // seconds, for timed/cardio sets
+	Distance          float64 `json:"distance,omitempty" db:"distance"` // meters, for cardio sets
+	Steps             int     `json:"steps,omitempty" db:"steps"`       // step count, for cardio sets (walks/runs)
 	RPE               float64 `json:"rpe,omitempty" db:"rpe"`
 	IsWarmup          bool    `json:"is_warmup" db:"is_warmup"`
 	Completed         bool    `json:"completed" db:"completed"`
@@ -234,6 +235,7 @@ type CreateSetReq struct {
 	Weight    float64 `json:"weight"`
 	Duration  int     `json:"duration"`
 	Distance  float64 `json:"distance"`
+	Steps     int     `json:"steps"`
 	RPE       float64 `json:"rpe"`
 	IsWarmup  bool    `json:"is_warmup"`
 	// Pointer so "omitted" (older clients, manual add/edit forms) is

@@ -49,7 +49,7 @@ interface WorkoutSessionStore {
   gymExIdx: number
   gymSetIdx: number
   startSession: (name: string, exercises: types.ActiveSessionExercise[], programId?: number) => void
-  updateSet: (exIdx: number, setIdx: number, field: 'actual_reps' | 'actual_weight', val: number) => void
+  updateSet: (exIdx: number, setIdx: number, field: 'actual_reps' | 'actual_weight' | 'actual_duration' | 'actual_distance' | 'actual_steps', val: number) => void
   completeSet: (exIdx: number, setIdx: number) => void
   updateExerciseNotes: (exIdx: number, notes: string) => void
   addSet: (exIdx: number) => void
@@ -214,7 +214,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     if (!session) return
     const exercises = session.exercises.map((ex, i) => {
       if (i !== exIdx) return ex
-      const oldVal = ex.sets[setIdx][field]
+      const oldVal = ex.sets[setIdx][field] ?? 0
       let sets = ex.sets.map((s, j) => j === setIdx ? { ...s, [field]: val } : s)
       // Predictive propagation: shifting a set's actual weight (up or down)
       // carries the same delta forward onto later, not-yet-completed sets —
@@ -353,6 +353,10 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
           set_number: i + 1,
           reps: s.actual_reps || s.target_reps,
           weight: s.actual_weight || s.target_weight,
+          // Cardio fields — 0/absent on strength sets, so harmless there.
+          duration: s.actual_duration || 0,
+          distance: s.actual_distance || 0,
+          steps: s.actual_steps || 0,
           completed: s.completed,
         })),
       })),

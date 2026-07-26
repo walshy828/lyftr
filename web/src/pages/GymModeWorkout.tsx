@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, Plus, X, Dumbbell, Flag, ChevronRight, ChevronLeft, Play,
-  Minimize2, Trash2, Repeat, Check, Layers, Timer, SquarePlay,
+  Minimize2, Trash2, Repeat, Check, Layers, Timer, SquarePlay, Clock3, Gauge, Footprints,
 } from 'lucide-react'
 import Model, { IExerciseData } from 'react-body-highlighter'
 import * as types from '../types'
@@ -19,8 +19,9 @@ import { workoutAPI } from '../services/api'
 import StepperTile from '../components/ui/StepperTile'
 import NumberField from '../components/ui/NumberField'
 import DiscardConfirm from '../components/DiscardConfirm'
+import CardioEntry from '../components/CardioEntry'
 import { clampStep, clampValue } from '../utils/number'
-import { nextIncompleteSet } from '../utils/workoutSets'
+import { nextIncompleteSet, isCardio } from '../utils/workoutSets'
 import { displayWeight, displayToLbs } from '../stores/settings'
 
 function buildBodyData(exercise: types.Exercise): IExerciseData[] {
@@ -356,11 +357,18 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
     const repsVals = ex.sets.map(s => s.target_reps).filter(r => r > 0)
     const wtVals = ex.sets.map(s => displayWeight(s.target_weight, wUnit)).filter(w => w > 0)
     const range = (a: number[]) => (a.length === 0 ? '—' : Math.min(...a) === Math.max(...a) ? String(Math.min(...a)) : `${Math.min(...a)}–${Math.max(...a)}`)
-    const planStats = [
-      { icon: Layers, label: 'Sets', value: <>{ex.sets.length}</> },
-      { icon: Repeat, label: 'Reps', value: <>{range(repsVals)}</> },
-      { icon: Dumbbell, label: 'Weight', value: <>{range(wtVals)}<span className="text-xs font-semibold text-tx-muted ml-0.5">{wUnit}</span></> },
-    ]
+    // Cardio has no reps/weight targets — surface what it does track instead.
+    const planStats = isCardio(exercise)
+      ? [
+          { icon: Clock3, label: 'Track', value: <>Time</> },
+          { icon: Gauge, label: '&', value: <>Distance</> },
+          { icon: Footprints, label: '&', value: <>Steps</> },
+        ]
+      : [
+          { icon: Layers, label: 'Sets', value: <>{ex.sets.length}</> },
+          { icon: Repeat, label: 'Reps', value: <>{range(repsVals)}</> },
+          { icon: Dumbbell, label: 'Weight', value: <>{range(wtVals)}<span className="text-xs font-semibold text-tx-muted ml-0.5">{wUnit}</span></> },
+        ]
 
     return (
       <div className="fixed inset-0 z-[60] bg-surface-base overflow-y-auto flex flex-col">
@@ -563,6 +571,8 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
 
   if (!set) return null
 
+  const cardio = isCardio(ex.exercise)
+
   // Rest-timer view state for this exercise (restExIdx/restSetIdx are cleared or
   // remapped by the store on structural edits, so they're safe to key on here).
   const restingHere = restExIdx === activeIdx
@@ -609,7 +619,9 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
             heights. Spacing tightens while resting; roomy otherwise. */}
         <div className={`m-auto w-full flex flex-col items-center px-5 ${restingHere ? 'gap-4 py-2' : 'gap-6 py-4'}`}>
         {/* Set selector — one chip per set: active filled, done shows a check.
-            Progress + navigation in one place (replaced the old dots + big number). */}
+            Progress + navigation in one place (replaced the old dots + big number).
+            Hidden for cardio, which is a single time+distance entry. */}
+        {!cardio && (
         <div className="flex items-center justify-center flex-wrap gap-2">
           {ex.sets.map((s, i) => {
             // Set ↔ timer linkage: while resting, the chip of the set that started
@@ -634,9 +646,10 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
             )
           })}
         </div>
+        )}
 
         {/* Target reference for this set (the goal to hit) */}
-        {(set.target_reps > 0 || set.target_weight > 0) && (
+        {!cardio && (set.target_reps > 0 || set.target_weight > 0) && (
           <p className="text-sm text-tx-muted text-center">
             Target{' '}
             <span className="font-semibold text-tx-secondary tabular-nums">{set.target_reps > 0 ? set.target_reps : '—'} reps</span>
@@ -646,9 +659,27 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
           </p>
         )}
 
+        {/* Cardio: a single time+distance+steps entry. The existing Complete Set
+            button below handles logging, so no in-tile toggle here. */}
+        {cardio && (
+          <div className="w-full">
+            <CardioEntry
+              durationSec={set.actual_duration || 0}
+              distanceMeters={set.actual_distance || 0}
+              steps={set.actual_steps || 0}
+              unit={wUnit}
+              disabled={set.completed}
+              onDuration={v => updateSet(activeIdx, clampedSetIdx, 'actual_duration', v)}
+              onDistance={v => updateSet(activeIdx, clampedSetIdx, 'actual_distance', v)}
+              onSteps={v => updateSet(activeIdx, clampedSetIdx, 'actual_steps', v)}
+            />
+          </div>
+        )}
+
         {/* Reps + Weight — a tile per metric: icon header, big value, split ⊖/⊕ footer.
             Value spans the full tile (buttons are below, not flanking) so long
             weights never clip. */}
+        {!cardio && (
         <div className="w-full grid grid-cols-2 gap-3">
           {/* Reps — key by set so a half-typed value can't bleed to the next set */}
           <StepperTile
@@ -682,6 +713,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
             />
           </StepperTile>
         </div>
+        )}
 
         {/* While resting before this set, collapse + fade the Complete Set / Remove
             controls out of the way — you Skip the timer to begin it. This also frees
@@ -720,7 +752,8 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
 
       {/* Bottom nav */}
       <div className="px-5 pb-6 pt-3 border-t border-surface-border flex-shrink-0 space-y-2">
-        {/* Set prev/next + add */}
+        {/* Set prev/next + add — hidden for cardio (single entry) */}
+        {!cardio && (
         <div className="flex gap-2">
           <button
             onClick={() => setActiveSetIdx(clampedSetIdx - 1)}
@@ -744,6 +777,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+        )}
 
         {/* Exercise prev/next */}
         <div className="flex gap-2">

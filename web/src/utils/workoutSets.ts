@@ -5,6 +5,27 @@ export function fmtClock(totalSeconds: number): string {
   return `${m}:${String(totalSeconds % 60).padStart(2, '0')}`
 }
 
+// True for walk/run/bike-style exercises — the exercise library (free-exercise-db)
+// tags these category === 'cardio'. Drives the switch from a reps/weight grid to
+// a single time+distance+steps entry throughout logging and display.
+export function isCardio(ex?: { category?: string } | null): boolean {
+  return ex?.category === 'cardio'
+}
+
+// Parse a "m:ss" or "mm:ss" (or bare seconds/minutes) string into whole seconds.
+// Lenient: "32:10" → 1930, "5" → 300 (treated as 5:00 when no colon), "" → 0.
+export function parseClock(input: string): number {
+  const t = input.trim()
+  if (!t) return 0
+  if (t.includes(':')) {
+    const [m, s] = t.split(':')
+    return (parseInt(m, 10) || 0) * 60 + (parseInt(s, 10) || 0)
+  }
+  // A bare number with no colon reads as minutes — matches how people say
+  // "a 30 minute walk".
+  return Math.round((parseFloat(t) || 0) * 60)
+}
+
 // Index of the first not-completed set after `afterIdx`, or -1 if none. Shared by
 // gym-mode auto-advance (which set to focus after completing one) and the rest
 // banner's "set N next" label so the two can never drift out of sync.

@@ -103,6 +103,36 @@ export const displayWeight = (lbs: number, unit: string): number => round1(lbsTo
 // displayWeight so the two can't be confused.
 export const displayVolume = (lbs: number, unit: string): number => Math.round(lbsToDisplay(lbs, unit))
 
+// ── Distance (cardio) ──
+// Distance is stored canonically in meters (matches the backend sets.distance
+// column and what a Health Connect / Pixel-watch import would populate). The
+// display unit follows the weight-unit preference: lbs → miles, kg → km — no
+// separate setting. Use these everywhere a cardio distance is read/written.
+const METERS_PER_MILE = 1609.344
+
+export const distanceShort = (unit: string) => unit === 'kg' ? 'km' : 'mi'
+
+export const metersToDisplay = (meters: number, unit: string): number =>
+  unit === 'kg' ? meters / 1000 : meters / METERS_PER_MILE
+
+export const displayToMeters = (val: number, unit: string): number =>
+  unit === 'kg' ? val * 1000 : val * METERS_PER_MILE
+
+// Distance shown to 0.01 (e.g. 3.10 mi) — finer than weight since a run is
+// rarely a round number and pace is sensitive to the last tenth.
+export const round2 = (n: number): number => Math.round(n * 100) / 100
+export const displayDistance = (meters: number, unit: string): number => round2(metersToDisplay(meters, unit))
+
+// Pace ("m:ss /mi" or "/km") from seconds + meters, or '' when either is missing.
+// The canonical readout for a logged cardio effort.
+export const paceLabel = (seconds: number, meters: number, unit: string): string => {
+  const dist = metersToDisplay(meters, unit)
+  if (!seconds || dist <= 0) return ''
+  const secPerUnit = Math.round(seconds / dist)
+  const m = Math.floor(secPerUnit / 60)
+  return `${m}:${String(secPerUnit % 60).padStart(2, '0')} /${distanceShort(unit)}`
+}
+
 // Bodyweight bounds — mirror the backend (LogWeightRequest: gt=0, lte=2000 lbs)
 // so the user gets instant feedback instead of a round-trip 400. Defined once
 // here; the weight-logging forms validate through weightError/isValidWeight.

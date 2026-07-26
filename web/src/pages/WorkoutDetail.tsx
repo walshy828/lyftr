@@ -6,10 +6,21 @@ import {
   ArrowLeft, Clock, Dumbbell, TrendingUp, Edit2, Trash2, ChevronRight, AlertCircle, Loader, Pause, TimerOff,
 } from 'lucide-react'
 import { workoutAPI } from '../services/api'
-import { useSettingsStore, weightShort, displayWeight, displayVolume } from '../stores/settings'
+import { useSettingsStore, weightShort, displayWeight, displayVolume, displayDistance, distanceShort } from '../stores/settings'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
+import { isCardio, fmtClock } from '../utils/workoutSets'
 import { FeelingBadge, FocusBadge } from '../components/WorkoutBadges'
+
+// "32:10 · 3.10 mi · 5,400 steps" — omits any zero component. The canonical
+// readout for a logged cardio set.
+function cardioSummary(set: types.Set, unit: string): string {
+  const parts: string[] = []
+  if (set.duration) parts.push(fmtClock(set.duration))
+  if (set.distance) parts.push(`${displayDistance(set.distance, unit)} ${distanceShort(unit)}`)
+  if (set.steps) parts.push(`${set.steps.toLocaleString()} steps`)
+  return parts.join(' · ') || '—'
+}
 
 function SetChip({ set, isBest, unit }: { set: types.Set; isBest: boolean; unit: string }) {
   const skipped = set.completed === false
@@ -214,8 +225,9 @@ export default function WorkoutDetail() {
       <div className="space-y-3">
         {exs.map((ex, idx) => {
           const sets = ex.sets ?? []
+          const cardio = isCardio(ex.exercise)
           const maxWeightLbs = sets.length > 0 ? Math.max(...sets.map(s => s.weight || 0)) : 0
-          const maxWeight = displayWeight(maxWeightLbs, wUnit)
+          const maxWeight = cardio ? 0 : displayWeight(maxWeightLbs, wUnit)
           const exVol = displayVolume(sets.reduce((s, set) => s + (set.reps || 0) * (set.weight || 0), 0), wUnit)
 
           return (
@@ -245,7 +257,11 @@ export default function WorkoutDetail() {
                         {ex.exercise.muscle_group}
                       </span>
                     )}
-                    <span className="text-xs text-tx-muted truncate">{sets.length} sets{exVol > 0 ? ` · ${exVol.toLocaleString()} ${wUnit}` : ''}</span>
+                    <span className="text-xs text-tx-muted truncate">
+                      {cardio
+                        ? cardioSummary(sets[0] ?? { reps: 0, weight: 0, set_number: 1 }, wUnit)
+                        : `${sets.length} sets${exVol > 0 ? ` · ${exVol.toLocaleString()} ${wUnit}` : ''}`}
+                    </span>
                   </div>
                 </div>
                 {maxWeight > 0 && (
@@ -257,7 +273,7 @@ export default function WorkoutDetail() {
                 <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
               </div>
 
-              {sets.length > 0 && (
+              {!cardio && sets.length > 0 && (
                 <div className="flex items-center gap-2 px-4 pb-4 pt-3 border-t border-surface-border/50">
                   <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
                     {sets.map((set, i) => (

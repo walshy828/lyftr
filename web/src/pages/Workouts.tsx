@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { format, startOfWeek, subDays, isAfter, isBefore } from 'date-fns'
-import { Dumbbell, Plus, Play, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, TrendingDown, Minus, ChevronRight, MoreVertical } from 'lucide-react'
+import { Dumbbell, Plus, Play, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, TrendingDown, Minus, ChevronRight, MoreVertical, Footprints } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Loading from '../components/Loading'
 import EmptyState from '../components/ui/EmptyState'
 import PageHeader from '../components/ui/PageHeader'
 import PeriodSelector from '../components/PeriodSelector'
 import { FeelingBadge, FocusBadge } from '../components/WorkoutBadges'
+import QuickCardioModal from '../components/QuickCardioModal'
 import { useServerInfiniteList } from '../hooks/useServerInfiniteList'
 import { workoutAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayVolume } from '../stores/settings'
@@ -211,6 +212,7 @@ export default function Workouts() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [period, setPeriod] = useState<Period>('30d')
   const [error, setError] = useState<string | null>(null)
+  const [showQuickCardio, setShowQuickCardio] = useState(false)
 
   // Debounce search so we don't fire a request on every keystroke
   useEffect(() => {
@@ -256,6 +258,9 @@ export default function Workouts() {
         subtitle="Track and review your training sessions"
         action={
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowQuickCardio(true)} className="btn-secondary btn-sm">
+              <Footprints className="w-4 h-4" /> Cardio
+            </button>
             <button onClick={() => navigate('/workouts/new')} className="btn-secondary btn-sm">
               <Plus className="w-4 h-4" /> Log Workout
             </button>
@@ -265,6 +270,13 @@ export default function Workouts() {
           </div>
         }
       />
+
+      {showQuickCardio && (
+        <QuickCardioModal
+          onClose={() => setShowQuickCardio(false)}
+          onLogged={() => reload()}
+        />
+      )}
 
       {/* Summary — this week vs last week trend */}
       <div className="grid grid-cols-3 gap-3">

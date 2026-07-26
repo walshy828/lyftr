@@ -184,6 +184,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_motivation_notes_user_week ON motivation_n
 	// version-dependent, and an unused column is harmless).
 	ensureColumn("user_profile", "birth_date", `ALTER TABLE user_profile ADD COLUMN birth_date TEXT NOT NULL DEFAULT ''`)
 
+	// Cardio logging (walks/runs/rides) records step count alongside the
+	// pre-existing duration/distance columns. The CREATE TABLE above only
+	// applies to brand-new databases — an existing sets table needs the
+	// column added explicitly.
+	ensureColumn("sets", "steps", `ALTER TABLE sets ADD COLUMN steps INTEGER NOT NULL DEFAULT 0`)
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a
@@ -288,6 +294,7 @@ CREATE TABLE IF NOT EXISTS sets (
   weight              REAL    NOT NULL DEFAULT 0,
   duration            INTEGER NOT NULL DEFAULT 0,
   distance            REAL    NOT NULL DEFAULT 0,
+  steps               INTEGER NOT NULL DEFAULT 0,
   rpe                 REAL    NOT NULL DEFAULT 0,
   is_warmup           INTEGER NOT NULL DEFAULT 0,
   completed           INTEGER NOT NULL DEFAULT 1
