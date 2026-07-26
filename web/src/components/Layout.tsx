@@ -109,7 +109,7 @@ function UserMenu() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const username = user?.email?.split('@')[0] ?? 'U'
+  const username = user?.name?.trim() || user?.email?.split('@')[0] || 'U'
   const initial = username[0].toUpperCase()
 
   return (

@@ -131,6 +131,7 @@ export const authAPI = {
 
 export const userAPI = {
   me:             ()                             => api.get<{ data: types.User }>('/me').then(res => unwrap(res)),
+  updateMe:       (data: { name: string })       => api.put<{ data: types.User }>('/me', data).then(res => unwrap(res)),
   getSettings:    ()                             => api.get<{ data: types.UserSettings }>('/settings').then(res => unwrap(res)),
   updateSettings: (data: Partial<types.UserSettings>) => api.put<{ data: types.UserSettings }>('/settings', data).then(res => unwrap(res)),
   deleteAccount:  ()                             => api.delete('/me'),

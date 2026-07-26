@@ -13,8 +13,8 @@ func NewUserStore(db *sql.DB) *UserStore { return &UserStore{db: db} }
 
 func (s *UserStore) GetMe(uid int64) (models.User, error) {
 	var u models.User
-	err := s.db.QueryRow(`SELECT id, email, created_at, updated_at FROM users WHERE id = ?`, uid).
-		Scan(&u.ID, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	err := s.db.QueryRow(`SELECT id, email, name, created_at, updated_at FROM users WHERE id = ?`, uid).
+		Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }
 
@@ -22,9 +22,18 @@ func (s *UserStore) GetMe(uid int64) (models.User, error) {
 func (s *UserStore) GetByEmail(email string) (models.User, error) {
 	var u models.User
 	err := s.db.QueryRow(
-		`SELECT id, email, password_hash, created_at, updated_at FROM users WHERE email = ?`, email,
-	).Scan(&u.ID, &u.Email, &u.Password, &u.CreatedAt, &u.UpdatedAt)
+		`SELECT id, email, name, password_hash, created_at, updated_at FROM users WHERE email = ?`, email,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.Password, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
+}
+
+// UpdateName sets the user's display name and returns the refreshed row.
+func (s *UserStore) UpdateName(uid int64, name string) (models.User, error) {
+	_, err := s.db.Exec(`UPDATE users SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, name, uid)
+	if err != nil {
+		return models.User{}, err
+	}
+	return s.GetMe(uid)
 }
 
 const userSettingsSelect = `SELECT user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes FROM user_settings`

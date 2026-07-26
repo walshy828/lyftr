@@ -47,7 +47,13 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	user := models.User{ID: userID, Email: req.Email}
+	// Reload the persisted row so the response carries the real created_at
+	// (and default name) rather than a zero-value time — a zero CreatedAt
+	// renders as a bogus date in the client's "Member since".
+	user, err := h.s.User.GetMe(userID)
+	if err != nil {
+		user = models.User{ID: userID, Email: req.Email}
+	}
 	utils.Created(c, models.AuthResponse{Token: access, RefreshToken: refresh, User: user})
 }
 

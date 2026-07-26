@@ -5,6 +5,7 @@ import "time"
 type User struct {
 	ID        int64     `json:"id" db:"id"`
 	Email     string    `json:"email" db:"email"`
+	Name      string    `json:"name" db:"name"`
 	Password  string    `json:"-" db:"password_hash"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
@@ -185,6 +186,12 @@ type AuthResponse struct {
 
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+// UpdateUserRequest is the editable account profile — currently just the
+// display name. Empty is allowed (clears the name, falling back to the email).
+type UpdateUserRequest struct {
+	Name string `json:"name" validate:"max=100"`
 }
 
 // PersonalAccessToken is what list/create responses expose — metadata only,

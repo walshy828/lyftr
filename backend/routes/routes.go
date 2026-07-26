@@ -41,6 +41,7 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 	{
 		// User
 		protected.GET("me", h.GetMe)
+		protected.PUT("me", h.UpdateMe)
 		protected.GET("settings", h.GetSettings)
 		protected.PUT("settings", h.UpdateSettings)
 		protected.DELETE("me", h.DeleteAccount)

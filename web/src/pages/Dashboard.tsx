@@ -46,7 +46,7 @@ export default function Dashboard() {
     )
   }
 
-  const username = user?.email?.split('@')[0] ?? 'there'
+  const username = user?.name?.trim() || user?.email?.split('@')[0] || 'there'
 
   return (
     <div className="space-y-4 animate-slide-up">

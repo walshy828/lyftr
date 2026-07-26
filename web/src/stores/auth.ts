@@ -12,6 +12,9 @@ interface AuthStore {
   register:  (email: string, password: string) => Promise<void>
   logout:    () => void
   clearError: () => void
+  // Replace the cached user (e.g. after a profile edit or a fresh /me fetch)
+  // and mirror it to localStorage so it survives a reload.
+  setUser:   (user: types.User) => void
 }
 
 export const useAuthStore = create<AuthStore>((set) => {
@@ -78,5 +81,10 @@ export const useAuthStore = create<AuthStore>((set) => {
     },
 
     clearError: () => set({ error: null }),
+
+    setUser: (user) => {
+      localStorage.setItem('user', JSON.stringify(user))
+      set({ user })
+    },
   }
 })

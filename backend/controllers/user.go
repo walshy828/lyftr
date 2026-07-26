@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"strings"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
@@ -55,6 +56,30 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	utils.OK(c, s)
+}
+
+// UpdateMe updates the user's editable account fields (currently the display
+// name) and returns the refreshed user.
+func (h *Handler) UpdateMe(c *gin.Context) {
+	uid := middleware.UserID(c)
+	var req models.UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	u, err := h.s.User.UpdateName(uid, strings.TrimSpace(req.Name))
+	if err == sql.ErrNoRows {
+		utils.Unauthorized(c, "account no longer exists")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, u)
 }
 
 func (h *Handler) DeleteAccount(c *gin.Context) {

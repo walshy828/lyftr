@@ -5,7 +5,7 @@ import { useServerStore } from '../stores/server'
 import { useServerInfo } from '../hooks/useServerInfo'
 import { useSettingsStore } from '../stores/settings'
 import { useTheme } from '../hooks/useTheme'
-import { exerciseAPI, profileAPI } from '../services/api'
+import { exerciseAPI, profileAPI, userAPI } from '../services/api'
 import * as types from '../types'
 import { HelpTip } from '../components/Tooltip'
 import PageHeader from '../components/ui/PageHeader'
@@ -44,7 +44,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function Settings() {
   const navigate = useNavigate()
-  const { user, logout } = useAuthStore()
+  const { user, logout, setUser } = useAuthStore()
   const serverUrl = useServerStore(s => s.serverUrl)
   const serverInfo = useServerInfo()
   const { theme, toggleTheme } = useTheme()
@@ -58,6 +58,34 @@ export default function Settings() {
   const [seedStatus, setSeedStatus] = useState<{ count: number; in_progress: boolean } | null>(null)
   const [seedAction, setSeedAction] = useState<'sync' | null>(null)
   const [seedMsg, setSeedMsg] = useState<string | null>(null)
+
+  const [nameInput, setNameInput] = useState(user?.name ?? '')
+  const [nameSaving, setNameSaving] = useState(false)
+  const [nameSaved, setNameSaved] = useState(false)
+
+  // The cached user in localStorage is only written at login/register and can
+  // be stale (e.g. missing created_at, which then renders as a bogus "Member
+  // since" date). Refresh it from the server on mount, authoritatively.
+  useEffect(() => {
+    userAPI.me().then((u) => {
+      setUser(u)
+      setNameInput(u.name ?? '')
+    }).catch(() => {})
+  }, [setUser])
+
+  const handleSaveName = async () => {
+    setNameSaving(true)
+    try {
+      const updated = await userAPI.updateMe({ name: nameInput.trim() })
+      setUser(updated)
+      setNameSaved(true)
+      setTimeout(() => setNameSaved(false), 3000)
+    } catch {
+      // Non-fatal: leave the field as-is for a retry.
+    } finally {
+      setNameSaving(false)
+    }
+  }
 
   const [profile, setProfile] = useState<types.ProfileWithBMI | null>(null)
   const [profileForm, setProfileForm] = useState<types.UserProfile>({
@@ -238,6 +266,26 @@ export default function Settings() {
 
       {/* Account */}
       <Section title="Account">
+        <SettingRow label="Name" description="Shown in the app greeting and around the UI">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName() }}
+              maxLength={100}
+              placeholder="Your name"
+              className="input w-40 sm:w-52 text-sm"
+            />
+            <button
+              onClick={handleSaveName}
+              disabled={nameSaving || nameInput.trim() === (user?.name ?? '').trim()}
+              className="btn-primary btn-sm"
+            >
+              {nameSaved ? <Check className="w-3.5 h-3.5" /> : nameSaving ? <Loader className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+            </button>
+          </div>
+        </SettingRow>
         <SettingRow label="Email" description="Your login email address">
           <span className="text-sm text-tx-muted font-mono">{user?.email}</span>
         </SettingRow>
