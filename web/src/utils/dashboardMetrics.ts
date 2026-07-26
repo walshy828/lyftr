@@ -3,7 +3,7 @@
 
 import { startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 import type { Workout, FoodHistoryPoint, WeightLog } from '../types'
-import { focusOf, type FocusCategory } from './chartTheme'
+import { focusOf, type FocusCategory, type ActivityCategory } from './chartTheme'
 
 // ── Volume ──────────────────────────────────────────────────────────────
 export const calcVolume = (w: Pick<Workout, 'exercises'>): number =>
@@ -58,6 +58,41 @@ export function untrainedFocusRegions(
   }
   // Only flag the three real training regions — "Full Body" isn't a gap.
   return (['Upper', 'Lower', 'Core'] as FocusCategory[]).filter(f => !trained.has(f))
+}
+
+// ── Activity mix (time spent per category) ──────────────────────────────
+// Attribute a workout's wall-clock duration across activity categories,
+// proportional to each category's share of logged sets. Cardio exercises
+// (category === 'cardio') map to 'Cardio'; strength exercises map to their
+// focus region via focusOf. A cardio effort is a single time+distance entry,
+// so its lone set still gets its full share. Returns minutes (may be
+// fractional); categories with no sets are simply absent from the map.
+export function workoutMinutesByCategory(w: Pick<Workout, 'exercises' | 'duration'>): Map<ActivityCategory, number> {
+  const setShare = new Map<ActivityCategory, number>()
+  let totalSets = 0
+  for (const ex of w.exercises ?? []) {
+    const isCardio = ex.exercise?.category === 'cardio'
+    const cat: ActivityCategory | null = isCardio ? 'Cardio' : focusOf(ex.exercise?.muscle_group ?? '')
+    if (!cat) continue
+    const n = (ex.sets ?? []).length
+    if (n === 0) continue
+    setShare.set(cat, (setShare.get(cat) || 0) + n)
+    totalSets += n
+  }
+  const minutes = new Map<ActivityCategory, number>()
+  if (totalSets === 0) return minutes
+  const durationMin = (w.duration || 0) / 60
+  setShare.forEach((n, cat) => minutes.set(cat, (n / totalSets) * durationMin))
+  return minutes
+}
+
+// Sum activity minutes across many workouts into a single per-category map.
+export function activityMix(workouts: Pick<Workout, 'exercises' | 'duration'>[]): Map<ActivityCategory, number> {
+  const acc = new Map<ActivityCategory, number>()
+  for (const w of workouts) {
+    workoutMinutesByCategory(w).forEach((m, cat) => acc.set(cat, (acc.get(cat) || 0) + m))
+  }
+  return acc
 }
 
 // ── Nutrition (from the per-day history series) ─────────────────────────

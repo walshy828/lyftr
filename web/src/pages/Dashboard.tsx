@@ -13,7 +13,7 @@ import PlanAdherenceHero from '../components/dashboard/PlanAdherenceHero'
 import InsightsCard from '../components/dashboard/InsightsCard'
 import WeightTrendCard from '../components/dashboard/WeightTrendCard'
 import ConsistencyHeatmap from '../components/dashboard/ConsistencyHeatmap'
-import VolumeFocusCard from '../components/dashboard/VolumeFocusCard'
+import TrainingTrendsCard from '../components/dashboard/TrainingTrendsCard'
 import NutritionTodayCard from '../components/dashboard/NutritionTodayCard'
 import NutritionTrendCard from '../components/dashboard/NutritionTrendCard'
 import MuscleBalanceCard from '../components/dashboard/MuscleBalanceCard'
@@ -111,8 +111,8 @@ export default function Dashboard() {
         <NutritionTrendCard foodHistory={d.foodHistory} settings={d.settings} />
       </div>
 
-      {/* Training volume + consistency */}
-      <VolumeFocusCard workouts={d.workouts} settings={d.settings} />
+      {/* Training trends (mix + focus over time) + consistency */}
+      <TrainingTrendsCard workouts={d.workouts} />
       <ConsistencyHeatmap workouts={d.workouts} />
 
       {/* Last workout + muscle balance */}

@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   calcVolume, weekRange, weeklyTraining, daysSinceLastWorkout, untrainedFocusRegions,
   weeklyNutrition, delta, olsTrend, weightSeries, goalDirection, goalProgress, buildInsights,
+  workoutMinutesByCategory, activityMix,
   type InsightSignals, type WeeklyNutrition,
 } from './dashboardMetrics'
-import type { Workout, FoodHistoryPoint, WeightLog } from '../types'
+import type { Workout, FoodHistoryPoint, WeightLog, WorkoutExercise } from '../types'
 
 // Wednesday, 2026-07-15 12:00 local — mid-week reference.
 const NOW = new Date(2026, 6, 15, 12, 0, 0)
@@ -74,6 +75,51 @@ describe('untrainedFocusRegions', () => {
   it('ignores workouts older than the window', () => {
     const ws = [workout('2026-06-01T09:00:00', 'legs', 3)]
     expect(untrainedFocusRegions(ws, NOW, 14)).toContain('Lower')
+  })
+})
+
+describe('workoutMinutesByCategory / activityMix', () => {
+  const ex = (muscle: string, category: string, sets: number): WorkoutExercise => ({
+    exercise_id: 1,
+    exercise: { id: 1, name: 'x', muscle_group: muscle, secondary_muscles: [], category, equipment: '', description: '' },
+    sets: Array.from({ length: sets }, (_, i) => ({ set_number: i + 1, reps: 5, weight: 100 })),
+  })
+  const wk = (durationSec: number, exercises: WorkoutExercise[]): Workout => ({
+    id: Math.random(), name: 'W', duration: durationSec, started_at: '2026-07-15T09:00:00', created_at: '2026-07-15T09:00:00', exercises,
+  })
+
+  it('splits duration across categories proportional to set count', () => {
+    // 60 min, 3 upper sets + 1 lower set → 45m Upper, 15m Lower
+    const m = workoutMinutesByCategory(wk(3600, [ex('chest', 'strength', 3), ex('legs', 'strength', 1)]))
+    expect(m.get('Upper')).toBe(45)
+    expect(m.get('Lower')).toBe(15)
+  })
+
+  it('maps cardio exercises to the Cardio category', () => {
+    const m = workoutMinutesByCategory(wk(1800, [ex('cardio', 'cardio', 1)]))
+    expect(m.get('Cardio')).toBe(30)
+    expect(m.has('Upper')).toBe(false)
+  })
+
+  it('ignores exercises with no sets and no focus mapping', () => {
+    const m = workoutMinutesByCategory(wk(3600, [ex('chest', 'strength', 2), ex('mystery', 'strength', 2)]))
+    // unmapped muscle contributes no category, so all 60m lands on Upper
+    expect(m.get('Upper')).toBe(60)
+    expect(m.size).toBe(1)
+  })
+
+  it('returns an empty map when nothing is trackable', () => {
+    expect(workoutMinutesByCategory(wk(3600, [])).size).toBe(0)
+  })
+
+  it('activityMix sums per-category minutes across workouts', () => {
+    const mix = activityMix([
+      wk(3600, [ex('chest', 'strength', 1)]),   // 60m Upper
+      wk(1800, [ex('cardio', 'cardio', 1)]),    // 30m Cardio
+      wk(3600, [ex('back', 'strength', 1)]),    // 60m Upper
+    ])
+    expect(mix.get('Upper')).toBe(120)
+    expect(mix.get('Cardio')).toBe(30)
   })
 })
 

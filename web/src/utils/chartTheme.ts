@@ -57,6 +57,19 @@ const MUSCLE_TO_FOCUS: Record<string, FocusCategory> = {
 export const focusOf = (muscleGroup: string): FocusCategory | null =>
   MUSCLE_TO_FOCUS[muscleGroup?.toLowerCase()] ?? null
 
+// ── Activity categories = Cardio + the four strength focuses. Used by the
+// training-trends stack to answer "how much cardio vs strength, and which
+// areas?" in one view. Cardio sky (#0891b2) was validated all-pairs against
+// the four focus hexes in both modes (dataviz validator): ALL CHECKS PASS,
+// the only WARN being the same magenta↔green ΔE 6.1 the focus palette already
+// carries — legal because the stack ships with a legend + a text tooltip. ──
+export type ActivityCategory = 'Cardio' | FocusCategory
+export const CARDIO_HEX = '#0891b2'
+export const ACTIVITY_HEX: Record<ActivityCategory, string> = { Cardio: CARDIO_HEX, ...FOCUS_HEX }
+// Cardio first (bottom of the stack), then strength focuses. Full Body last so
+// its rare presence sits at the rounded top of the bar.
+export const ACTIVITY_ORDER: ActivityCategory[] = ['Cardio', 'Upper', 'Lower', 'Core', 'Full Body']
+
 // ── Plan / weight-trend colors (shared with WeightPlan.tsx) ─────────────
 export const PLAN_COLOR = '#10b981' // plan line (green)
 export const ACTUAL_COLOR = '#6366f1' // actual weight (indigo)
