@@ -23,7 +23,7 @@ vi.mock('../services/api', () => ({
   },
 }))
 
-import { foodAPI } from '../services/api'
+import { foodAPI, savedFoodsAPI } from '../services/api'
 
 function renderLogFood(initialPath = '/food/log?meal=breakfast&date=2026-01-01') {
   return render(
@@ -91,6 +91,59 @@ describe('LogFood manual entry', () => {
     expect(screen.getByText(/not the right match/i)).toBeTruthy()
     expect(screen.getByText(/enter "peanut butter" manually/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: /scan label/i })).toBeTruthy()
+  })
+})
+
+describe('LogFood condensed quick-log (My Foods)', () => {
+  const savedFood = {
+    id: 1, name: 'Greek Yogurt', brand: 'Fage',
+    calories: 120, protein: 20, carbs: 7, fat: 0, fiber: 0, sugar: 5, sodium: 60, cholesterol: 10,
+    serving_size: '1 cup', image_url: '/api/v1/saved-foods/1/img.jpg',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(foodAPI.list as any).mockResolvedValue([])
+    ;(foodAPI.log as any).mockResolvedValue({})
+    ;(savedFoodsAPI.list as any).mockResolvedValue([savedFood])
+  })
+
+  it('renders a condensed view (no macro-grid inputs, read-only nutrition) and logs quickly', async () => {
+    renderLogFood()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'My Foods' }))
+    fireEvent.click(await screen.findByText('Greek Yogurt'))
+
+    // Condensed detail: calories render as read-only text, not a macro-grid input.
+    // The only spinbutton is the Servings stepper.
+    await waitFor(() => expect(screen.getByText('120')).toBeTruthy())
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(1)
+    // No "Save to My Foods" toggle in condensed mode — it's already saved.
+    expect(screen.queryByText(/save to my foods/i)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /log food/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    expect(payload.name).toBe('Greek Yogurt')
+    expect(payload.calories).toBe(120)
+    expect(payload.protein).toBe(20)
+    expect(payload.source).toBe('saved')
+  })
+
+  it('keeps the full editable review for search results', async () => {
+    ;(foodAPI.search as any).mockResolvedValue([
+      { name: 'Peanut Butter', calories: 190, protein: 8, carbs: 6, fat: 16, fiber: 2, sugar: 3, sodium: 140, serving_size: '2 tbsp', source: 'off' },
+    ])
+
+    renderLogFood()
+
+    const input = await screen.findByPlaceholderText('Search food…')
+    fireEvent.change(input, { target: { value: 'Peanut Butter' } })
+    fireEvent.click(await screen.findByText('Peanut Butter'))
+
+    // Full review exposes editable calorie + macro-grid inputs (many spinbuttons).
+    await waitFor(() => expect(screen.getAllByRole('spinbutton').length).toBeGreaterThan(2))
   })
 })
 

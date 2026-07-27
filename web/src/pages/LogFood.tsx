@@ -128,6 +128,10 @@ export default function LogFood() {
   const [servings, setServings] = useState(1)
   const [meal, setMeal] = useState<types.FoodLog['meal']>(initMeal)
   const [date, setDate] = useState(initDate)
+  // Pre-qualified items (My Foods / Recent) get a stripped-down quick-log detail
+  // view; search / scan / manual / edit keep the full editable review.
+  const [condensed, setCondensed] = useState(false)
+  const [showDate, setShowDate] = useState(false)
   const [saveToMyFoods, setSaveToMyFoods] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -193,9 +197,11 @@ export default function LogFood() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [query, tab])
 
-  const selectResult = (result: types.FoodSearchResult) => {
+  const selectResult = (result: types.FoodSearchResult, quick = false) => {
     setSelected(result)
     setServings(1)
+    setCondensed(quick)
+    setShowDate(false)
     setPhase('detail')
   }
 
@@ -570,7 +576,7 @@ export default function LogFood() {
                     <p className="text-xs text-tx-muted mt-1 opacity-60">Search or scan to log food</p>
                   </div>
                 )
-                : recentItems.map((item) => <FoodResultRow key={`${item.name}-${item.calories}`} item={item} onClick={() => selectResult(item)} />)
+                : recentItems.map((item) => <FoodResultRow key={`${item.name}-${item.calories}`} item={item} onClick={() => selectResult(item, true)} />)
             )}
 
             {tab === 'myfoods' && (
@@ -586,7 +592,7 @@ export default function LogFood() {
                   <div key={sf.id} className="flex items-center border-b border-surface-border last:border-0">
                     <button
                       className="flex items-center gap-3 flex-1 min-w-0 px-4 py-3.5 hover:bg-surface-muted active:bg-surface-muted/80 transition-colors text-left"
-                      onClick={() => selectResult(savedToResult(sf))}
+                      onClick={() => selectResult(savedToResult(sf), true)}
                     >
                       <AuthedImg
                         src={sf.image_url}
@@ -679,8 +685,8 @@ export default function LogFood() {
         </div>
       )}
 
-      {/* Detail phase */}
-      {phase === 'detail' && selected && (
+      {/* Detail phase — full review (search / scan / manual / edit) */}
+      {phase === 'detail' && selected && !condensed && (
         <div className="space-y-4 pb-32">
           {saveError && (
             <div className="alert-error">
@@ -872,6 +878,116 @@ export default function LogFood() {
               <span className="text-sm font-medium text-tx-secondary">Save to My Foods</span>
             </div>
           </button>}
+        </div>
+      )}
+
+      {/* Detail phase — condensed quick-log (My Foods / Recent). Read-only
+          nutrition, quick meal + quantity, collapsed date; fits above the sticky
+          Log button without scrolling. */}
+      {phase === 'detail' && selected && condensed && (
+        <div className="space-y-4 pb-32">
+          {saveError && (
+            <div className="alert-error">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{saveError}</span>
+            </div>
+          )}
+
+          {/* Compact nutrition summary — calories + protein, read-only */}
+          <div className="card p-5">
+            <div className="flex items-end justify-between">
+              <div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-5xl font-bold tabular-nums text-tx-primary leading-none">{cal}</span>
+                  <span className="text-sm text-tx-muted">kcal</span>
+                </div>
+                {selected.serving_size && (
+                  <p className="text-xs text-tx-muted mt-1">
+                    {servings === 1 ? '' : `${servings} × `}{selected.serving_size}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-baseline gap-1 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+                <span className="text-2xl font-bold tabular-nums text-emerald-400 leading-none">{pro}</span>
+                <span className="text-sm font-bold text-emerald-400">g</span>
+                <span className="text-[10px] text-tx-muted ml-0.5">protein</span>
+              </div>
+            </div>
+            {(carb + fat_) > 0 && (
+              <div className="flex items-center gap-1.5 mt-3 text-xs text-tx-muted tabular-nums">
+                <span className="text-amber-400">{carb}g carbs</span>
+                <span className="text-[10px]">·</span>
+                <span className="text-violet-400">{fat_}g fat</span>
+              </div>
+            )}
+          </div>
+
+          {/* Servings */}
+          <div className="card p-4 space-y-3">
+            <div className="flex items-baseline gap-2">
+              <label className="label">Servings</label>
+              {selected.serving_size && (
+                <span className="text-xs text-tx-muted">({selected.serving_size} each)</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <IconButton icon={Minus} variant="secondary" size="lg" label="Decrease servings" onClick={() => setServings(s => Math.max(0.5, +(s - 0.5).toFixed(1)))} />
+              <input
+                type="number"
+                value={servings}
+                onChange={e => setServings(Math.max(0.5, Number(e.target.value) || 1))}
+                step="0.5" min="0.5"
+                className="input text-center flex-1 h-12 text-lg font-semibold tabular-nums"
+              />
+              <IconButton icon={Plus} variant="secondary" size="lg" label="Increase servings" onClick={() => setServings(s => +(s + 0.5).toFixed(1))} />
+            </div>
+          </div>
+
+          {/* Meal + collapsed date */}
+          <div className="card p-4 space-y-4">
+            <div className="space-y-3">
+              <label className="label">Meal</label>
+              <div className="grid grid-cols-2 gap-2">
+                {MEALS.map(m => {
+                  const MealIcon = MEAL_ICONS[m]
+                  const iconColor = MEAL_COLORS[m]
+                  const active = meal === m
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => setMeal(m)}
+                      className={`flex items-center gap-2.5 px-3.5 py-3 rounded-xl border font-medium text-sm transition-all ${
+                        active
+                          ? 'bg-brand-500/10 border-brand-500/40 text-tx-primary'
+                          : 'bg-surface-muted border-surface-border text-tx-secondary hover:text-tx-primary hover:bg-surface-overlay'
+                      }`}
+                    >
+                      <MealIcon className={`w-4 h-4 flex-shrink-0 ${active ? iconColor : 'text-tx-muted'}`} />
+                      {MEAL_LABELS[m]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="border-t border-surface-border" />
+
+            {showDate ? (
+              <DateInput label="When" value={date} onChange={setDate} max={todayStr()} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowDate(true)}
+                className="flex items-center justify-between w-full text-sm"
+              >
+                <span className="label">When</span>
+                <span className="flex items-center gap-1.5 text-tx-secondary">
+                  {date === todayStr() ? 'Today' : date}
+                  <Pencil className="w-3.5 h-3.5 text-tx-muted" />
+                </span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
