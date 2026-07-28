@@ -151,7 +151,7 @@ func TestListRecentFoods_empty(t *testing.T) {
 	}
 }
 
-func TestListRecentFoods_ranksFrequentAboveOneOffAndUsesLatestEntry(t *testing.T) {
+func TestListRecentFoods_ranksMostUsedFirstAndUsesLatestEntry(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)
 	other := otherUser(t)
@@ -163,7 +163,7 @@ func TestListRecentFoods_ranksFrequentAboveOneOffAndUsesLatestEntry(t *testing.T
 	insertFoodLog(t, uid, "Coffee", "breakfast", 50, 1, 2, 0, now.AddDate(0, 0, -2))
 	insertFoodLog(t, uid, "Coffee", "breakfast", 5, 1, 0, 0, now.AddDate(0, 0, -1))
 	// "Pizza" logged once, more recently than Coffee's last log — but a single
-	// use, so the frequency+recency score should still rank Coffee first.
+	// use, so ranking most-used-first should still put Coffee first.
 	insertFoodLog(t, uid, "Pizza", "dinner", 800, 30, 90, 35, now)
 	// Another user's frequent food must not leak in.
 	insertFoodLog(t, other, "Secret smoothie", "snacks", 200, 5, 40, 2, now)
@@ -206,8 +206,8 @@ func TestListRecentFoods_excludesOldEntries(t *testing.T) {
 	now := time.Now()
 
 	insertFoodLog(t, uid, "Recent oatmeal", "breakfast", 350, 12, 60, 6, now.AddDate(0, 0, -5))
-	// Outside the 30-day window — must be excluded.
-	insertFoodLog(t, uid, "Ancient burger", "lunch", 700, 30, 50, 40, now.AddDate(0, 0, -45))
+	// Outside the 7-day window — must be excluded.
+	insertFoodLog(t, uid, "Ancient burger", "lunch", 700, 30, 50, 40, now.AddDate(0, 0, -10))
 
 	c, w := newContext(uid, http.MethodGet, "/api/v1/food/recent", nil)
 	th.ListRecentFoods(c)
@@ -215,7 +215,7 @@ func TestListRecentFoods_excludesOldEntries(t *testing.T) {
 	resp := decodeResponse(t, w)
 	data := resp["data"].([]any)
 	if len(data) != 1 {
-		t.Fatalf("expected 1 item within 30-day window, got %d", len(data))
+		t.Fatalf("expected 1 item within 7-day window, got %d", len(data))
 	}
 	if data[0].(map[string]any)["name"].(string) != "Recent oatmeal" {
 		t.Errorf("expected 'Recent oatmeal', got %v", data[0].(map[string]any)["name"])

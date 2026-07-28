@@ -135,10 +135,9 @@ func (s *FoodStore) RecentFoodNames(uid int64, limit int) ([]string, error) {
 // RecentFrequentFoods returns the user's go-to foods within the last sinceDays:
 // one row per distinct food (its most-recent logged entry, via SQLite's "bare
 // column follows the max() row" rule) plus how many times it was logged, ranked
-// by a hybrid frequency+recency score. The score is log_count minus a mild
-// staleness penalty (~1 point per 7 days since last logged), so a daily staple
-// outranks a one-off logged minutes ago, while stale staples decay below fresh
-// items. The 7.0 divisor is a tunable weight. Backed by idx_food_logs_user.
+// most-used first (log_count DESC) with the most recently logged breaking ties.
+// Over a short window this showcases the items logged most often and most
+// recently — e.g. a daily coffee — at the top. Backed by idx_food_logs_user.
 func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]models.RecentFood, error) {
 	rows, err := s.db.Query(
 		// The MAX(logged_at) column makes it the query's single min/max aggregate,
@@ -151,7 +150,7 @@ func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]mode
 		 FROM food_logs
 		 WHERE user_id = ? AND logged_at >= date('now', ?)
 		 GROUP BY lower(name), lower(brand)
-		 ORDER BY (COUNT(*) - (julianday('now') - julianday(MAX(logged_at))) / 7.0) DESC
+		 ORDER BY COUNT(*) DESC, MAX(logged_at) DESC
 		 LIMIT ?`,
 		uid, fmt.Sprintf("-%d days", sinceDays), limit,
 	)
