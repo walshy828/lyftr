@@ -132,6 +132,51 @@ func (s *FoodStore) RecentFoodNames(uid int64, limit int) ([]string, error) {
 	return names, rows.Err()
 }
 
+// RecentFrequentFoods returns the user's go-to foods within the last sinceDays:
+// one row per distinct food (its most-recent logged entry, via SQLite's "bare
+// column follows the max() row" rule) plus how many times it was logged, ranked
+// by a hybrid frequency+recency score. The score is log_count minus a mild
+// staleness penalty (~1 point per 7 days since last logged), so a daily staple
+// outranks a one-off logged minutes ago, while stale staples decay below fresh
+// items. The 7.0 divisor is a tunable weight. Backed by idx_food_logs_user.
+func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]models.RecentFood, error) {
+	rows, err := s.db.Query(
+		// The MAX(logged_at) column makes it the query's single min/max aggregate,
+		// so every bare column (macros, servings, logged_at, etc.) resolves to the
+		// row with the most-recent logged_at — i.e. the food's latest logged entry.
+		// logged_at is kept as a bare column (not MAX) so it retains DATETIME
+		// affinity and scans into time.Time; last_logged is a throwaway that only
+		// exists to trigger the rule.
+		`SELECT id, user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, barcode, image_url, source, logged_at, created_at, COUNT(*) AS log_count, MAX(logged_at) AS last_logged
+		 FROM food_logs
+		 WHERE user_id = ? AND logged_at >= date('now', ?)
+		 GROUP BY lower(name), lower(brand)
+		 ORDER BY (COUNT(*) - (julianday('now') - julianday(MAX(logged_at))) / 7.0) DESC
+		 LIMIT ?`,
+		uid, fmt.Sprintf("-%d days", sinceDays), limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	foods := []models.RecentFood{}
+	for rows.Next() {
+		var f models.RecentFood
+		var lastLogged string // throwaway; only present to trigger the max()-row rule
+		if err := rows.Scan(
+			&f.ID, &f.UserID, &f.Name, &f.Brand, &f.Meal,
+			&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol,
+			&f.Servings, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.Source,
+			&f.LoggedAt, &f.CreatedAt, &f.LogCount, &lastLogged,
+		); err != nil {
+			return nil, err
+		}
+		foods = append(foods, f)
+	}
+	return foods, rows.Err()
+}
+
 func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, error) {
 	rows, err := s.db.Query(
 		`SELECT substr(logged_at, 1, 10) as d,

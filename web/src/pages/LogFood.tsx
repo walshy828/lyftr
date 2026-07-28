@@ -160,18 +160,11 @@ export default function LogFood() {
   }, [editId, navigate])
 
   useEffect(() => {
-    foodAPI.list(todayStr()).then(logs => {
-      const seen = new Set<string>()
-      const items: types.FoodSearchResult[] = []
-      for (const log of (logs || [])) {
-        const key = log.name.toLowerCase()
-        if (!seen.has(key)) {
-          seen.add(key)
-          items.push(entryToResult(log))
-          if (items.length >= 10) break
-        }
-      }
-      setRecentItems(items)
+    // "Recent" = frequently-used go-to foods across history (already deduped and
+    // ranked server-side), not just today's logs — so daily staples like coffee
+    // are one tap away even on a fresh day.
+    foodAPI.recent().then(items => {
+      setRecentItems((items || []).slice(0, 15).map(entryToResult))
     }).catch(() => {})
     savedFoodsAPI.list().then(setSavedFoods).catch(() => {})
   }, [])
@@ -579,8 +572,8 @@ export default function LogFood() {
                 ? (
                   <div className="px-4 py-14 text-center">
                     <Utensils className="w-8 h-8 text-tx-muted opacity-30 mx-auto mb-2" />
-                    <p className="text-sm text-tx-muted">No recent items today</p>
-                    <p className="text-xs text-tx-muted mt-1 opacity-60">Search or scan to log food</p>
+                    <p className="text-sm text-tx-muted">No go-to items yet</p>
+                    <p className="text-xs text-tx-muted mt-1 opacity-60">Foods you log often show up here</p>
                   </div>
                 )
                 : recentItems.map((item) => <FoodResultRow key={`${item.name}-${item.calories}`} item={item} onClick={() => selectResult(item, true)} />)

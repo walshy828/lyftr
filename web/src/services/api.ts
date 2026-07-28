@@ -225,6 +225,7 @@ export const foodAPI = {
   delete:  (id: number) => api.delete(`/food/${id}`),
   stats:   (date?: string) => api.get<{ data: types.DailyStats }>('/food/stats', { params: { date } }).then(res => unwrap(res)),
   history: (days = 30) => api.get<{ data: types.FoodHistoryPoint[] }>('/food/history', { params: { days } }).then(res => unwrap(res)),
+  recent:  () => api.get<{ data: types.RecentFood[] }>('/food/recent').then(res => unwrap(res)),
   search:  (q: string, limit = 20) => api.get<{ data: types.FoodSearchResult[] }>('/food/search', { params: { q, limit } }).then(res => unwrap(res)),
   barcode: (code: string) => api.get<{ data: types.FoodSearchResult }>(`/food/barcode/${code}`).then(res => unwrap(res)),
   analyzeLabel: (imageBase64: string, mediaType: string) =>

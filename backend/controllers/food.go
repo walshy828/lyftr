@@ -49,6 +49,19 @@ func (h *Handler) ListFoodLogs(c *gin.Context) {
 	utils.OK(c, logs)
 }
 
+// ListRecentFoods returns the user's frequently-used foods (most-recent entry
+// per distinct food, ranked by a hybrid frequency+recency score over the last
+// 30 days) — powers the Log Food "Recent" tab.
+func (h *Handler) ListRecentFoods(c *gin.Context) {
+	uid := middleware.UserID(c)
+
+	foods, err := h.s.Food.RecentFrequentFoods(uid, 30, 20)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, foods)
+}
+
 func (h *Handler) GetFoodLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)

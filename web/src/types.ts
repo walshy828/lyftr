@@ -106,6 +106,12 @@ export interface FoodLog {
   created_at?: string
 }
 
+// A frequently-used food for the Log Food "Recent" tab: the most-recent logged
+// entry for a distinct food, plus how many times it was logged in the window.
+export interface RecentFood extends FoodLog {
+  log_count: number
+}
+
 export interface DailyStats {
   date: string
   total_calories: number

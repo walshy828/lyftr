@@ -7,6 +7,7 @@ vi.mock('../services/api', () => ({
   default: { get: vi.fn().mockResolvedValue({ data: new Blob() }) },
   foodAPI: {
     list: vi.fn().mockResolvedValue([]),
+    recent: vi.fn().mockResolvedValue([]),
     log: vi.fn().mockResolvedValue({}),
     get: vi.fn(),
     update: vi.fn().mockResolvedValue({}),

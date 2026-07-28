@@ -132,6 +132,96 @@ func TestListFoodLogs_scopedByDateAndUser(t *testing.T) {
 	}
 }
 
+// ─── ListRecentFoods ──────────────────────────────────────────────────────────
+
+func TestListRecentFoods_empty(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/recent", nil)
+	th.ListRecentFoods(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].([]any)
+	if len(data) != 0 {
+		t.Fatalf("expected empty list, got %d items", len(data))
+	}
+}
+
+func TestListRecentFoods_ranksFrequentAboveOneOffAndUsesLatestEntry(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	other := otherUser(t)
+	now := time.Now()
+
+	// "Coffee" logged 3x — the most recent (yesterday) carries calories=5, which
+	// is what should be returned for the deduped item.
+	insertFoodLog(t, uid, "Coffee", "breakfast", 100, 1, 2, 0, now.AddDate(0, 0, -3))
+	insertFoodLog(t, uid, "Coffee", "breakfast", 50, 1, 2, 0, now.AddDate(0, 0, -2))
+	insertFoodLog(t, uid, "Coffee", "breakfast", 5, 1, 0, 0, now.AddDate(0, 0, -1))
+	// "Pizza" logged once, more recently than Coffee's last log — but a single
+	// use, so the frequency+recency score should still rank Coffee first.
+	insertFoodLog(t, uid, "Pizza", "dinner", 800, 30, 90, 35, now)
+	// Another user's frequent food must not leak in.
+	insertFoodLog(t, other, "Secret smoothie", "snacks", 200, 5, 40, 2, now)
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/recent", nil)
+	th.ListRecentFoods(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].([]any)
+	if len(data) != 2 {
+		t.Fatalf("expected 2 deduped items (own only), got %d", len(data))
+	}
+
+	first := data[0].(map[string]any)
+	if first["name"].(string) != "Coffee" {
+		t.Errorf("expected frequent 'Coffee' ranked first, got %v", first["name"])
+	}
+	if first["log_count"].(float64) != 3 {
+		t.Errorf("expected Coffee log_count=3, got %v", first["log_count"])
+	}
+	if first["calories"].(float64) != 5 {
+		t.Errorf("expected Coffee macros from its latest entry (calories=5), got %v", first["calories"])
+	}
+
+	second := data[1].(map[string]any)
+	if second["name"].(string) != "Pizza" {
+		t.Errorf("expected 'Pizza' ranked second, got %v", second["name"])
+	}
+	if second["log_count"].(float64) != 1 {
+		t.Errorf("expected Pizza log_count=1, got %v", second["log_count"])
+	}
+}
+
+func TestListRecentFoods_excludesOldEntries(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	now := time.Now()
+
+	insertFoodLog(t, uid, "Recent oatmeal", "breakfast", 350, 12, 60, 6, now.AddDate(0, 0, -5))
+	// Outside the 30-day window — must be excluded.
+	insertFoodLog(t, uid, "Ancient burger", "lunch", 700, 30, 50, 40, now.AddDate(0, 0, -45))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/recent", nil)
+	th.ListRecentFoods(c)
+
+	resp := decodeResponse(t, w)
+	data := resp["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("expected 1 item within 30-day window, got %d", len(data))
+	}
+	if data[0].(map[string]any)["name"].(string) != "Recent oatmeal" {
+		t.Errorf("expected 'Recent oatmeal', got %v", data[0].(map[string]any)["name"])
+	}
+}
+
 // ─── GetFoodLog ───────────────────────────────────────────────────────────────
 
 func TestGetFoodLog_success(t *testing.T) {

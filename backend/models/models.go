@@ -123,6 +123,14 @@ type FoodLog struct {
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 }
 
+// RecentFood is a food the user logs often: the most-recent logged entry for a
+// distinct food, plus how many times it was logged within the lookback window.
+// Powers the Log Food "Recent" tab (frequently-used items, not just today).
+type RecentFood struct {
+	FoodLog
+	LogCount int `json:"log_count"`
+}
+
 type SavedFood struct {
 	ID          int64     `json:"id" db:"id"`
 	UserID      int64     `json:"user_id,omitempty" db:"user_id"`

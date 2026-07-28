@@ -84,6 +84,7 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.POST("food", h.LogFood)
 		protected.GET("food/stats", h.GetDailyStats)
 		protected.GET("food/history", h.GetFoodHistory)
+		protected.GET("food/recent", h.ListRecentFoods)
 		protected.GET("food/search", h.SearchFood)
 		protected.GET("food/barcode/:code", h.LookupBarcode)
 		protected.GET("food/saved", h.ListSavedFoods)
