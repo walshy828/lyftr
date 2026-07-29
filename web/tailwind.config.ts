@@ -23,6 +23,7 @@ export default {
           primary:   'var(--tx-primary)',
           secondary: 'var(--tx-secondary)',
           muted:     'var(--tx-muted)',
+          faint:     'var(--tx-faint)',
           inverse:   'var(--tx-inverse)',
         },
         // Brand — electric cyan

@@ -6,6 +6,11 @@
    Light = :root defaults. Dark = .dark overrides.
    Everything in the app inherits from these — both modes
    are fully supported everywhere with no carve-outs.
+
+   The tx-* text ramp is tuned so every step clears WCAG AA
+   (4.5:1) against --surface-base in both modes. --tx-faint is
+   the one exception: it is decoration only (hover borders),
+   never text, which is why it may sit below that threshold.
 ──────────────────────────────────────────────────────── */
 :root {
   --surface-base:    #f8fafc;
@@ -15,8 +20,9 @@
   --surface-muted:   #f1f5f9;
 
   --tx-primary:   #0f172a;
-  --tx-secondary: #475569;
-  --tx-muted:     #94a3b8;
+  --tx-secondary: #334155;
+  --tx-muted:     #64748b;
+  --tx-faint:     #94a3b8;
   --tx-inverse:   #ffffff;
 
   color-scheme: light;
@@ -30,8 +36,9 @@
   --surface-muted:   #162240;
 
   --tx-primary:   #f1f5f9;
-  --tx-secondary: #94a3b8;
-  --tx-muted:     #475569;
+  --tx-secondary: #cbd5e1;
+  --tx-muted:     #94a3b8;
+  --tx-faint:     #475569;
   --tx-inverse:   #0f172a;
 
   color-scheme: dark;
@@ -51,12 +58,12 @@
 
   /* Cards */
   .card             { @apply bg-surface-raised border border-surface-border rounded-xl; }
-  .card-interactive { @apply card hover:border-tx-muted transition-colors duration-150 cursor-pointer; }
+  .card-interactive { @apply card hover:border-tx-faint transition-colors duration-150 cursor-pointer; }
   .card-glass       { @apply bg-surface-raised backdrop-blur-xl border border-surface-border rounded-xl; }
 
   /* Buttons */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg whitespace-nowrap
            transition-all duration-150 focus-visible:outline-none
            focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2
            focus-visible:ring-offset-surface-base
@@ -67,7 +74,7 @@
   .btn-lg  { @apply btn text-sm  px-5   py-3; }
 
   .btn-primary   { @apply bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700 shadow-sm; }
-  .btn-secondary { @apply bg-surface-muted border border-surface-border text-tx-secondary hover:text-tx-primary hover:border-tx-muted; }
+  .btn-secondary { @apply bg-surface-muted border border-surface-border text-tx-secondary hover:text-tx-primary hover:border-tx-faint; }
   .btn-ghost     { @apply text-tx-muted hover:text-tx-primary hover:bg-surface-muted; }
   .btn-danger        { @apply bg-error-500/10 border border-error-500/20 text-error-400 hover:bg-error-500/20; }
   .btn-danger-solid  { @apply bg-error-500 text-white hover:bg-error-600 active:bg-error-700 shadow-sm; }

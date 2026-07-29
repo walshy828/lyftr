@@ -257,14 +257,16 @@ export default function Workouts() {
         title="Workouts"
         subtitle="Track and review your training sessions"
         action={
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowQuickCardio(true)} className="btn-secondary btn-sm">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button onClick={() => setShowQuickCardio(true)} className="btn-secondary btn-sm flex-1 sm:flex-none">
               <Footprints className="w-4 h-4" /> Cardio
             </button>
-            <button onClick={() => navigate('/workouts/new')} className="btn-secondary btn-sm">
-              <Plus className="w-4 h-4" /> Log Workout
+            <button onClick={() => navigate('/workouts/new')} className="btn-secondary btn-sm flex-1 sm:flex-none min-w-0">
+              <Plus className="w-4 h-4" />
+              {/* Single flex item so .btn's gap doesn't stack with the word space. */}
+              <span><span className="hidden sm:inline">Log </span>Workout</span>
             </button>
-            <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm">
+            <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm flex-1 sm:flex-none">
               <Play className="w-4 h-4" /> {session ? 'Resume' : 'Start'}
             </button>
           </div>
@@ -280,35 +282,39 @@ export default function Workouts() {
 
       {/* Summary — this week vs last week trend */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="card p-4">
+        <div className="card p-3 sm:p-4">
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="stat-label truncate">This Week</span>
+            <span className="stat-label text-[10px] sm:text-xs truncate">This Week</span>
           </div>
           <div className="flex items-end gap-1 min-w-0">
             <span className="stat-value text-xl">{thisWeek.length}</span>
             <span className="text-xs text-tx-muted mb-0.5 truncate">sessions</span>
           </div>
           {lastWeek.length > 0 || thisWeek.length > 0 ? (
-            <div className={`flex items-center gap-1 mt-1.5 text-xs font-medium ${
+            <div className={`flex items-center gap-1 mt-1.5 text-[10px] sm:text-xs font-medium ${
               weekDelta > 0 ? 'text-success-500' : weekDelta < 0 ? 'text-error-400' : 'text-tx-muted'
             }`}>
               {weekDelta > 0 ? <TrendingUp className="w-3 h-3 flex-shrink-0" /> : weekDelta < 0 ? <TrendingDown className="w-3 h-3 flex-shrink-0" /> : <Minus className="w-3 h-3 flex-shrink-0" />}
-              <span className="truncate">{weekDelta === 0 ? 'same as' : `${weekDelta > 0 ? '+' : ''}${weekDelta} vs`} last wk</span>
+              {/* Trailing "vs last wk" is dropped on mobile — it doesn't fit a third of a phone width. */}
+              <span className="truncate">
+                {weekDelta === 0 ? 'same' : `${weekDelta > 0 ? '+' : ''}${weekDelta}`}
+                <span className="hidden sm:inline">{weekDelta === 0 ? ' as' : ' vs'} last wk</span>
+              </span>
             </div>
           ) : null}
         </div>
-        <div className="card p-4">
+        <div className="card p-3 sm:p-4">
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="stat-label truncate">Last Week</span>
+            <span className="stat-label text-[10px] sm:text-xs truncate">Last Week</span>
           </div>
           <div className="flex items-end gap-1 min-w-0">
             <span className="stat-value text-xl">{lastWeek.length}</span>
             <span className="text-xs text-tx-muted mb-0.5 truncate">sessions</span>
           </div>
         </div>
-        <div className="card p-4">
+        <div className="card p-3 sm:p-4">
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="stat-label truncate">Avg Time</span>
+            <span className="stat-label text-[10px] sm:text-xs truncate">Avg Time</span>
           </div>
           <div className="flex items-end gap-1 min-w-0">
             <span className="stat-value text-xl">{workouts.length > 0 ? Math.round(workouts.reduce((sum, w) => sum + w.duration, 0) / workouts.length / 60) : 0}</span>

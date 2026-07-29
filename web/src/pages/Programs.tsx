@@ -45,11 +45,11 @@ export default function Programs() {
         title="Programs"
         subtitle="Reusable workout templates"
         action={
-          <div className="flex gap-2">
-            <button onClick={() => navigate('/programs/ai-new')} className="btn-secondary btn-sm">
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button onClick={() => navigate('/programs/ai-new')} className="btn-secondary btn-sm flex-1 sm:flex-none">
               <Sparkles className="w-4 h-4" /> AI Program
             </button>
-            <button onClick={() => navigate('/programs/new')} className="btn-primary btn-sm">
+            <button onClick={() => navigate('/programs/new')} className="btn-primary btn-sm flex-1 sm:flex-none">
               <Plus className="w-4 h-4" /> New Program
             </button>
           </div>

@@ -48,7 +48,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Suspense fallback={<div className="flex justify-center pt-24 text-gray-400">Loading…</div>}>
+      <Suspense fallback={<div className="flex justify-center pt-24 text-tx-muted">Loading…</div>}>
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login />} />
