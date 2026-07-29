@@ -37,6 +37,21 @@ func insertFoodLog(t *testing.T, uid int64, name, meal string, calories, protein
 	return id
 }
 
+func insertBrandedFoodLog(t *testing.T, uid int64, name, brand, meal string, calories, protein, carbs, fat float64, loggedAt time.Time) int64 {
+	t.Helper()
+	res, err := db.DB.Exec(
+		`INSERT INTO food_logs (user_id, name, brand, meal, calories, protein, carbs, fat, fiber, servings, serving_size, barcode, image_url, logged_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, '', '', '', ?)`,
+		uid, name, brand, meal, calories, protein, carbs, fat,
+		loggedAt.Format("2006-01-02T15:04:05Z"),
+	)
+	if err != nil {
+		t.Fatalf("insertBrandedFoodLog: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
 func insertSavedFood(t *testing.T, uid int64, name string) int64 {
 	t.Helper()
 	res, err := db.DB.Exec(
@@ -197,6 +212,45 @@ func TestListRecentFoods_ranksMostUsedFirstAndUsesLatestEntry(t *testing.T) {
 	}
 	if second["log_count"].(float64) != 1 {
 		t.Errorf("expected Pizza log_count=1, got %v", second["log_count"])
+	}
+}
+
+// The same food arrives from several routes (scan, AI label, search, hand
+// entry) that disagree about brand, casing and stray whitespace. None of that
+// is visible in the Recent list, so none of it may split the row.
+func TestListRecentFoods_dedupesNameVariantsAndBrands(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	now := time.Now()
+
+	insertFoodLog(t, uid, "Eggs", "breakfast", 140, 12, 1, 10, now.AddDate(0, 0, -3))
+	insertFoodLog(t, uid, "eggs", "breakfast", 140, 12, 1, 10, now.AddDate(0, 0, -2))
+	insertFoodLog(t, uid, "  Eggs ", "breakfast", 140, 12, 1, 10, now.AddDate(0, 0, -2))
+	insertFoodLog(t, uid, "Eggs  large", "breakfast", 140, 12, 1, 10, now.AddDate(0, 0, -1))
+	// Same name, different brand — brand must not split the row either.
+	insertBrandedFoodLog(t, uid, "Eggs", "Eggland's Best", "breakfast", 150, 13, 1, 10, now)
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/recent", nil)
+	th.ListRecentFoods(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].([]any)
+	// "Eggs" (4 logs: 3 spelling variants + the branded one) and "Eggs large".
+	if len(data) != 2 {
+		names := make([]string, len(data))
+		for i, d := range data {
+			names[i] = d.(map[string]any)["name"].(string)
+		}
+		t.Fatalf("expected 2 deduped foods, got %d: %v", len(data), names)
+	}
+	first := data[0].(map[string]any)
+	if first["log_count"].(float64) != 4 {
+		t.Errorf("expected the Eggs variants to merge into log_count=4, got %v", first["log_count"])
+	}
+	if first["calories"].(float64) != 150 {
+		t.Errorf("expected macros from the latest Eggs entry (150), got %v", first["calories"])
 	}
 }
 

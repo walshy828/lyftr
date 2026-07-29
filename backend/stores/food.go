@@ -2,6 +2,7 @@ package stores
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/Cawlumm/lyftr-backend/models"
 )
@@ -131,12 +132,32 @@ func (s *FoodStore) RecentFoodNames(uid int64, limit int) ([]string, error) {
 	return names, rows.Err()
 }
 
+// foodNameKey normalizes a food name/brand column into a grouping key:
+// lowercased, internal whitespace runs collapsed, then trimmed. Without this,
+// entries that are indistinguishable on screen ("Eggs", "eggs", "Eggs ")
+// become separate rows in the Recent list.
+func foodNameKey(col string) string {
+	e := fmt.Sprintf("replace(replace(lower(%s), char(9), ' '), char(10), ' ')", col)
+	// Three passes collapse runs of up to 8 spaces — far beyond any real label.
+	for range 3 {
+		e = fmt.Sprintf("replace(%s, '  ', ' ')", e)
+	}
+	return "trim(" + e + ")"
+}
+
 // RecentFrequentFoods returns the user's go-to foods within the last sinceDays:
 // one row per distinct food (its most-recent logged entry, via SQLite's "bare
 // column follows the max() row" rule) plus how many times it was logged, ranked
 // most-used first (log_count DESC) with the most recently logged breaking ties.
 // Over a short window this showcases the items logged most often and most
 // recently — e.g. a daily coffee — at the top. Backed by idx_food_logs_user.
+//
+// "Distinct food" is keyed on the normalized name alone — deliberately not on
+// brand. The same food reaches food_logs by several routes (barcode scan, AI
+// label, search, hand entry) that disagree about brand, so keying on it split
+// rows the user sees as identical: two "Eggs", same macros, one with an empty
+// brand. Since the row already shows only the latest entry's macros, collapsing
+// by name is the same trade the query was already making.
 func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]models.RecentFood, error) {
 	rows, err := s.db.Query(
 		// The MAX(logged_at) column makes it the query's single min/max aggregate,
@@ -148,7 +169,7 @@ func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]mode
 		`SELECT id, user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, barcode, image_url, source, logged_at, created_at, COUNT(*) AS log_count, MAX(logged_at) AS last_logged
 		 FROM food_logs
 		 WHERE user_id = ? AND logged_at >= date('now', ?)
-		 GROUP BY lower(name), lower(brand)
+		 GROUP BY `+foodNameKey("name")+`
 		 ORDER BY COUNT(*) DESC, MAX(logged_at) DESC
 		 LIMIT ?`,
 		uid, dayWindow(sinceDays), limit,

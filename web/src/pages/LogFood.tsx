@@ -42,6 +42,7 @@ function entryToResult(e: types.FoodLog): types.FoodSearchResult {
   const s = e.servings || 1
   return {
     name: e.name,
+    brand: e.brand,
     calories: e.calories / s,
     protein: e.protein / s,
     carbs: e.carbs / s,
@@ -576,7 +577,7 @@ export default function LogFood() {
                     <p className="text-xs text-tx-muted mt-1 opacity-60">Foods you log often show up here</p>
                   </div>
                 )
-                : recentItems.map((item) => <FoodResultRow key={`${item.name}-${item.calories}`} item={item} onClick={() => selectResult(item, true)} />)
+                : recentItems.map((item, i) => <FoodResultRow key={`${item.name}-${item.brand}-${item.calories}-${i}`} item={item} onClick={() => selectResult(item, true)} />)
             )}
 
             {tab === 'myfoods' && (
