@@ -51,16 +51,18 @@ export default function Dashboard() {
   return (
     <div className="space-y-4 animate-slide-up">
       {/* Header */}
-      <div className="flex justify-between items-start gap-3">
+      {/* Stacks on mobile so the greeting gets the full width instead of being
+          squeezed into a narrow column by the two action buttons. */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
         <div className="min-w-0">
           <p className="text-[11px] text-tx-muted uppercase tracking-wider font-medium">{format(TODAY, 'EEEE, MMMM d')}</p>
           <h1 className="font-display font-bold text-2xl text-tx-primary mt-0.5">{greeting()}, {username}</h1>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={() => navigate('/food/log')} className="btn-secondary btn-sm">
+        <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-shrink-0">
+          <button onClick={() => navigate('/food/log')} className="btn-secondary btn-sm flex-1 sm:flex-none">
             <Utensils className="w-3.5 h-3.5" /> Log Food
           </button>
-          <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm">
+          <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm flex-1 sm:flex-none">
             <Play className="w-3.5 h-3.5" /> {session ? 'Resume' : 'Start'}
           </button>
         </div>

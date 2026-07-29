@@ -19,7 +19,7 @@ export default function DeltaBadge({
   const rounded = Number(value.toFixed(decimals))
   if (rounded === 0) {
     return (
-      <span className={`inline-flex items-center gap-0.5 text-[11px] text-tx-muted tabular-nums ${className}`}>
+      <span className={`inline-flex items-center gap-0.5 whitespace-nowrap text-[11px] text-tx-muted tabular-nums ${className}`}>
         <Minus className="w-3 h-3" /> 0{suffix}
       </span>
     )
@@ -30,9 +30,9 @@ export default function DeltaBadge({
   const color = isGood === null ? 'text-tx-secondary' : isGood ? 'text-success-400' : 'text-error-400'
   const Icon = up ? ArrowUp : ArrowDown
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums ${color} ${className}`}>
+    <span className={`inline-flex items-center gap-0.5 whitespace-nowrap text-[11px] font-medium tabular-nums ${color} ${className}`}>
       <Icon className="w-3 h-3" />
-      {Math.abs(rounded).toLocaleString()}{suffix}
+      {`${Math.abs(rounded).toLocaleString()}${suffix}`}
     </span>
   )
 }

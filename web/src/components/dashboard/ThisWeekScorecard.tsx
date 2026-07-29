@@ -52,6 +52,8 @@ export default function ThisWeekScorecard({
       <div className="grid grid-cols-3 gap-2">
         <StatTile
           label="Training"
+          to="/workouts"
+          linkLabel="Training this week — view workouts"
           icon={Dumbbell}
           accent="#2563eb"
           value={trainNow.sessions}
@@ -60,6 +62,8 @@ export default function ThisWeekScorecard({
         />
         <StatTile
           label="Nutrition"
+          to="/food"
+          linkLabel="Nutrition this week — view food log"
           icon={Flame}
           accent="#00b8d9"
           value={nutNow.daysLogged > 0 ? Math.round(nutNow.avgCalories).toLocaleString() : '—'}
@@ -72,6 +76,8 @@ export default function ThisWeekScorecard({
         />
         <StatTile
           label="Weight"
+          to="/weight"
+          linkLabel="Weight this week — view weight log"
           icon={Scale}
           accent="#6366f1"
           value={weightStats ? displayWeight(weightStats.latest, settings.weight_unit) : '—'}
