@@ -100,7 +100,7 @@ export default function PlanAdherenceHero({
 
       {/* Adherence sub-stats */}
       <div className="grid grid-cols-3 gap-2 mb-3">
-        <SubStat icon={Utensils} color="#00b8d9" value={`${adherence.days_logged_food}/7`} label="days logged" />
+        <SubStat icon={Utensils} color="#00b8d9" value={`${adherence.days_logged_food}/${adherence.logging_window || 7}`} label="days logged" />
         <SubStat icon={Dumbbell} color="#2563eb" value={adherence.workouts_last_7d} label="workout days" />
         <SubStat icon={Flame} color="#f59e0b" value={Math.round(adherence.avg_calories).toLocaleString()} label="avg kcal" />
       </div>

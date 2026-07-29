@@ -153,6 +153,41 @@ func TestGetWeightPlanAdherence_composesFoodWorkoutWeightSignals(t *testing.T) {
 	}
 }
 
+// Regression: the adherence window used date('now','-7 days'), which spans
+// EIGHT calendar days (that midnight through today) — so a user who logged
+// every day saw "8/7 days logged", a count larger than its own denominator.
+func TestGetWeightPlanAdherence_daysLoggedNeverExceedsWindow(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	ac, aw := newContext(uid, http.MethodPost, "/api/v1/weight/plan/accept", acceptPlanBody())
+	th.AcceptWeightPlan(ac)
+	if aw.Code != http.StatusCreated {
+		t.Fatalf("accept: expected 201, got %d", aw.Code)
+	}
+
+	// Food on each of the last 8 calendar days — one more than the window.
+	now := time.Now().UTC()
+	for i := 0; i < 8; i++ {
+		insertFoodLog(t, uid, "oats", "breakfast", 300, 10, 50, 5,
+			now.AddDate(0, 0, -i).Truncate(time.Hour))
+	}
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/weight/plan/adherence", nil)
+	th.GetWeightPlanAdherence(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	d := settingsData(t, w)
+	days, window := d["days_logged_food"].(float64), d["logging_window"].(float64)
+	if window != 7 {
+		t.Fatalf("expected a 7-day window, got %v", window)
+	}
+	if days != 7 {
+		t.Fatalf("expected exactly 7 days logged over a 7-day window, got %v", days)
+	}
+}
+
 func TestGetCurrentNutritionGoal_includesTimelineAndForecast(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)

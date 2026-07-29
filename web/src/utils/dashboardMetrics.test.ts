@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   calcVolume, weekRange, weeklyTraining, daysSinceLastWorkout, untrainedFocusRegions,
   weeklyNutrition, delta, olsTrend, weightSeries, goalDirection, goalProgress, buildInsights,
+  elapsedDays, firstDaysOf,
   workoutMinutesByCategory, activityMix,
   type InsightSignals, type WeeklyNutrition,
 } from './dashboardMetrics'
@@ -131,15 +132,39 @@ describe('weeklyNutrition', () => {
     { date: '2026-07-06', calories: 2200, protein: 170, carbs: 210, fat: 70 }, // last week
   ]
   it('averages over logged days only and counts protein hits', () => {
-    const n = weeklyNutrition(hist, 150, weekRange(NOW))
+    const n = weeklyNutrition(hist, 150, weekRange(NOW), NOW)
     expect(n.daysLogged).toBe(2)
     expect(n.avgCalories).toBe(1900)
     expect(n.proteinHitDays).toBe(1) // only 160 >= 150
   })
   it('zero when nothing logged in-window', () => {
-    const n = weeklyNutrition([], 150, weekRange(NOW))
+    const n = weeklyNutrition([], 150, weekRange(NOW), NOW)
     expect(n.daysLogged).toBe(0)
     expect(n.avgCalories).toBe(0)
+  })
+  it('denominator is the days elapsed, and never smaller than days logged', () => {
+    // Wednesday: Mon/Tue/Wed exist, so the window is 3 — never 7.
+    const n = weeklyNutrition(hist, 150, weekRange(NOW), NOW)
+    expect(n.daysInWindow).toBe(3)
+    expect(n.daysLogged).toBeLessThanOrEqual(n.daysInWindow)
+  })
+  it('a completed week is scored over its full 7 days', () => {
+    expect(weeklyNutrition(hist, 150, weekRange(NOW, 1), NOW).daysInWindow).toBe(7)
+  })
+})
+
+describe('elapsedDays / firstDaysOf', () => {
+  it('counts days elapsed in the in-progress week', () => {
+    expect(elapsedDays(weekRange(NOW), NOW)).toBe(3) // Mon, Tue, Wed
+  })
+  it('a past week is fully elapsed', () => {
+    expect(elapsedDays(weekRange(NOW, 1), NOW)).toBe(7)
+  })
+  it('truncates a week to its first n days for like-for-like comparison', () => {
+    const prev = firstDaysOf(weekRange(NOW, 1), 3)
+    expect(elapsedDays(prev, NOW)).toBe(3)
+    // Mon 2026-07-06 .. end of Wed 2026-07-08
+    expect(prev.end.getDate()).toBe(8)
   })
 })
 
@@ -183,7 +208,7 @@ describe('goalDirection / goalProgress', () => {
 })
 
 describe('buildInsights', () => {
-  const baseNut: WeeklyNutrition = { avgCalories: 2000, avgProtein: 100, avgCarbs: 200, avgFat: 60, daysLogged: 3, proteinHitDays: 2 }
+  const baseNut: WeeklyNutrition = { avgCalories: 2000, avgProtein: 100, avgCarbs: 200, avgFat: 60, daysLogged: 3, daysInWindow: 7, proteinHitDays: 2 }
   const base: InsightSignals = {
     nutrition: baseNut, calorieTarget: 2000, sessionsThisWeek: 1, daysSinceWorkout: 2,
     untrainedRegions: [], weightChange7d: 0, weightUnit: 'lb', goal: null,
@@ -199,6 +224,23 @@ describe('buildInsights', () => {
     const out = buildInsights({ ...base, nutrition: { ...baseNut, daysLogged: 2 }, daysSinceWorkout: 9 })
     expect(out.some(i => i.tone === 'focus' && /Logging slipped/.test(i.text))).toBe(true)
     expect(out.some(i => i.tone === 'focus' && /No workouts/.test(i.text))).toBe(true)
+  })
+
+  // The partial-week regression: mid-week, a perfectly-logged 3 days must read
+  // as consistency out of 3 — not as "3 of 7" sparse logging.
+  it('scores a partial week against the days elapsed, not a flat 7', () => {
+    const out = buildInsights({
+      ...base, nutrition: { ...baseNut, daysLogged: 3, daysInWindow: 3, proteinHitDays: 3 },
+    })
+    expect(out.some(i => i.tone === 'good' && /tracked food 3 of 3 days/.test(i.text))).toBe(true)
+    expect(out.some(i => /Logging slipped/.test(i.text))).toBe(false)
+  })
+
+  it('makes no consistency claim in the first days of a week', () => {
+    const out = buildInsights({
+      ...base, nutrition: { ...baseNut, daysLogged: 1, daysInWindow: 1, proteinHitDays: 1 },
+    })
+    expect(out.some(i => /Consistent logging|Protein on point/.test(i.text))).toBe(false)
   })
 
   it('weight direction insights require an active goal', () => {

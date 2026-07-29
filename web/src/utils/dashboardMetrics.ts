@@ -19,6 +19,35 @@ export function weekRange(now: Date, weeksAgo = 0): WeekRange {
   return { start: startOfWeek(ref, { weekStartsOn: 1 }), end: endOfWeek(ref, { weekStartsOn: 1 }) }
 }
 
+// How many days of `range` have actually happened as of `now`: 7 for any
+// completed week, 1–7 for the week in progress. This is the honest denominator
+// for every "x of y days" stat — on a Wednesday only three days exist to log,
+// so scoring them out of 7 reads as a failure the user hasn't had a chance to
+// avoid.
+export function elapsedDays(range: WeekRange, now: Date): number {
+  // Counted in calendar days, not milliseconds: a week containing a DST shift
+  // is 167 or 169 hours long, which a /86_400_000 division rounds wrong.
+  const spanDays = dayIndex(range.end) - dayIndex(range.start) + 1
+  if (now >= range.end) return spanDays
+  if (now < range.start) return 0
+  return Math.min(spanDays, dayIndex(now) - dayIndex(range.start) + 1)
+}
+
+// Days since the epoch for a date's LOCAL calendar day — a DST-safe way to
+// subtract two dates and get a whole number of days.
+const dayIndex = (d: Date): number =>
+  Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000)
+
+// The first `days` days of a week, as its own range — used to compare the
+// in-progress week against the SAME slice of the prior week. Comparing three
+// days against a full seven makes every week look like a collapse on Monday.
+export function firstDaysOf(range: WeekRange, days: number): WeekRange {
+  const end = new Date(range.start)
+  end.setDate(end.getDate() + Math.max(days, 1) - 1)
+  end.setHours(23, 59, 59, 999)
+  return { start: range.start, end: end < range.end ? end : range.end }
+}
+
 // ── Training ────────────────────────────────────────────────────────────
 export interface WeeklyTraining { sessions: number; volume: number }
 export function weeklyTraining(workouts: Workout[], range: WeekRange): WeeklyTraining {
@@ -102,6 +131,7 @@ export interface WeeklyNutrition {
   avgCarbs: number
   avgFat: number
   daysLogged: number       // days in-window with any calories
+  daysInWindow: number     // days of the window that have elapsed (the denominator)
   proteinHitDays: number   // logged days that met the protein target
 }
 
@@ -111,8 +141,11 @@ const dayStr = (d: Date): string => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+// `now` decides how much of `range` counts as elapsed — pass the same clock the
+// caller used to build the range so an in-progress week is scored out of the
+// days it actually has.
 export function weeklyNutrition(
-  history: FoodHistoryPoint[], proteinTarget: number, range: WeekRange,
+  history: FoodHistoryPoint[], proteinTarget: number, range: WeekRange, now: Date = new Date(),
 ): WeeklyNutrition {
   const lo = dayStr(range.start)
   const hi = dayStr(range.end)
@@ -125,6 +158,7 @@ export function weeklyNutrition(
     avgCarbs: n ? sum(p => p.carbs) / n : 0,
     avgFat: n ? sum(p => p.fat) / n : 0,
     daysLogged: n,
+    daysInWindow: elapsedDays(range, now),
     proteinHitDays: proteinTarget > 0 ? logged.filter(p => p.protein >= proteinTarget).length : 0,
   }
 }
@@ -204,11 +238,25 @@ export function buildInsights(s: InsightSignals): Insight[] {
   const focus: Insight[] = []
   const u = s.weightUnit
 
+  // Consistency is judged against the days of the week that have elapsed, not a
+  // flat 7 — otherwise a perfectly-logged Wednesday reads "3 of 7 days tracked"
+  // and lands in "focus". The thresholds are expressed as days MISSED so they
+  // keep their full-week meaning (missed <=1 = consistent, >=4 = slipped) while
+  // staying honest mid-week: early in the week there simply aren't enough days
+  // for either verdict yet, so neither fires.
+  const days = s.nutrition.daysInWindow
+  const missedLogging = days - s.nutrition.daysLogged
+  const missedProtein = days - s.nutrition.proteinHitDays
+
+  // A "streak" claim needs a few days behind it, hence the days >= 3 floor —
+  // one logged Monday isn't consistency yet.
+  const enoughSignal = days >= 3
+
   // Good
-  if (s.nutrition.proteinHitDays >= 5)
-    good.push({ tone: 'good', text: `Protein on point — hit target ${s.nutrition.proteinHitDays} of 7 days` })
-  if (s.nutrition.daysLogged >= 6)
-    good.push({ tone: 'good', text: `Consistent logging — tracked food ${s.nutrition.daysLogged} of 7 days` })
+  if (enoughSignal && s.nutrition.proteinHitDays > 0 && missedProtein <= 2)
+    good.push({ tone: 'good', text: `Protein on point — hit target ${s.nutrition.proteinHitDays} of ${days} days` })
+  if (enoughSignal && s.nutrition.daysLogged > 0 && missedLogging <= 1)
+    good.push({ tone: 'good', text: `Consistent logging — tracked food ${s.nutrition.daysLogged} of ${days} days` })
   if (s.sessionsThisWeek >= 3)
     good.push({ tone: 'good', text: `Strong week — ${s.sessionsThisWeek} training sessions logged` })
   if (s.goal === 'loss' && s.weightChange7d < -0.1)
@@ -217,8 +265,8 @@ export function buildInsights(s: InsightSignals): Insight[] {
     good.push({ tone: 'good', text: `Calories dialed in — averaging within ${s.calorieTarget} kcal target` })
 
   // Focus
-  if (s.nutrition.daysLogged > 0 && s.nutrition.daysLogged < 4)
-    focus.push({ tone: 'focus', text: `Logging slipped — only ${s.nutrition.daysLogged} of 7 days tracked` })
+  if (s.nutrition.daysLogged > 0 && missedLogging >= 4)
+    focus.push({ tone: 'focus', text: `Logging slipped — only ${s.nutrition.daysLogged} of ${days} days tracked` })
   if (s.nutrition.daysLogged > 0 && s.nutrition.avgCalories - s.calorieTarget > 150)
     focus.push({ tone: 'focus', text: `Averaging ${Math.round(s.nutrition.avgCalories - s.calorieTarget)} kcal over target` })
   if (s.daysSinceWorkout !== null && s.daysSinceWorkout >= 7)

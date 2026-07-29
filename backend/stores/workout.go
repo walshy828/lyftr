@@ -2,7 +2,6 @@ package stores
 
 import (
 	"database/sql"
-	"fmt"
 	"strings"
 
 	"github.com/Cawlumm/lyftr-backend/models"
@@ -305,7 +304,7 @@ func (s *WorkoutStore) CountSince(uid int64, days int) (int, error) {
 	err := s.db.QueryRow(
 		`SELECT COUNT(DISTINCT substr(started_at, 1, 10)) FROM workouts
 		 WHERE user_id = ? AND started_at >= date('now', ?)`,
-		uid, fmt.Sprintf("-%d days", days),
+		uid, dayWindow(days),
 	).Scan(&n)
 	return n, err
 }

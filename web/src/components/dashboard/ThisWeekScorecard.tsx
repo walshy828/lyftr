@@ -4,6 +4,7 @@ import * as types from '../../types'
 import { displayWeight, weightShort } from '../../stores/settings'
 import {
   weekRange, weeklyTraining, weeklyNutrition, delta, goalDirection,
+  elapsedDays, firstDaysOf,
 } from '../../utils/dashboardMetrics'
 
 const NOW = new Date()
@@ -21,14 +22,17 @@ export default function ThisWeekScorecard({
 }) {
   const wUnit = weightShort(settings.weight_unit)
   const thisWeek = weekRange(NOW, 0)
-  const lastWeek = weekRange(NOW, 1)
+  const daysSoFar = elapsedDays(thisWeek, NOW)
+  // Compare against the same slice of last week (Mon–Wed vs Mon–Wed), not its
+  // full seven days — otherwise every week opens looking like a collapse.
+  const lastWeek = firstDaysOf(weekRange(NOW, 1), daysSoFar)
 
   const trainNow = weeklyTraining(workouts, thisWeek)
   const trainPrev = weeklyTraining(workouts, lastWeek)
   const sessionsDelta = delta(trainNow.sessions, trainPrev.sessions)
 
-  const nutNow = weeklyNutrition(foodHistory, settings.protein_target, thisWeek)
-  const nutPrev = weeklyNutrition(foodHistory, settings.protein_target, lastWeek)
+  const nutNow = weeklyNutrition(foodHistory, settings.protein_target, thisWeek, NOW)
+  const nutPrev = weeklyNutrition(foodHistory, settings.protein_target, lastWeek, NOW)
   const calDelta = delta(Math.round(nutNow.avgCalories), Math.round(nutPrev.avgCalories))
 
   // Weight direction only reads as good/bad when a plan tells us the intent.
@@ -59,7 +63,7 @@ export default function ThisWeekScorecard({
           icon={Flame}
           accent="#00b8d9"
           value={nutNow.daysLogged > 0 ? Math.round(nutNow.avgCalories).toLocaleString() : '—'}
-          sub={nutNow.daysLogged > 0 ? `kcal · ${nutNow.daysLogged}/7 logged` : 'not logged'}
+          sub={nutNow.daysLogged > 0 ? `kcal · ${nutNow.daysLogged}/${daysSoFar} logged` : 'not logged'}
           delta={
             nutNow.daysLogged > 0 && nutPrev.daysLogged > 0
               ? <DeltaBadge value={calDelta.abs} goodDirection="none" />

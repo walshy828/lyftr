@@ -2,7 +2,6 @@ package stores
 
 import (
 	"database/sql"
-	"fmt"
 
 	"github.com/Cawlumm/lyftr-backend/models"
 )
@@ -152,7 +151,7 @@ func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]mode
 		 GROUP BY lower(name), lower(brand)
 		 ORDER BY COUNT(*) DESC, MAX(logged_at) DESC
 		 LIMIT ?`,
-		uid, fmt.Sprintf("-%d days", sinceDays), limit,
+		uid, dayWindow(sinceDays), limit,
 	)
 	if err != nil {
 		return nil, err
@@ -184,7 +183,7 @@ func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, err
 		 FROM food_logs
 		 WHERE user_id = ? AND logged_at >= date('now', ?)
 		 GROUP BY d ORDER BY d ASC`,
-		uid, fmt.Sprintf("-%d days", days),
+		uid, dayWindow(days),
 	)
 	if err != nil {
 		return nil, err
@@ -202,14 +201,15 @@ func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, err
 }
 
 // LoggedDaysCount returns how many distinct calendar days in the last `days`
-// days have at least one food_logs entry — the logging-consistency signal
-// for the weight-plan adherence panel.
+// days (today inclusive) have at least one food_logs entry — the
+// logging-consistency signal for the weight-plan adherence panel. The result is
+// therefore always <= days, so callers can safely render it as "n of days".
 func (s *FoodStore) LoggedDaysCount(uid int64, days int) (int, error) {
 	var n int
 	err := s.db.QueryRow(
 		`SELECT COUNT(DISTINCT substr(logged_at, 1, 10)) FROM food_logs
 		 WHERE user_id = ? AND logged_at >= date('now', ?)`,
-		uid, fmt.Sprintf("-%d days", days),
+		uid, dayWindow(days),
 	).Scan(&n)
 	return n, err
 }

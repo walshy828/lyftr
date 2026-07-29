@@ -21,7 +21,7 @@ export default function InsightsCard({
   plan: types.CurrentNutritionGoal | null
 }) {
   const thisWeek = weekRange(NOW, 0)
-  const nutrition = weeklyNutrition(foodHistory, settings.protein_target, thisWeek)
+  const nutrition = weeklyNutrition(foodHistory, settings.protein_target, thisWeek, NOW)
   const training = weeklyTraining(workouts, thisWeek)
   const goal = plan && weightStats ? goalDirection(plan.goal.target_weight, weightStats.starting) : null
   const change7d = weightStats ? displayWeight(weightStats.change_7d, settings.weight_unit) : 0

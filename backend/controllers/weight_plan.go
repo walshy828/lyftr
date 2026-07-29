@@ -228,7 +228,10 @@ func (h *Handler) GetNutritionGoalHistory(c *gin.Context) {
 }
 
 // adherenceLookbackDays is the rolling window used for the logging/workout
-// consistency signals in the adherence panel.
+// consistency signals in the adherence panel. It's a trailing window that
+// includes today (see stores.dayWindow), not a calendar week, so it's always
+// "full" — there's no partial-period case to correct for here, and the counts
+// it produces are bounded by it.
 const adherenceLookbackDays = 7
 
 // weekStart returns the Monday (UTC, midnight) of the week containing t —
@@ -352,6 +355,7 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 		"drivers":           drivers,
 		"motivational_note": note,
 		"days_logged_food":  loggedDays,
+		"logging_window":    adherenceLookbackDays,
 		"avg_calories":      avgCalories,
 		"workouts_last_7d":  workoutDays,
 		"weeks_into_plan":   weeksIntoPlan,

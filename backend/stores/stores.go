@@ -6,6 +6,7 @@ package stores
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 )
 
@@ -39,6 +40,20 @@ func New(db *sql.DB) *Stores {
 		NutritionGoal: NewNutritionGoalStore(db),
 		Motivation:    NewMotivationStore(db),
 	}
+}
+
+// dayWindow returns the SQLite date() modifier for a rolling window of `days`
+// calendar days that INCLUDES today — i.e. "-6 days" for a 7-day window.
+//
+// The naive "-7 days" is an off-by-one: date('now','-7 days') is midnight of the
+// day seven days back, so the window spans eight distinct calendar days (that
+// day through today). Any "distinct days" count over it can exceed its own
+// denominator — that's what produced a "8/7 days logged" adherence stat.
+func dayWindow(days int) string {
+	if days < 1 {
+		days = 1
+	}
+	return fmt.Sprintf("-%d days", days-1)
 }
 
 // inTx runs fn inside a transaction, committing on success and rolling back on

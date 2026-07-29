@@ -297,6 +297,7 @@ export interface WeightPlanAdherence {
   drivers: string[]
   motivational_note: string
   days_logged_food: number
+  logging_window: number // size of the rolling window days_logged_food is counted over
   avg_calories: number
   workouts_last_7d: number
   weeks_into_plan: number
