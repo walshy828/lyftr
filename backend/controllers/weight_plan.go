@@ -255,6 +255,11 @@ func (h *Handler) GetCurrentNutritionGoal(c *gin.Context) {
 		}
 	}
 
+	basis, err := h.planEnergyBasis(uid, goal)
+	if utils.DBError(c, err) {
+		return
+	}
+
 	utils.OK(c, gin.H{
 		"goal":            goal,
 		"projections":     projections,
@@ -262,7 +267,44 @@ func (h *Handler) GetCurrentNutritionGoal(c *gin.Context) {
 		"actual_forecast": forecast,
 		"original_plan":   original,
 		"journey_start":   journeyStart,
+		"basis":           basis,
 	})
+}
+
+// planEnergyBasis recomputes the deterministic energy picture behind an
+// already-accepted goal, so the plan summary can show the same maintenance,
+// deficit, and macro arithmetic the user saw when they reviewed the draft —
+// but against their *current* weight, which is the number that matters once
+// the plan is running.
+//
+// Returns nil (rather than an error) whenever the profile isn't complete
+// enough to compute from — no height, no birth date, or no weight logged.
+// The basis is a nice-to-have readout; a half-filled profile shouldn't stop
+// the plan itself from loading.
+func (h *Handler) planEnergyBasis(uid int64, goal models.NutritionGoal) (*models.PlanEnergyBasis, error) {
+	profile, err := h.s.Profile.Get(uid)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	if profile.HeightInches <= 0 {
+		return nil, nil
+	}
+	age, ok := utils.AgeFromBirthDate(profile.BirthDate, time.Now())
+	if !ok {
+		return nil, nil
+	}
+	stats, err := h.s.Weight.Stats(uid)
+	if err != nil {
+		return nil, err
+	}
+	if stats.Latest <= 0 {
+		return nil, nil
+	}
+	pace := utils.WeeklyLossGuidanceFor(utils.BMICategory(utils.BMI(stats.Latest, profile.HeightInches)), stats.Latest)
+	basis := utils.BuildPlanEnergyBasis(profile, age, stats.Latest, goal.TargetWeight, goal.CalorieTarget, pace)
+	return &basis, nil
 }
 
 // forecastActualWeight fetches the user's weight logs and BMI-based pace

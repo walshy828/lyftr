@@ -33,22 +33,35 @@ const basis: types.PlanEnergyBasis = {
 
 const targets = { calories: 1900, protein: 180, carbs: 150, fat: 60 }
 
+/** The profile-recount grid, scoped away from the narrative above it — both
+ *  legitimately state the user's height and weight, so a bare getByText would
+ *  match twice. */
+const profileGrid = () =>
+  within(screen.getByText('Your profile').closest('div')!.querySelector('.grid') as HTMLElement)
+
+/** The activity-level table, likewise scoped away from the narrative's own
+ *  maintenance tiles. */
+const activityTable = (container: HTMLElement) =>
+  within(container.querySelector('table') as HTMLElement)
+
 describe('PlanBasis', () => {
   it('recounts the profile the plan was computed from', () => {
     render(<PlanBasis basis={basis} targets={targets} weightUnit="lbs" />)
-    expect(screen.getByText('Male')).toBeTruthy()
-    expect(screen.getByText(`5' 10"`)).toBeTruthy()
-    expect(screen.getByText('230 lb')).toBeTruthy() // current weight
-    expect(screen.getByText('180 lb')).toBeTruthy() // goal weight
-    expect(screen.getByText('50 lb')).toBeTruthy() // to lose
-    expect(screen.getByText('1,959 kcal')).toBeTruthy() // resting burn
+    const grid = profileGrid()
+    expect(grid.getByText('Male')).toBeTruthy()
+    expect(grid.getByText(`5' 10"`)).toBeTruthy()
+    expect(grid.getByText('230 lb')).toBeTruthy() // current weight
+    expect(grid.getByText('180 lb')).toBeTruthy() // goal weight
+    expect(grid.getByText('50 lb')).toBeTruthy() // to lose
+    expect(grid.getByText('1,959 kcal')).toBeTruthy() // resting burn
   })
 
   it('shows maintenance and the recommended intake window for every activity level', () => {
-    render(<PlanBasis basis={basis} targets={targets} weightUnit="lbs" />)
+    const { container } = render(<PlanBasis basis={basis} targets={targets} weightUnit="lbs" />)
+    const table = activityTable(container)
     for (const l of basis.levels) {
-      expect(screen.getByText(l.label)).toBeTruthy()
-      expect(screen.getByText(l.maintenance_calories.toLocaleString())).toBeTruthy()
+      expect(table.getByText(l.label)).toBeTruthy()
+      expect(table.getByText(l.maintenance_calories.toLocaleString())).toBeTruthy()
     }
     // The level that can't reach the pace band without going under the floor
     // is called out rather than silently clamped.
@@ -100,8 +113,9 @@ describe('PlanBasis', () => {
 
   it('renders height in centimetres for metric users', () => {
     render(<PlanBasis basis={basis} targets={targets} weightUnit="kg" />)
-    expect(screen.getByText('178 cm')).toBeTruthy()
-    expect(screen.getByText('104.3 kg')).toBeTruthy() // 230 lbs
+    const grid = profileGrid()
+    expect(grid.getByText('178 cm')).toBeTruthy()
+    expect(grid.getByText('104.3 kg')).toBeTruthy() // 230 lbs
   })
 })
 

@@ -3,12 +3,15 @@ import { Activity, Flame, Ruler, Scale, SlidersHorizontal } from 'lucide-react'
 import * as types from '../types'
 import { weightShort, displayWeight } from '../stores/settings'
 import { caloriesFromMacros, macroSplit, proteinScenario, weeklyLossFromDeficit } from '../utils/nutritionScenarios'
+import PlanEnergyNarrative, { formatHeight, kcal } from './PlanEnergyNarrative'
 
 interface Props {
   basis: types.PlanEnergyBasis
   /** The live (possibly user-edited) draft targets, so every derived figure
    *  below follows the numbers actually about to be saved. */
   targets: { calories: number; protein: number; carbs: number; fat: number }
+  /** Plan length, for the narrative's "in approximately XX weeks" clause. */
+  weeks?: number
   weightUnit: string
 }
 
@@ -18,14 +21,6 @@ interface Props {
 const ADHERENCE_STEPS = [1, 0.9, 0.8, 0.7]
 
 const SEX_LABEL: Record<string, string> = { male: 'Male', female: 'Female', '': 'Not set' }
-
-function formatHeight(inches: number, unit: string): string {
-  if (!(inches > 0)) return '—'
-  if (unit === 'kg') return `${Math.round(inches * 2.54)} cm`
-  return `${Math.floor(inches / 12)}' ${Math.round(inches % 12)}"`
-}
-
-const kcal = (n: number) => `${Math.round(n).toLocaleString()}`
 
 /**
  * The deterministic picture behind a generated plan: who it was computed for,
@@ -38,7 +33,7 @@ const kcal = (n: number) => `${Math.round(n).toLocaleString()}`
  * about to commit to daily numbers and should be able to see where they came
  * from and what the alternatives cost.
  */
-export default function PlanBasis({ basis, targets, weightUnit }: Props) {
+export default function PlanBasis({ basis, targets, weeks, weightUnit }: Props) {
   const wUnit = weightShort(weightUnit)
   const w = (lbs: number) => `${displayWeight(lbs, weightUnit)} ${wUnit}`
 
@@ -63,6 +58,9 @@ export default function PlanBasis({ basis, targets, weightUnit }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* 0. The whole picture in a sentence, before any of the tables. */}
+      <PlanEnergyNarrative basis={basis} calorieTarget={targets.calories} weeks={weeks} weightUnit={weightUnit} />
+
       {/* 1. The recount: what these numbers were computed from. */}
       <div>
         <h4 className="text-xs font-semibold uppercase tracking-wide text-tx-muted mb-2 flex items-center gap-1.5">

@@ -378,6 +378,11 @@ export interface CurrentNutritionGoal {
   // original one.
   original_plan: WeightPlanProjectionPoint[]
   journey_start: string
+  // The plan's energy arithmetic recomputed against the user's *current*
+  // weight (not the weight they had when they accepted it). null when the
+  // profile is too incomplete to compute from — no height, birth date, or
+  // logged weight.
+  basis?: PlanEnergyBasis | null
 }
 
 // One weekly bucket of the locked progress record: what the plan in force

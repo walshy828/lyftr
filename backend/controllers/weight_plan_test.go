@@ -131,6 +131,84 @@ func TestGenerateWeightPlan_threadsComputedEnergyFiguresToTheModel(t *testing.T)
 	}
 }
 
+// The accepted plan carries its energy basis back out, so the plan summary
+// can show maintenance-by-activity-level without a second round trip — and
+// against the user's *current* weight, not the one they accepted the plan at.
+func TestGetCurrentNutritionGoal_includesEnergyBasis(t *testing.T) {
+	setupTestDB(t)
+	uid := planReadyUser(t) // 40yo male, 70in, moderate, 230 lbs
+
+	ac, aw := newContext(uid, http.MethodPost, "/api/v1/weight/plan/accept", acceptPlanBody())
+	th.AcceptWeightPlan(ac)
+	if aw.Code != http.StatusCreated {
+		t.Fatalf("accept: expected 201, got %d: %s", aw.Code, aw.Body.String())
+	}
+	// A newer weigh-in: the basis must follow this, not the 230 above.
+	wc, ww := newContext(uid, http.MethodPost, "/api/v1/weight", map[string]any{"weight": 220})
+	th.LogWeight(wc)
+	if ww.Code != http.StatusCreated {
+		t.Fatalf("weigh-in: expected 201, got %d: %s", ww.Code, ww.Body.String())
+	}
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/weight/plan/current", nil)
+	th.GetCurrentNutritionGoal(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	basis, ok := settingsData(t, w)["basis"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected a basis object, got %v", settingsData(t, w)["basis"])
+	}
+	assertNum(t, basis, "current_weight_lbs", 220)
+	assertNum(t, basis, "target_weight_lbs", 190) // acceptPlanBody's target
+	assertNum(t, basis, "weight_to_lose_lbs", 30)
+	assertNum(t, basis, "calorie_target", 1800) // the accepted goal's target
+
+	levels, _ := basis["levels"].([]any)
+	if len(levels) != 5 {
+		t.Fatalf("expected all 5 activity levels, got %v", basis["levels"])
+	}
+	// Maintenance must climb with activity — the whole point of the readout
+	// is showing what training more would buy you.
+	prev := 0.0
+	for _, l := range levels {
+		lm, _ := l.(map[string]any)
+		m, _ := lm["maintenance_calories"].(float64)
+		if m <= prev {
+			t.Fatalf("maintenance must increase with activity level, got %v after %v", m, prev)
+		}
+		prev = m
+	}
+}
+
+// An incomplete profile can't produce a basis, but it must not stop the plan
+// itself from loading — the basis is an extra readout, not a precondition.
+func TestGetCurrentNutritionGoal_omitsBasisWithoutProfile(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t) // no profile, no weigh-ins
+
+	ac, aw := newContext(uid, http.MethodPost, "/api/v1/weight/plan/accept", acceptPlanBody())
+	th.AcceptWeightPlan(ac)
+	if aw.Code != http.StatusCreated {
+		t.Fatalf("accept: expected 201, got %d: %s", aw.Code, aw.Body.String())
+	}
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/weight/plan/current", nil)
+	th.GetCurrentNutritionGoal(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	d := settingsData(t, w)
+	if d["basis"] != nil {
+		t.Fatalf("expected a null basis for an incomplete profile, got %v", d["basis"])
+	}
+	if goal, ok := d["goal"].(map[string]any); !ok {
+		t.Fatalf("the plan must still load without a basis, got %v", d["goal"])
+	} else {
+		assertNum(t, goal, "calorie_target", 1800)
+	}
+}
+
 func acceptPlanBody() map[string]any {
 	return map[string]any{
 		"calorie_target": 1800,

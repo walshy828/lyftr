@@ -16,6 +16,7 @@ import EmptyState from '../components/ui/EmptyState'
 import DateInput from '../components/ui/DateInput'
 import PlanDetailSections from '../components/PlanDetailSections'
 import PlanBasis from '../components/PlanBasis'
+import PlanEnergyNarrative from '../components/PlanEnergyNarrative'
 import { dayToLocalDate } from '../utils/dateUtils'
 import { profileAPI, weightPlanAPI, weightAPI, userAPI } from '../services/api'
 import { useSettingsStore, weightShort, lbsToDisplay, displayWeight } from '../stores/settings'
@@ -418,6 +419,23 @@ export default function WeightPlan() {
     return { avgPerWeek, guidance, inRange }
   }, [current, profile])
 
+  // Weeks left in the accepted plan, for the summary narrative's "in
+  // approximately XX weeks" clause. Counted from today to the last projected
+  // week rather than using the plan's full length — once someone is eight
+  // weeks in, the honest answer to "how long until my goal" is what's left.
+  // Falls back to the plan's own week count when the projections carry no
+  // dates (older accepted plans).
+  const weeksRemaining = useMemo(() => {
+    const pts = current?.projections ?? []
+    if (pts.length === 0) return undefined
+    // expected_date is a full RFC3339 timestamp here, not the YYYY-MM-DD day
+    // string dayToLocalDate takes — parse it as the instant it is.
+    const end = pts[pts.length - 1].expected_date ? new Date(pts[pts.length - 1].expected_date!) : null
+    if (!end || Number.isNaN(end.getTime())) return pts.length
+    const days = (end.getTime() - new Date().setHours(0, 0, 0, 0)) / 86_400_000
+    return days > 0 ? Math.max(1, Math.round(days / 7)) : undefined
+  }, [current])
+
   // BMI zone boundaries in the user's display unit, derived from the
   // server-computed lbs boundaries (utils.BMICategory's 18.5/25/30
   // thresholds) — never re-declared here, just converted for display.
@@ -610,6 +628,7 @@ export default function WeightPlan() {
                     carbs: Number(draftTargets.carb_target) || 0,
                     fat: Number(draftTargets.fat_target) || 0,
                   }}
+                  weeks={draft.weekly_trajectory.length}
                   weightUnit={settings.weight_unit}
                 />
               </div>
@@ -736,6 +755,18 @@ export default function WeightPlan() {
                 )} · target {displayWeight(current.goal.target_weight, settings.weight_unit)} {wUnit}
               </span>
             </div>
+
+            {/* The energy arithmetic in plain language: what the user would
+                eat at each activity level with no deficit at all, before the
+                plan's target is introduced as a deliberate subtraction. */}
+            {current.basis && (
+              <PlanEnergyNarrative
+                basis={current.basis}
+                calorieTarget={current.goal.calorie_target}
+                weeks={weeksRemaining}
+                weightUnit={settings.weight_unit}
+              />
+            )}
 
             <PlanDetailSections detail={current.goal.detail} fallback={current.goal.notes} />
 
