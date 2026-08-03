@@ -67,6 +67,12 @@ func (h *Handler) GenerateWeightPlan(c *gin.Context) {
 	bmiCategory := utils.BMICategory(utils.BMI(stats.Latest, profile.HeightInches))
 	pace := utils.WeeklyLossGuidanceFor(bmiCategory, stats.Latest)
 
+	// Built first with no calorie target so the deterministic energy figures
+	// can go into the prompt — the model must reason from the same BMR,
+	// maintenance, and macro bands the user will see beside its write-up.
+	// Rebuilt below once the model has proposed a calorie target.
+	basis := utils.BuildPlanEnergyBasis(profile, age, stats.Latest, req.TargetWeight, 0, pace)
+
 	// 60s, not 20s: this prompt asks for a full weekly trajectory alongside
 	// macro targets and runs longer than the shorter single-item AI endpoints
 	// — same rationale as GenerateProgram/RecommendMeals.
@@ -86,6 +92,13 @@ func (h *Handler) GenerateWeightPlan(c *gin.Context) {
 		BMICategory:            bmiCategory,
 		SustainedLossLowPerWk:  pace.LowLbsPerWeek,
 		SustainedLossHighPerWk: pace.HighLbsPerWeek,
+		BMR:                    basis.BMR,
+		MaintenanceCalories:    basis.MaintenanceCalories,
+		CalorieFloor:           basis.CalorieFloor,
+		ProteinLowGrams:        basis.Protein.LowGrams,
+		ProteinHighGrams:       basis.Protein.HighGrams,
+		FatLowGrams:            basis.Fat.LowGrams,
+		FatHighGrams:           basis.Fat.HighGrams,
 	})
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -96,7 +109,21 @@ func (h *Handler) GenerateWeightPlan(c *gin.Context) {
 		utils.ServiceUnavailable(c, fmt.Sprintf("could not generate a plan — try again (%s)", truncateErr(err)))
 		return
 	}
-	utils.OK(c, plan)
+	// Rebuilt with the model's calorie target so every activity level can
+	// report what that target actually implies at that level. Nothing here is
+	// asked of the model: the user is about to commit to daily numbers, and
+	// the arithmetic behind them should be reproducible.
+	basis = utils.BuildPlanEnergyBasis(profile, age, stats.Latest, req.TargetWeight, plan.CalorieTarget, pace)
+	utils.OK(c, weightPlanDraftResponse{DraftWeightPlan: plan, Basis: basis})
+}
+
+// weightPlanDraftResponse is the generated draft plus its deterministic
+// energy basis. The draft is embedded rather than nested so its fields stay
+// at the top level of the response exactly as before — `basis` is purely
+// additive for clients that don't read it.
+type weightPlanDraftResponse struct {
+	vision.DraftWeightPlan
+	Basis models.PlanEnergyBasis `json:"basis"`
 }
 
 // AcceptWeightPlan persists a (possibly user-edited) reviewed draft: inserts

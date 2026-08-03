@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/db"
+	"github.com/Cawlumm/lyftr-backend/stores"
+	"github.com/Cawlumm/lyftr-backend/vision"
 )
 
 func TestGenerateWeightPlan_serviceUnavailableWithoutVision(t *testing.T) {
@@ -17,6 +19,114 @@ func TestGenerateWeightPlan_serviceUnavailableWithoutVision(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// planReadyUser creates a user with everything GenerateWeightPlan requires:
+// a complete profile and at least one weigh-in.
+func planReadyUser(t *testing.T) int64 {
+	t.Helper()
+	uid := createTestUser(t)
+	pc, pw := newContext(uid, http.MethodPut, "/api/v1/profile", map[string]any{
+		"birth_date":     time.Now().AddDate(-40, 0, 0).Format("2006-01-02"),
+		"sex":            "male",
+		"height_inches":  70,
+		"activity_level": "moderate",
+	})
+	th.UpdateProfile(pc)
+	if pw.Code != http.StatusOK {
+		t.Fatalf("profile setup failed: %d %s", pw.Code, pw.Body.String())
+	}
+	wc, ww := newContext(uid, http.MethodPost, "/api/v1/weight", map[string]any{"weight": 230})
+	th.LogWeight(wc)
+	if ww.Code != http.StatusCreated {
+		t.Fatalf("weight setup failed: %d %s", ww.Code, ww.Body.String())
+	}
+	return uid
+}
+
+func TestGenerateWeightPlan_returnsDeterministicEnergyBasis(t *testing.T) {
+	setupTestDB(t)
+	uid := planReadyUser(t)
+
+	fake := &fakeVisionProvider{weightPlan: vision.DraftWeightPlan{
+		CalorieTarget: 1900, ProteinTarget: 165, CarbTarget: 170, FatTarget: 60,
+		WeeklyTrajectory: []vision.WeightPlanWeek{{Week: 0, ExpectedWeight: 230}},
+	}}
+	h := NewHandler(stores.New(db.DB), fake)
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/weight/plan/generate", map[string]any{"target_weight": 180})
+	h.GenerateWeightPlan(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	d := settingsData(t, w)
+
+	// The draft's own fields stay at the top level — `basis` is purely additive.
+	assertNum(t, d, "calorie_target", 1900)
+
+	basis, ok := d["basis"].(map[string]any)
+	if !ok {
+		t.Fatalf("basis is not an object: %v", d["basis"])
+	}
+	// The profile recount the user is shown.
+	if basis["sex"] != "male" {
+		t.Errorf("basis sex = %v, want male", basis["sex"])
+	}
+	assertNum(t, basis, "age", 40)
+	assertNum(t, basis, "height_inches", 70)
+	assertNum(t, basis, "current_weight_lbs", 230)
+	assertNum(t, basis, "target_weight_lbs", 180)
+	assertNum(t, basis, "weight_to_lose_lbs", 50)
+
+	levels, ok := basis["levels"].([]any)
+	if !ok || len(levels) != 5 {
+		t.Fatalf("expected 5 activity levels, got %v", basis["levels"])
+	}
+	// The deficit reported for the profile's level must match the plan's
+	// calorie target against that level's maintenance.
+	maintenance, _ := basis["maintenance_calories"].(float64)
+	if maintenance <= 0 {
+		t.Fatalf("maintenance_calories = %v, want > 0", basis["maintenance_calories"])
+	}
+	assertNum(t, basis, "plan_deficit_calories", maintenance-1900)
+
+	protein, ok := basis["protein"].(map[string]any)
+	if !ok {
+		t.Fatalf("protein band is not an object: %v", basis["protein"])
+	}
+	// 0.8-1.0 g/lb of the 180 lb goal weight.
+	assertNum(t, protein, "low_grams", 144)
+	assertNum(t, protein, "high_grams", 180)
+}
+
+func TestGenerateWeightPlan_threadsComputedEnergyFiguresToTheModel(t *testing.T) {
+	setupTestDB(t)
+	uid := planReadyUser(t)
+
+	fake := &fakeVisionProvider{weightPlan: vision.DraftWeightPlan{CalorieTarget: 1900}}
+	h := NewHandler(stores.New(db.DB), fake)
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/weight/plan/generate", map[string]any{"target_weight": 180})
+	h.GenerateWeightPlan(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// The model must be handed the same arithmetic the UI displays, so its
+	// write-up can't quote a different TDEE than the table beside it.
+	req := fake.weightPlanReq
+	if req.BMR <= 0 || req.MaintenanceCalories <= req.BMR {
+		t.Errorf("BMR/maintenance = %d/%d, want maintenance above a positive BMR", req.BMR, req.MaintenanceCalories)
+	}
+	if req.CalorieFloor != 1500 {
+		t.Errorf("CalorieFloor = %d, want 1500 for a male profile", req.CalorieFloor)
+	}
+	if req.ProteinLowGrams != 144 || req.ProteinHighGrams != 180 {
+		t.Errorf("protein band = %d-%d, want 144-180", req.ProteinLowGrams, req.ProteinHighGrams)
+	}
+	if req.FatLowGrams <= 0 || req.FatHighGrams < req.FatLowGrams {
+		t.Errorf("fat band = %d-%d, want a positive increasing range", req.FatLowGrams, req.FatHighGrams)
 	}
 }
 

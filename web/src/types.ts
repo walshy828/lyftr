@@ -289,6 +289,65 @@ export interface WeightPlanProjectionPoint {
   expected_date?: string
 }
 
+// ActivityEnergyLevel is one row of the "what would I need to eat at this
+// activity level" table. Every level is returned, not just the user's own, so
+// they can see what training more or less would do to their intake.
+export interface ActivityEnergyLevel {
+  key: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
+  label: string
+  description: string
+  multiplier: number
+  maintenance_calories: number
+  // Intake window that produces the safe pace band — the low calorie figure
+  // is the *faster* end of the band (bigger deficit).
+  intake_low_calories: number
+  intake_high_calories: number
+  // The safe pace would require eating under the app's minimum at this level,
+  // so the window was raised to the floor — that pace isn't reachable by diet
+  // alone here.
+  floor_limited: boolean
+  plan_deficit_calories: number
+  plan_lbs_per_week: number
+  is_profile_level: boolean
+}
+
+export interface MacroRange {
+  low_grams: number
+  high_grams: number
+  per_lb_low: number
+  per_lb_high: number
+  basis: string
+  rationale: string
+  // Below this, cutting the macro starts costing something real (lean mass
+  // for protein, hormone function for fat).
+  floor_grams: number
+}
+
+// PlanEnergyBasis is the deterministic, non-AI arithmetic behind a generated
+// plan: who it was computed for, what they burn, what each activity level
+// implies, and the macro bands a sensible plan sits in.
+export interface PlanEnergyBasis {
+  sex: '' | 'male' | 'female'
+  age: number
+  height_inches: number
+  current_weight_lbs: number
+  target_weight_lbs: number
+  weight_to_lose_lbs: number
+  bmi: number
+  bmi_category: BMIInfo['category']
+  activity_level: UserProfile['activity_level']
+  bmr: number
+  calorie_floor: number
+  levels: ActivityEnergyLevel[]
+  maintenance_calories: number
+  calorie_target: number
+  plan_deficit_calories: number
+  plan_lbs_per_week: number
+  guidance: WeeklyLossGuidance
+  protein: MacroRange
+  fat: MacroRange
+}
+
 export interface DraftWeightPlan {
   calorie_target: number
   protein_target: number
@@ -298,6 +357,9 @@ export interface DraftWeightPlan {
   rationale: string
   safety_notes: string
   detail?: PlanDetail
+  // Computed server-side from the profile, not by the AI. Absent from plans
+  // generated before this existed.
+  basis?: PlanEnergyBasis
 }
 
 export interface CurrentNutritionGoal {

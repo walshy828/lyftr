@@ -15,6 +15,7 @@ import SectionHeader from '../components/ui/SectionHeader'
 import EmptyState from '../components/ui/EmptyState'
 import DateInput from '../components/ui/DateInput'
 import PlanDetailSections from '../components/PlanDetailSections'
+import PlanBasis from '../components/PlanBasis'
 import { dayToLocalDate } from '../utils/dateUtils'
 import { profileAPI, weightPlanAPI, weightAPI, userAPI } from '../services/api'
 import { useSettingsStore, weightShort, lbsToDisplay, displayWeight } from '../stores/settings'
@@ -594,6 +595,25 @@ export default function WeightPlan() {
             </div>
 
             <PlanDetailSections detail={draft.detail} fallback={draft.rationale} />
+
+            {/* The deterministic side of the decision: where these numbers
+                come from, and what the alternatives cost. Driven by the live
+                edited targets, not the AI's originals, so the ranges and
+                scenarios follow whatever the user is about to save. */}
+            {draft.basis && (
+              <div className="border-t border-surface-border pt-4">
+                <PlanBasis
+                  basis={draft.basis}
+                  targets={{
+                    calories: Number(draftTargets.calorie_target) || 0,
+                    protein: Number(draftTargets.protein_target) || 0,
+                    carbs: Number(draftTargets.carb_target) || 0,
+                    fat: Number(draftTargets.fat_target) || 0,
+                  }}
+                  weightUnit={settings.weight_unit}
+                />
+              </div>
+            )}
 
             {draft.safety_notes && (
               <div className="flex items-start gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">

@@ -327,6 +327,83 @@ type WeeklyLossGuidance struct {
 	Note           string  `json:"note"`
 }
 
+// ActivityEnergyLevel is one row of the "what would I need to eat at this
+// activity level" table shown alongside a generated plan. Every level is
+// reported, not just the user's own, so they can see what training more or
+// less would do to their intake before committing to targets.
+type ActivityEnergyLevel struct {
+	Key         string  `json:"key"` // matches UserProfile.ActivityLevel
+	Label       string  `json:"label"`
+	Description string  `json:"description"`
+	Multiplier  float64 `json:"multiplier"`
+	// MaintenanceCalories is BMR * Multiplier: intake that holds weight steady.
+	MaintenanceCalories int `json:"maintenance_calories"`
+	// IntakeLow/HighCalories bound the intake that produces the safe pace band
+	// (WeeklyLossGuidance) at this level — low intake = faster end of the band.
+	IntakeLowCalories  int `json:"intake_low_calories"`
+	IntakeHighCalories int `json:"intake_high_calories"`
+	// FloorLimited marks a level where the safe pace would require eating
+	// below the minimum this app recommends, so the range was raised to the
+	// floor — i.e. that pace isn't reachable by diet alone at this level.
+	FloorLimited bool `json:"floor_limited"`
+	// PlanDeficitCalories/PlanLbsPerWeek are what the plan's own calorie
+	// target works out to if the user actually trains at this level. Zero when
+	// the basis was built without a calorie target.
+	PlanDeficitCalories int     `json:"plan_deficit_calories"`
+	PlanLbsPerWeek      float64 `json:"plan_lbs_per_week"`
+	IsProfileLevel      bool    `json:"is_profile_level"`
+}
+
+// MacroRange is a recommended band for one macronutrient, expressed both in
+// grams and as the per-pound figure it was derived from so the user can see
+// the reasoning rather than just the number.
+type MacroRange struct {
+	LowGrams  int     `json:"low_grams"`
+	HighGrams int     `json:"high_grams"`
+	PerLbLow  float64 `json:"per_lb_low"`
+	PerLbHigh float64 `json:"per_lb_high"`
+	Basis     string  `json:"basis"` // what the per-pound figures multiply, e.g. "goal weight"
+	Rationale string  `json:"rationale"`
+	// FloorGrams is the point below which cutting this macro starts costing
+	// something real (lean mass for protein, hormone function for fat) — the
+	// client flags a reduced-adherence scenario that lands under it.
+	FloorGrams int `json:"floor_grams"`
+}
+
+// PlanEnergyBasis is the deterministic, non-AI energy picture behind a weight
+// plan: who the plan was computed for, what their body burns, what intake
+// each activity level implies, and the macro bands a sensible plan sits in.
+// Built by utils.BuildPlanEnergyBasis and returned alongside a generated
+// draft so the user can judge the AI's numbers against the arithmetic instead
+// of taking them on faith.
+type PlanEnergyBasis struct {
+	// The profile recount: everything the numbers below were derived from.
+	Sex              string  `json:"sex"`
+	Age              int     `json:"age"`
+	HeightInches     float64 `json:"height_inches"`
+	CurrentWeightLbs float64 `json:"current_weight_lbs"`
+	TargetWeightLbs  float64 `json:"target_weight_lbs"`
+	WeightToLoseLbs  float64 `json:"weight_to_lose_lbs"`
+	BMI              float64 `json:"bmi"`
+	BMICategory      string  `json:"bmi_category"`
+	ActivityLevel    string  `json:"activity_level"`
+
+	BMR          int `json:"bmr"`           // resting burn, Mifflin-St Jeor
+	CalorieFloor int `json:"calorie_floor"` // lowest intake this app will recommend
+
+	Levels []ActivityEnergyLevel `json:"levels"`
+
+	// The profile activity level's row, lifted out for the headline readout.
+	MaintenanceCalories int     `json:"maintenance_calories"`
+	CalorieTarget       int     `json:"calorie_target"` // the plan's proposed intake, 0 if none
+	PlanDeficitCalories int     `json:"plan_deficit_calories"`
+	PlanLbsPerWeek      float64 `json:"plan_lbs_per_week"`
+
+	Guidance WeeklyLossGuidance `json:"guidance"`
+	Protein  MacroRange         `json:"protein"`
+	Fat      MacroRange         `json:"fat"`
+}
+
 // NutritionGoal is one append-only row in the nutrition-goal history: never
 // UPDATEd once inserted. The "current" goal is the latest row by EffectiveAt.
 // Accepting a plan also writes these four targets into UserSettings so the

@@ -173,6 +173,17 @@ type GenerateWeightPlanRequest struct {
 	BMICategory            string
 	SustainedLossLowPerWk  float64 // lbs/week
 	SustainedLossHighPerWk float64 // lbs/week
+	// The energy figures the app computes itself (utils.BuildPlanEnergyBasis)
+	// and displays next to the model's write-up. They're passed in so the
+	// model reasons from the same arithmetic the user is shown, rather than
+	// estimating its own TDEE and visibly contradicting the table on screen.
+	BMR                 int // resting burn, kcal/day
+	MaintenanceCalories int // BMR x the profile activity multiplier
+	CalorieFloor        int // lowest intake the app will recommend for this sex
+	ProteinLowGrams     int
+	ProteinHighGrams    int
+	FatLowGrams         int
+	FatHighGrams        int
 }
 
 // WeightPlanWeek is one week of the AI-projected weight trajectory.
@@ -577,6 +588,13 @@ func weightPlanPrompt(req GenerateWeightPlanRequest) string {
 	fmt.Fprintf(&b, "The generally recognized healthy weight range for this height is %.0f-%.0f lbs. If the requested target weight falls outside this range, propose a plan that instead targets the nearer edge of the healthy range, and explain this adjustment in safety_notes.\n\n", req.HealthyRangeLow, req.HealthyRangeHigh)
 
 	fmt.Fprintf(&b, "This person's BMI category is %q. A sustainable steady-state pace for that category is about %.1f-%.1f lbs/week — use that as the target rate for the bulk of the plan, not a single universal number.\n\n", req.BMICategory, req.SustainedLossLowPerWk, req.SustainedLossHighPerWk)
+
+	// The app shows these exact figures beside the plan, so the model must
+	// reason from them instead of estimating its own — a rationale quoting a
+	// different TDEE than the table next to it reads as a broken app.
+	if req.MaintenanceCalories > 0 {
+		fmt.Fprintf(&b, "Use these figures, already computed by the app and displayed to the user alongside your write-up — do NOT compute or quote your own: resting metabolic rate about %d kcal/day (Mifflin-St Jeor), maintenance intake at their stated activity level about %d kcal/day. Any calorie number you cite must be consistent with these. Recommended macro bands, also shown to the user: protein %d-%d g/day and fat %d-%d g/day (both derived from goal weight; carbohydrate is simply the remaining calories). Keep protein_target and fat_target inside those bands unless there's a specific reason, and state the reason in safety_notes if you go outside them.\n\n", req.BMR, req.MaintenanceCalories, req.ProteinLowGrams, req.ProteinHighGrams, req.FatLowGrams, req.FatHighGrams)
+	}
 
 	b.WriteString("IMPORTANT — make the weekly_trajectory realistic, not a flat straight-line decline: real weight loss is front-loaded and then tapers. Structure it in three phases: (1) weeks 1-2: a faster initial drop (roughly 1.5-2x the steady-state rate above) mostly from water weight and glycogen depletion — say so in rationale; (2) the middle of the plan: settle into the steady-state rate range given above; (3) the final ~20% of the plan (or once within about 5 lbs of the target): taper the weekly loss down further (metabolic adaptation and less excess to lose) so the curve visibly flattens as it approaches the target rather than hitting it in one last big drop. The result should look like a decelerating curve, never a straight line and never faster in later weeks than earlier weeks.\n\n")
 
