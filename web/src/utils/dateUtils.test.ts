@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { todayStr, dayToIsoNoon, isoToDayInput } from './dateUtils'
+import { todayStr, dayToIsoNoon, isoToDayInput, dayToLocalDate } from './dateUtils'
 
 // Runs under TZ=America/New_York (set in the npm script) so these local<->UTC
 // assertions are deterministic and exercise a real, DST-aware non-UTC offset.
@@ -45,5 +45,24 @@ describe('todayStr', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-25T01:00:00.000Z')) // 21:00 EDT the prior day
     expect(todayStr()).toBe('2026-04-24')
+  })
+})
+
+describe('dayToLocalDate', () => {
+  it('keeps the calendar day intact for a date-only string', () => {
+    // The bug it exists for: new Date('2026-01-01') is UTC midnight, which
+    // formats as Dec 31 in America/New_York (the TZ these tests run under).
+    expect(new Date('2026-01-01').getDate()).toBe(31)
+    const d = dayToLocalDate('2026-01-01')
+    expect(d.getFullYear()).toBe(2026)
+    expect(d.getMonth()).toBe(0)
+    expect(d.getDate()).toBe(1)
+  })
+
+  it('anchors at local noon so DST shifts cannot move the day', () => {
+    // 2026-03-08 is the US spring-forward date.
+    const d = dayToLocalDate('2026-03-08')
+    expect(d.getDate()).toBe(8)
+    expect(d.getHours()).toBe(12)
   })
 })

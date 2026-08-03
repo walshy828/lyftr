@@ -194,6 +194,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_motivation_notes_user_week ON motivation_n
 	// the email). Existing databases predate the users.name column.
 	ensureColumn("users", "name", `ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''`)
 
+	// Structured plan write-up (summary + headed bullet sections) as JSON,
+	// alongside the pre-existing free-text notes column. notes is kept as the
+	// flattened plain-text fallback so goals accepted before this change — and
+	// any provider that returns only prose — still render.
+	ensureColumn("nutrition_goals", "plan_detail", `ALTER TABLE nutrition_goals ADD COLUMN plan_detail TEXT NOT NULL DEFAULT ''`)
+
+	// Remembered vantage point for the weight-plan progress view. '' means
+	// "start from the journey start" (the first accepted goal's effective_at),
+	// so a user who never picks a date always sees their whole history.
+	ensureColumn("user_settings", "plan_history_start", `ALTER TABLE user_settings ADD COLUMN plan_history_start TEXT NOT NULL DEFAULT ''`)
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a

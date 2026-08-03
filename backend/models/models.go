@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type User struct {
 	ID        int64     `json:"id" db:"id"`
@@ -23,6 +26,11 @@ type UserSettings struct {
 	FoodAllergies     string `json:"food_allergies" db:"food_allergies"`         // free-text list, hard exclusions for the meal recommender
 	FoodDislikes      string `json:"food_dislikes" db:"food_dislikes"`           // free-text list, soft avoid
 	FoodLikes         string `json:"food_likes" db:"food_likes"`                 // free-text list, taste signal
+	// PlanHistoryStart is the date the weight-plan progress view should start
+	// from — "YYYY-MM-DD", or "" meaning "use the journey start" (the first
+	// accepted goal's effective_at). Stored server-side rather than in the
+	// browser so the chosen vantage point follows the user across devices.
+	PlanHistoryStart string `json:"plan_history_start" db:"plan_history_start"`
 }
 
 // DefaultUserSettings is the single source of truth for a brand-new user's
@@ -333,9 +341,51 @@ type NutritionGoal struct {
 	FatTarget     int       `json:"fat_target" db:"fat_target"`
 	TargetWeight  float64   `json:"target_weight" db:"target_weight"` // lbs, canonical unit like weight_logs
 	Source        string    `json:"source" db:"source"`               // "ai" (no manual entry path in v1)
-	Notes         string    `json:"notes" db:"notes"`                 // AI rationale/safety caveats
+	Notes         string    `json:"notes" db:"notes"`                 // flattened plain-text rationale/safety caveats
 	EffectiveAt   time.Time `json:"effective_at" db:"effective_at"`
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	// PlanDetailJSON is the stored JSON encoding of Detail. It's carried as a
+	// raw string at the store boundary (stores stay transport-agnostic) and
+	// decoded into Detail by the controller. Goals accepted before structured
+	// plan text existed have "" here and only Notes to show.
+	PlanDetailJSON string      `json:"-" db:"plan_detail"`
+	Detail         *PlanDetail `json:"detail,omitempty" db:"-"`
+}
+
+// PlanSection is one headed group of bullets in a structured plan write-up.
+// The AI returns these instead of one prose blob so the UI can render real
+// headings and lists without a markdown parser.
+type PlanSection struct {
+	Heading string   `json:"heading"`
+	Bullets []string `json:"bullets"`
+}
+
+// PlanDetail is the structured, renderable form of an AI plan's explanation:
+// a one-line summary plus headed bullet sections.
+type PlanDetail struct {
+	Summary  string        `json:"summary"`
+	Sections []PlanSection `json:"sections"`
+}
+
+// FlattenNotes renders a PlanDetail down to a single plain-text string for
+// the legacy NutritionGoal.Notes column, so anything reading Notes (older
+// clients, the goal-history list) still shows something sensible.
+func (d *PlanDetail) FlattenNotes() string {
+	if d == nil {
+		return ""
+	}
+	parts := []string{}
+	if d.Summary != "" {
+		parts = append(parts, d.Summary)
+	}
+	for _, s := range d.Sections {
+		if s.Heading != "" {
+			parts = append(parts, s.Heading+": "+strings.Join(s.Bullets, "; "))
+		} else if len(s.Bullets) > 0 {
+			parts = append(parts, strings.Join(s.Bullets, "; "))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // WeightPlanProjectionPoint is one week of the AI-projected weight trajectory
@@ -386,6 +436,48 @@ type AcceptWeightPlanRequest struct {
 	TargetWeight     float64               `json:"target_weight" validate:"required,gt=0,lte=2000"`
 	Notes            string                `json:"notes"`
 	WeeklyTrajectory []DraftWeightPlanWeek `json:"weekly_trajectory" validate:"required,min=1,dive"`
+	// PlanDetail is the structured write-up the user reviewed. Optional: a
+	// provider that returned only prose, or an older client, sends just Notes.
+	PlanDetail *PlanDetail `json:"plan_detail"`
+}
+
+// WeightPlanHistoryWeek is one weekly bucket of the locked-in progress
+// record: what the plan in force that week said the user should weigh versus
+// what they actually weighed. Both sides are derived — the target from the
+// weight_plan_projections frozen when that plan was accepted, the actual from
+// weight_logs — so regenerating a plan can never rewrite an elapsed week.
+type WeightPlanHistoryWeek struct {
+	WeekStart    string  `json:"week_start"` // "YYYY-MM-DD"
+	Week         int     `json:"week"`       // index from the history start date
+	TargetWeight float64 `json:"target_weight"`
+	ActualWeight float64 `json:"actual_weight"` // 0 when no log falls in this week
+	HasActual    bool    `json:"has_actual"`
+	GoalID       int64   `json:"goal_id"`      // the plan in force that week; 0 if none
+	VarianceLbs  float64 `json:"variance_lbs"` // actual - target; positive = heavier than planned
+}
+
+// WeightPlanSegment summarises one accepted plan's stretch of the history:
+// the pace it promised against the pace actually achieved while it was in
+// force. This is the "0.5 lbs/wk actual vs 1.0 lbs/wk target" readout.
+type WeightPlanSegment struct {
+	GoalID           int64   `json:"goal_id"`
+	From             string  `json:"from"` // "YYYY-MM-DD"
+	To               string  `json:"to"`
+	Weeks            float64 `json:"weeks"`
+	StartWeight      float64 `json:"start_weight"`
+	EndWeight        float64 `json:"end_weight"`
+	TargetLbsPerWeek float64 `json:"target_lbs_per_week"`
+	ActualLbsPerWeek float64 `json:"actual_lbs_per_week"`
+	IsCurrent        bool    `json:"is_current"`
+}
+
+// WeightPlanHistory is the full locked progress record returned by
+// GET /weight/plan/history.
+type WeightPlanHistory struct {
+	JourneyStart string                  `json:"journey_start"` // first accepted plan's date, "" if none
+	From         string                  `json:"from"`          // the window actually used
+	Weeks        []WeightPlanHistoryWeek `json:"weeks"`
+	Segments     []WeightPlanSegment     `json:"segments"`
 }
 
 type LogFoodRequest struct {
@@ -474,6 +566,10 @@ type UpdateSettingsRequest struct {
 	FoodAllergies     *string `json:"food_allergies" validate:"omitempty,max=500"`
 	FoodDislikes      *string `json:"food_dislikes" validate:"omitempty,max=500"`
 	FoodLikes         *string `json:"food_likes" validate:"omitempty,max=500"`
+	// PlanHistoryStart accepts "" (reset to the journey start) as well as a
+	// date, so it can't use `omitempty,datetime=...` — a non-nil pointer to ""
+	// must survive validation. It's checked explicitly in UpdateSettings.
+	PlanHistoryStart *string `json:"plan_history_start"`
 }
 
 type Program struct {

@@ -30,6 +30,20 @@ export const dayToIsoNoon = (yyyyMmDd: string): string => {
 }
 
 /**
+ * Parse a YYYY-MM-DD calendar date into a Date anchored at local noon, for
+ * *display* formatting.
+ *
+ * `new Date('2026-01-01')` is specified to parse as UTC midnight, which
+ * renders as Dec 31 anywhere west of Greenwich — so date-only strings coming
+ * back from the API must never be passed straight to `format()`. Noon
+ * anchoring keeps the calendar day intact in every timezone.
+ */
+export const dayToLocalDate = (yyyyMmDd: string): Date => {
+  const [y, m, d] = yyyyMmDd.split('-').map(Number)
+  return new Date(y, m - 1, d, 12, 0, 0, 0)
+}
+
+/**
  * Extract a YYYY-MM-DD string in the browser's local timezone from any ISO
  * timestamp. Use this to populate `<input type="date">` fields when editing
  * an existing entry so the displayed date matches what the user originally

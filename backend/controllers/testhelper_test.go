@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   sodium_target      INTEGER NOT NULL DEFAULT 2300,
   food_allergies     TEXT    NOT NULL DEFAULT '',
   food_dislikes      TEXT    NOT NULL DEFAULT '',
-  food_likes         TEXT    NOT NULL DEFAULT ''
+  food_likes         TEXT    NOT NULL DEFAULT '',
+  plan_history_start TEXT    NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,6 +213,7 @@ CREATE TABLE IF NOT EXISTS nutrition_goals (
   target_weight   REAL    NOT NULL,
   source          TEXT    NOT NULL DEFAULT 'ai',
   notes           TEXT    NOT NULL DEFAULT '',
+  plan_detail     TEXT    NOT NULL DEFAULT '',
   effective_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

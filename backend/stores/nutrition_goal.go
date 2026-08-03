@@ -14,11 +14,11 @@ type NutritionGoalStore struct{ db *sql.DB }
 
 func NewNutritionGoalStore(db *sql.DB) *NutritionGoalStore { return &NutritionGoalStore{db: db} }
 
-const nutritionGoalSelect = `SELECT id, user_id, calorie_target, protein_target, carb_target, fat_target, target_weight, source, notes, effective_at, created_at FROM nutrition_goals`
+const nutritionGoalSelect = `SELECT id, user_id, calorie_target, protein_target, carb_target, fat_target, target_weight, source, notes, plan_detail, effective_at, created_at FROM nutrition_goals`
 
 func scanNutritionGoal(row interface{ Scan(...any) error }, g *models.NutritionGoal) error {
 	return row.Scan(&g.ID, &g.UserID, &g.CalorieTarget, &g.ProteinTarget, &g.CarbTarget, &g.FatTarget,
-		&g.TargetWeight, &g.Source, &g.Notes, &g.EffectiveAt, &g.CreatedAt)
+		&g.TargetWeight, &g.Source, &g.Notes, &g.PlanDetailJSON, &g.EffectiveAt, &g.CreatedAt)
 }
 
 // Current returns the user's latest nutrition goal, or sql.ErrNoRows if
@@ -26,6 +26,15 @@ func scanNutritionGoal(row interface{ Scan(...any) error }, g *models.NutritionG
 func (s *NutritionGoalStore) Current(uid int64) (models.NutritionGoal, error) {
 	var g models.NutritionGoal
 	err := scanNutritionGoal(s.db.QueryRow(nutritionGoalSelect+` WHERE user_id = ? ORDER BY effective_at DESC, id DESC LIMIT 1`, uid), &g)
+	return g, err
+}
+
+// First returns the user's oldest nutrition goal — the start of their
+// weight-loss journey — or sql.ErrNoRows if they've never accepted a plan.
+// The progress view anchors to this date when the user hasn't picked one.
+func (s *NutritionGoalStore) First(uid int64) (models.NutritionGoal, error) {
+	var g models.NutritionGoal
+	err := scanNutritionGoal(s.db.QueryRow(nutritionGoalSelect+` WHERE user_id = ? ORDER BY effective_at ASC, id ASC LIMIT 1`, uid), &g)
 	return g, err
 }
 
@@ -138,10 +147,10 @@ func (s *NutritionGoalStore) Accept(uid int64, goal models.NutritionGoal, projec
 	return inTx(s.db, func(tx *sql.Tx) (models.NutritionGoal, error) {
 		var g models.NutritionGoal
 		err := scanNutritionGoal(tx.QueryRow(
-			`INSERT INTO nutrition_goals (user_id, calorie_target, protein_target, carb_target, fat_target, target_weight, source, notes)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			 RETURNING id, user_id, calorie_target, protein_target, carb_target, fat_target, target_weight, source, notes, effective_at, created_at`,
-			uid, goal.CalorieTarget, goal.ProteinTarget, goal.CarbTarget, goal.FatTarget, goal.TargetWeight, goal.Source, goal.Notes,
+			`INSERT INTO nutrition_goals (user_id, calorie_target, protein_target, carb_target, fat_target, target_weight, source, notes, plan_detail)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 RETURNING id, user_id, calorie_target, protein_target, carb_target, fat_target, target_weight, source, notes, plan_detail, effective_at, created_at`,
+			uid, goal.CalorieTarget, goal.ProteinTarget, goal.CarbTarget, goal.FatTarget, goal.TargetWeight, goal.Source, goal.Notes, goal.PlanDetailJSON,
 		), &g)
 		if err != nil {
 			return models.NutritionGoal{}, err

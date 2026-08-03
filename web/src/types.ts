@@ -18,6 +18,9 @@ export interface UserSettings {
   food_allergies: string
   food_dislikes: string
   food_likes: string
+  // Remembered vantage point for the weight-plan progress view — 'YYYY-MM-DD',
+  // or '' meaning "start from the journey start" (first accepted plan).
+  plan_history_start: string
   workout_layout?: 'list' | 'gym'
   // Client-only (localStorage, not persisted server-side):
   rest_enabled?: boolean        // master rest-timer on/off
@@ -249,6 +252,19 @@ export interface ProfileWithBMI extends UserProfile {
   bmi: BMIInfo
 }
 
+// PlanSection is one headed group of bullets in a structured plan write-up.
+// The AI returns these instead of one prose blob so the UI can render real
+// headings and lists without a markdown parser.
+export interface PlanSection {
+  heading: string
+  bullets: string[]
+}
+
+export interface PlanDetail {
+  summary: string
+  sections: PlanSection[]
+}
+
 export interface NutritionGoal {
   id: number
   user_id: number
@@ -258,7 +274,11 @@ export interface NutritionGoal {
   fat_target: number
   target_weight: number
   source: 'ai'
+  // notes is the flattened plain-text form; prefer `detail` when present.
   notes: string
+  // detail is absent on goals accepted before structured plan text existed —
+  // fall back to rendering `notes` as a paragraph.
+  detail?: PlanDetail
   effective_at: string
   created_at: string
 }
@@ -277,6 +297,7 @@ export interface DraftWeightPlan {
   weekly_trajectory: WeightPlanProjectionPoint[]
   rationale: string
   safety_notes: string
+  detail?: PlanDetail
 }
 
 export interface CurrentNutritionGoal {
@@ -289,6 +310,44 @@ export interface CurrentNutritionGoal {
   // actual_forecast is a clamped linear projection of where the user's
   // actual weight trend is headed, or [] if there isn't enough data yet.
   actual_forecast: WeightPlanProjectionPoint[]
+  // original_plan is the *first* accepted plan's trajectory, deliberately
+  // unclipped (unlike plan_timeline) so it can be drawn as the "where I
+  // originally said I'd be" reference line. [] when the current plan is the
+  // original one.
+  original_plan: WeightPlanProjectionPoint[]
+  journey_start: string
+}
+
+// One weekly bucket of the locked progress record: what the plan in force
+// that week said the user should weigh vs. what they actually weighed.
+export interface WeightPlanHistoryWeek {
+  week_start: string
+  week: number
+  target_weight: number
+  actual_weight: number
+  has_actual: boolean
+  goal_id: number
+  variance_lbs: number
+}
+
+// One accepted plan's stretch of the record: promised pace vs. achieved pace.
+export interface WeightPlanSegment {
+  goal_id: number
+  from: string
+  to: string
+  weeks: number
+  start_weight: number
+  end_weight: number
+  target_lbs_per_week: number
+  actual_lbs_per_week: number
+  is_current: boolean
+}
+
+export interface WeightPlanHistory {
+  journey_start: string
+  from: string
+  weeks: WeightPlanHistoryWeek[]
+  segments: WeightPlanSegment[]
 }
 
 export interface WeightPlanAdherence {

@@ -3,6 +3,7 @@ package controllers
 import (
 	"database/sql"
 	"strings"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
@@ -50,6 +51,16 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	if err := validate.Struct(req); err != nil {
 		utils.BadRequest(c, err.Error())
 		return
+	}
+	// plan_history_start can't use a validator tag: "" is a meaningful value
+	// (reset the progress view back to the journey start), and `omitempty`
+	// only treats a nil pointer as absent, so a non-nil pointer to "" would
+	// fail a datetime tag. Check the non-empty case explicitly instead.
+	if req.PlanHistoryStart != nil && *req.PlanHistoryStart != "" {
+		if _, err := time.Parse("2006-01-02", *req.PlanHistoryStart); err != nil {
+			utils.BadRequest(c, "plan_history_start must be a YYYY-MM-DD date")
+			return
+		}
 	}
 	s, err := h.s.User.UpsertSettings(uid, req)
 	if utils.DBError(c, err) {

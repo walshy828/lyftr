@@ -3,8 +3,10 @@ package controllers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
@@ -123,6 +125,20 @@ func (h *Handler) AcceptWeightPlan(c *gin.Context) {
 		Source:        "ai",
 		Notes:         req.Notes,
 	}
+	// Store the structured write-up as JSON, and backfill the flat Notes
+	// column from it when the client didn't send prose — Notes stays the
+	// plain-text form everything non-plan-page reads.
+	if req.PlanDetail != nil && (req.PlanDetail.Summary != "" || len(req.PlanDetail.Sections) > 0) {
+		encoded, err := json.Marshal(req.PlanDetail)
+		if err != nil {
+			utils.BadRequest(c, "invalid plan detail")
+			return
+		}
+		goal.PlanDetailJSON = string(encoded)
+		if goal.Notes == "" {
+			goal.Notes = req.PlanDetail.FlattenNotes()
+		}
+	}
 	projections := make([]models.WeightPlanProjectionPoint, len(req.WeeklyTrajectory))
 	for i, w := range req.WeeklyTrajectory {
 		projections[i] = models.WeightPlanProjectionPoint{
@@ -136,7 +152,25 @@ func (h *Handler) AcceptWeightPlan(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
+	decodePlanDetail(&saved)
 	utils.Created(c, saved)
+}
+
+// decodePlanDetail parses a goal's stored plan_detail JSON into its Detail
+// field so the API serves the structured form. A row from before structured
+// plan text existed (or one whose JSON somehow doesn't parse) simply keeps a
+// nil Detail and the client falls back to rendering Notes — a malformed blob
+// is never worth failing the whole request over.
+func decodePlanDetail(g *models.NutritionGoal) {
+	if g.PlanDetailJSON == "" {
+		return
+	}
+	var d models.PlanDetail
+	if err := json.Unmarshal([]byte(g.PlanDetailJSON), &d); err != nil {
+		log.Printf("[weight/plan] goal %d has unparseable plan_detail: %v", g.ID, err)
+		return
+	}
+	g.Detail = &d
 }
 
 // GetCurrentNutritionGoal returns the user's latest accepted plan plus its
@@ -170,11 +204,37 @@ func (h *Handler) GetCurrentNutritionGoal(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
+	decodePlanDetail(&goal)
+
+	// The original plan's projections, deliberately *unclipped* (unlike
+	// Timeline, which cuts each superseded plan off at the next one's
+	// effective_at). This is the "where the plan I first committed to said
+	// I'd be" reference line — it only means anything if it keeps running
+	// past the point where it was replaced.
+	original := []models.WeightPlanProjectionPoint{}
+	journeyStart := goal.EffectiveAt
+	first, err := h.s.NutritionGoal.First(uid)
+	if err != nil && err != sql.ErrNoRows {
+		if utils.DBError(c, err) {
+			return
+		}
+	} else if err == nil {
+		journeyStart = first.EffectiveAt
+		if first.ID != goal.ID {
+			original, err = h.s.NutritionGoal.ListProjections(first.ID)
+			if utils.DBError(c, err) {
+				return
+			}
+		}
+	}
+
 	utils.OK(c, gin.H{
 		"goal":            goal,
 		"projections":     projections,
 		"plan_timeline":   timeline,
 		"actual_forecast": forecast,
+		"original_plan":   original,
+		"journey_start":   journeyStart,
 	})
 }
 
@@ -224,8 +284,258 @@ func (h *Handler) GetNutritionGoalHistory(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
+	for i := range goals {
+		decodePlanDetail(&goals[i])
+	}
 	utils.OK(c, goals)
 }
+
+// GetWeightPlanHistory returns the locked-in progress record: for every week
+// from the chosen start date to today, what the plan in force that week said
+// the user should weigh versus what they actually weighed, plus a per-plan
+// summary of promised pace against achieved pace.
+//
+// Nothing here is stored separately. The target side comes from
+// weight_plan_projections, frozen at the moment each plan was accepted and
+// clipped by NutritionGoalStore.Timeline to the window that plan was actually
+// in force; the actual side comes from weight_logs. That makes the history
+// immutable by construction — regenerating a plan appends a new goal and can
+// never rewrite an elapsed week, so no snapshot table or backfill is needed.
+//
+// The window starts at ?from=YYYY-MM-DD if given, else the user's remembered
+// settings.plan_history_start, else the journey start (first accepted plan).
+func (h *Handler) GetWeightPlanHistory(c *gin.Context) {
+	uid := middleware.UserID(c)
+
+	first, err := h.s.NutritionGoal.First(uid)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "no weight-loss plan yet")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+
+	settings, err := h.s.User.GetSettings(uid)
+	if err == sql.ErrNoRows {
+		settings = models.DefaultUserSettings(uid)
+	} else if utils.DBError(c, err) {
+		return
+	}
+
+	journeyStart := truncateDay(first.EffectiveAt)
+	from := journeyStart
+	// Query param wins over the remembered setting, so a one-off look at a
+	// different window doesn't have to overwrite the saved preference.
+	for _, candidate := range []string{c.Query("from"), settings.PlanHistoryStart} {
+		if candidate == "" {
+			continue
+		}
+		parsed, perr := time.Parse("2006-01-02", candidate)
+		if perr != nil {
+			if candidate == c.Query("from") {
+				utils.BadRequest(c, "from must be a YYYY-MM-DD date")
+				return
+			}
+			continue
+		}
+		from = parsed.UTC()
+		break
+	}
+
+	timeline, err := h.s.NutritionGoal.Timeline(uid)
+	if utils.DBError(c, err) {
+		return
+	}
+	logs, err := h.s.Weight.List(uid, stores.WeightFilter{Limit: 2000})
+	if utils.DBError(c, err) {
+		return
+	}
+
+	history := models.WeightPlanHistory{
+		JourneyStart: journeyStart.Format("2006-01-02"),
+		From:         from.Format("2006-01-02"),
+		Weeks:        buildHistoryWeeks(from, time.Now().UTC(), timeline, logs),
+	}
+	currentID := int64(0)
+	if cur, cerr := h.s.NutritionGoal.Current(uid); cerr == nil {
+		currentID = cur.ID
+	} else if cerr != sql.ErrNoRows && utils.DBError(c, cerr) {
+		return
+	}
+	history.Segments = buildHistorySegments(history.Weeks, currentID)
+	utils.OK(c, history)
+}
+
+// truncateDay drops the time-of-day, keeping UTC — history buckets are whole
+// days, and plan effective_at values carry a wall-clock time that would
+// otherwise offset every bucket boundary.
+func truncateDay(t time.Time) time.Time {
+	t = t.UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// buildHistoryWeeks walks 7-day buckets from `from` up to `now`, pairing each
+// bucket with the plan target interpolated at its start date and the weight
+// actually logged nearest that date. Buckets before the first projection or
+// after the last are skipped on the target side (GoalID 0) rather than
+// extrapolated — inventing a target outside any plan's span would misreport
+// adherence for weeks no plan covered.
+func buildHistoryWeeks(from, now time.Time, timeline []models.WeightPlanProjectionPoint, logs []models.WeightLog) []models.WeightPlanHistoryWeek {
+	weeks := []models.WeightPlanHistoryWeek{}
+	from = truncateDay(from)
+	end := truncateDay(now)
+	for i := 0; !from.AddDate(0, 0, i*7).After(end); i++ {
+		day := from.AddDate(0, 0, i*7)
+		w := models.WeightPlanHistoryWeek{
+			WeekStart: day.Format("2006-01-02"),
+			Week:      i,
+		}
+		if target, goalID, ok := interpolateTimelineAt(timeline, day); ok {
+			w.TargetWeight = round1(target)
+			w.GoalID = goalID
+		}
+		// A ±3 day tolerance: people don't weigh in on a fixed weekday, and a
+		// bucket with no nearby log is better left empty than filled from a
+		// reading two weeks away.
+		if actual, ok := nearestLogWeight(logs, day, 3); ok {
+			w.ActualWeight = round1(actual)
+			w.HasActual = true
+			if w.GoalID != 0 {
+				w.VarianceLbs = round1(w.ActualWeight - w.TargetWeight)
+			}
+		}
+		weeks = append(weeks, w)
+	}
+	// Trim trailing buckets that carry neither a target nor a weigh-in. Once
+	// every plan's last projection has passed and the user hasn't logged
+	// since, the remaining buckets up to today are pure empty rows — they say
+	// nothing and push the real record off the screen.
+	for len(weeks) > 0 {
+		last := weeks[len(weeks)-1]
+		if last.GoalID != 0 || last.HasActual {
+			break
+		}
+		weeks = weeks[:len(weeks)-1]
+	}
+	return weeks
+}
+
+// interpolateTimelineAt returns the planned weight at an arbitrary date by
+// linearly interpolating between the two surrounding projection points, plus
+// the goal that owned the earlier point. Projections land on weekly dates
+// that won't line up with an arbitrary user-chosen start date, so exact
+// lookups would leave most buckets empty.
+func interpolateTimelineAt(timeline []models.WeightPlanProjectionPoint, at time.Time) (float64, int64, bool) {
+	if len(timeline) == 0 {
+		return 0, 0, false
+	}
+	var prev *models.WeightPlanProjectionPoint
+	for i := range timeline {
+		p := timeline[i]
+		pd := truncateDay(p.ExpectedDate)
+		if pd.Equal(at) {
+			return p.ExpectedWeight, p.NutritionGoalID, true
+		}
+		if pd.After(at) {
+			if prev == nil {
+				return 0, 0, false // before the plan began
+			}
+			prevDay := truncateDay(prev.ExpectedDate)
+			span := pd.Sub(prevDay).Hours()
+			if span <= 0 {
+				return prev.ExpectedWeight, prev.NutritionGoalID, true
+			}
+			frac := at.Sub(prevDay).Hours() / span
+			return prev.ExpectedWeight + (p.ExpectedWeight-prev.ExpectedWeight)*frac, prev.NutritionGoalID, true
+		}
+		prev = &timeline[i]
+	}
+	return 0, 0, false // past the end of every plan
+}
+
+// nearestLogWeight returns the weight logged closest to `day`, within
+// toleranceDays. Logs arrive newest-first from the store; order doesn't
+// matter here since every candidate is compared by absolute distance.
+func nearestLogWeight(logs []models.WeightLog, day time.Time, toleranceDays int) (float64, bool) {
+	bestDelta := time.Duration(toleranceDays+1) * 24 * time.Hour
+	best := 0.0
+	found := false
+	for _, l := range logs {
+		delta := truncateDay(l.LoggedAt).Sub(day)
+		if delta < 0 {
+			delta = -delta
+		}
+		if delta < bestDelta {
+			bestDelta, best, found = delta, l.Weight, true
+		}
+	}
+	return best, found
+}
+
+// buildHistorySegments collapses the weekly buckets into one row per plan:
+// the pace that plan promised against the pace actually achieved while it was
+// in force. This is the readout that makes "0.5 lbs/week actual against a
+// 1.0 lbs/week target" visible. Segments need both endpoints on a side to
+// report that side's pace, so a plan with a single bucket reports 0.
+func buildHistorySegments(weeks []models.WeightPlanHistoryWeek, currentGoalID int64) []models.WeightPlanSegment {
+	segments := []models.WeightPlanSegment{}
+	for i := 0; i < len(weeks); {
+		if weeks[i].GoalID == 0 {
+			i++
+			continue
+		}
+		goalID := weeks[i].GoalID
+		j := i
+		for j+1 < len(weeks) && weeks[j+1].GoalID == goalID {
+			j++
+		}
+		start, end := weeks[i], weeks[j]
+		seg := models.WeightPlanSegment{
+			GoalID:      goalID,
+			From:        start.WeekStart,
+			To:          end.WeekStart,
+			Weeks:       float64(end.Week - start.Week),
+			StartWeight: start.TargetWeight,
+			EndWeight:   end.TargetWeight,
+			IsCurrent:   goalID == currentGoalID,
+		}
+		if seg.Weeks > 0 {
+			seg.TargetLbsPerWeek = round1((start.TargetWeight - end.TargetWeight) / seg.Weeks)
+			// Pace from the first and last buckets in this segment that
+			// actually have a weigh-in, not the segment edges — otherwise a
+			// missing log at either end silently reports a pace of 0.
+			if a, b, ok := firstLastActual(weeks[i : j+1]); ok && b.Week > a.Week {
+				seg.StartWeight, seg.EndWeight = start.TargetWeight, end.TargetWeight
+				seg.ActualLbsPerWeek = round1((a.ActualWeight - b.ActualWeight) / float64(b.Week-a.Week))
+			}
+		}
+		segments = append(segments, seg)
+		i = j + 1
+	}
+	return segments
+}
+
+// firstLastActual returns the earliest and latest buckets in a segment that
+// have a real weigh-in.
+func firstLastActual(weeks []models.WeightPlanHistoryWeek) (models.WeightPlanHistoryWeek, models.WeightPlanHistoryWeek, bool) {
+	var a, b models.WeightPlanHistoryWeek
+	found := false
+	for _, w := range weeks {
+		if !w.HasActual {
+			continue
+		}
+		if !found {
+			a, found = w, true
+		}
+		b = w
+	}
+	return a, b, found
+}
+
+// round1 rounds to one decimal — every weight the history endpoint reports is
+// a display value, and unrounded interpolation output is noise.
+func round1(v float64) float64 { return math.Round(v*10) / 10 }
 
 // adherenceLookbackDays is the rolling window used for the logging/workout
 // consistency signals in the adherence panel. It's a trailing window that

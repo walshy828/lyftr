@@ -39,6 +39,7 @@ const DEFAULTS: types.UserSettings = {
   food_allergies: '',
   food_dislikes: '',
   food_likes: '',
+  plan_history_start: '',
   ...clientPrefs(),
 }
 

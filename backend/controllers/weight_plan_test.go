@@ -384,3 +384,218 @@ func TestGetWeightPlanAdherence_refreshBypassesCache(t *testing.T) {
 		t.Fatalf("expected a non-empty motivational_note, got %v", d["motivational_note"])
 	}
 }
+
+// The scenario the progress view exists for: a plan accepted on 1 Jan that
+// promised 1 lb/week, six weeks of actual weigh-ins that only managed
+// 0.5 lb/week, then a regeneration. The first plan's segment must keep
+// reporting 1.0 target against 0.5 actual — the regeneration appends, it
+// never rewrites the elapsed weeks.
+func TestGetWeightPlanHistory_locksSupersededPlanPaceAgainstActual(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Plan 1: 230 lbs losing 1 lb/week for 12 weeks.
+	traj1 := []map[string]any{}
+	for wk := 0; wk <= 12; wk++ {
+		traj1 = append(traj1, map[string]any{"week": wk, "expected_weight": 230 - float64(wk)})
+	}
+	body1 := acceptPlanBody()
+	body1["weekly_trajectory"] = traj1
+	ac1, aw1 := newContext(uid, http.MethodPost, "/api/v1/weight/plan/accept", body1)
+	th.AcceptWeightPlan(ac1)
+	if aw1.Code != http.StatusCreated {
+		t.Fatalf("first accept: expected 201, got %d: %s", aw1.Code, aw1.Body.String())
+	}
+
+	// Plan 2, accepted six weeks in from the real 227 lbs, at 0.75 lb/week.
+	traj2 := []map[string]any{}
+	for wk := 0; wk <= 8; wk++ {
+		traj2 = append(traj2, map[string]any{"week": wk, "expected_weight": 227 - 0.75*float64(wk)})
+	}
+	body2 := acceptPlanBody()
+	body2["calorie_target"] = 1700
+	body2["weekly_trajectory"] = traj2
+	ac2, aw2 := newContext(uid, http.MethodPost, "/api/v1/weight/plan/accept", body2)
+	th.AcceptWeightPlan(ac2)
+	if aw2.Code != http.StatusCreated {
+		t.Fatalf("second accept: expected 201, got %d: %s", aw2.Code, aw2.Body.String())
+	}
+
+	// Both goals landed at CURRENT_TIMESTAMP; backdate them and their
+	// projections onto the 1 Jan / 12 Feb timeline this scenario describes.
+	goal2At := base.AddDate(0, 0, 42) // six weeks in
+	mustExec(t, `UPDATE nutrition_goals SET effective_at = ? WHERE user_id = ? AND calorie_target = 1800`, base, uid)
+	mustExec(t, `UPDATE nutrition_goals SET effective_at = ? WHERE user_id = ? AND calorie_target = 1700`, goal2At, uid)
+	mustExec(t, `UPDATE weight_plan_projections SET expected_date = datetime(?, '+' || (week * 7) || ' days')
+	             WHERE nutrition_goal_id = (SELECT id FROM nutrition_goals WHERE user_id = ? AND calorie_target = 1800)`, base.Format("2006-01-02"), uid)
+	mustExec(t, `UPDATE weight_plan_projections SET expected_date = datetime(?, '+' || (week * 7) || ' days')
+	             WHERE nutrition_goal_id = (SELECT id FROM nutrition_goals WHERE user_id = ? AND calorie_target = 1700)`, goal2At.Format("2006-01-02"), uid)
+
+	// Six weekly weigh-ins losing only 0.5 lb/week: 230 -> 227.
+	for wk := 0; wk <= 6; wk++ {
+		mustExec(t, `INSERT INTO weight_logs (user_id, weight, logged_at) VALUES (?, ?, ?)`,
+			uid, 230-0.5*float64(wk), base.AddDate(0, 0, wk*7))
+	}
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/weight/plan/history?from=2026-01-01", nil)
+	th.GetWeightPlanHistory(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	d := settingsData(t, w)
+
+	if d["journey_start"] != "2026-01-01" {
+		t.Fatalf("expected journey_start 2026-01-01, got %v", d["journey_start"])
+	}
+
+	segments, ok := d["segments"].([]any)
+	if !ok || len(segments) == 0 {
+		t.Fatalf("expected at least one segment, got %v", d["segments"])
+	}
+	first, _ := segments[0].(map[string]any)
+	if first["from"] != "2026-01-01" {
+		t.Fatalf("expected the first segment to start at the journey start, got %v", first["from"])
+	}
+	if got := first["target_lbs_per_week"]; got != 1.0 {
+		t.Fatalf("expected the superseded plan to still report a 1.0 lbs/week target, got %v", got)
+	}
+	if got := first["actual_lbs_per_week"]; got != 0.5 {
+		t.Fatalf("expected the superseded plan's actual pace to stay locked at 0.5 lbs/week, got %v", got)
+	}
+	if first["is_current"] != false {
+		t.Fatalf("expected the superseded plan not to be flagged current, got %v", first["is_current"])
+	}
+
+	// Week 5 is the last bucket plan 1 still governs (week 6 is the cutover
+	// date itself, where plan 2 takes over and re-baselines to the real
+	// weight). Plan 1 said 225 there; the user was actually 227.5, so the
+	// locked variance is +2.5 — and it stays that way after regeneration.
+	weeks, ok := d["weeks"].([]any)
+	if !ok || len(weeks) < 7 {
+		t.Fatalf("expected at least 7 weekly buckets, got %v", d["weeks"])
+	}
+	wk5, _ := weeks[5].(map[string]any)
+	if wk5["target_weight"] != 225.0 || wk5["actual_weight"] != 227.5 {
+		t.Fatalf("expected week 5 to be 225 target / 227.5 actual, got %v / %v", wk5["target_weight"], wk5["actual_weight"])
+	}
+	if wk5["variance_lbs"] != 2.5 {
+		t.Fatalf("expected week 5 variance of +2.5, got %v", wk5["variance_lbs"])
+	}
+	if int64(wk5["goal_id"].(float64)) == int64(wk6GoalID(t, weeks)) {
+		t.Fatalf("expected week 5 to still be attributed to the superseded plan, not the new one")
+	}
+}
+
+// The ?from window narrows the record without changing what it reports: the
+// same weeks, just fewer of them.
+func TestGetWeightPlanHistory_honorsFromWindowAndRemembersSetting(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	traj := []map[string]any{}
+	for wk := 0; wk <= 10; wk++ {
+		traj = append(traj, map[string]any{"week": wk, "expected_weight": 230 - float64(wk)})
+	}
+	body := acceptPlanBody()
+	body["weekly_trajectory"] = traj
+	ac, aw := newContext(uid, http.MethodPost, "/api/v1/weight/plan/accept", body)
+	th.AcceptWeightPlan(ac)
+	if aw.Code != http.StatusCreated {
+		t.Fatalf("accept: expected 201, got %d", aw.Code)
+	}
+	mustExec(t, `UPDATE nutrition_goals SET effective_at = ? WHERE user_id = ?`, base, uid)
+	mustExec(t, `UPDATE weight_plan_projections SET expected_date = datetime(?, '+' || (week * 7) || ' days')
+	             WHERE nutrition_goal_id = (SELECT id FROM nutrition_goals WHERE user_id = ?)`, base.Format("2006-01-02"), uid)
+
+	// Persist a start date, then confirm an un-parameterized request uses it.
+	sc, sw := newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"plan_history_start": "2026-02-01"})
+	th.UpdateSettings(sc)
+	if sw.Code != http.StatusOK {
+		t.Fatalf("save start date: expected 200, got %d: %s", sw.Code, sw.Body.String())
+	}
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/weight/plan/history", nil)
+	th.GetWeightPlanHistory(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	d := settingsData(t, w)
+	if d["from"] != "2026-02-01" {
+		t.Fatalf("expected the remembered start date to be used, got %v", d["from"])
+	}
+	if d["journey_start"] != "2026-01-01" {
+		t.Fatalf("expected journey_start to stay at the first plan's date, got %v", d["journey_start"])
+	}
+
+	// An explicit ?from overrides the saved setting without overwriting it.
+	c2, w2 := newContext(uid, http.MethodGet, "/api/v1/weight/plan/history?from=2026-01-15", nil)
+	th.GetWeightPlanHistory(c2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+	if got := settingsData(t, w2)["from"]; got != "2026-01-15" {
+		t.Fatalf("expected the query param to win, got %v", got)
+	}
+
+	sc2, sw2 := newContext(uid, http.MethodGet, "/api/v1/settings", nil)
+	th.GetSettings(sc2)
+	if got := settingsData(t, sw2)["plan_history_start"]; got != "2026-02-01" {
+		t.Fatalf("a one-off ?from must not overwrite the saved date, got %v", got)
+	}
+}
+
+// Structured plan text round-trips through accept and back out of the goal
+// endpoints, and backfills the flat notes column when no prose was sent.
+func TestAcceptWeightPlan_roundTripsStructuredPlanDetail(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	body := acceptPlanBody()
+	delete(body, "notes")
+	body["plan_detail"] = map[string]any{
+		"summary": "1,800 kcal/day to reach 190 lbs in about 12 weeks.",
+		"sections": []map[string]any{
+			{"heading": "How these targets were built", "bullets": []string{"TDEE is about 2,300 kcal", "A 500 kcal deficit gives ~1 lb/week"}},
+			{"heading": "Safety", "bullets": []string{"Never drop below 1,500 kcal"}},
+		},
+	}
+	ac, aw := newContext(uid, http.MethodPost, "/api/v1/weight/plan/accept", body)
+	th.AcceptWeightPlan(ac)
+	if aw.Code != http.StatusCreated {
+		t.Fatalf("accept: expected 201, got %d: %s", aw.Code, aw.Body.String())
+	}
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/weight/plan/current", nil)
+	th.GetCurrentNutritionGoal(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	goal, _ := settingsData(t, w)["goal"].(map[string]any)
+	detail, ok := goal["detail"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected structured detail on the goal, got %v", goal["detail"])
+	}
+	if detail["summary"] != "1,800 kcal/day to reach 190 lbs in about 12 weeks." {
+		t.Fatalf("summary did not round-trip, got %v", detail["summary"])
+	}
+	sections, _ := detail["sections"].([]any)
+	if len(sections) != 2 {
+		t.Fatalf("expected 2 sections, got %v", detail["sections"])
+	}
+	// notes is the plain-text fallback for anything not rendering `detail`.
+	if goal["notes"] == "" {
+		t.Fatalf("expected notes to be backfilled from the structured detail")
+	}
+}
+
+// wk6GoalID pulls the goal that owns the cutover bucket, so the assertion
+// above can prove week 5 is still attributed to the *previous* plan.
+func wk6GoalID(t *testing.T, weeks []any) float64 {
+	t.Helper()
+	wk6, _ := weeks[6].(map[string]any)
+	id, _ := wk6["goal_id"].(float64)
+	return id
+}

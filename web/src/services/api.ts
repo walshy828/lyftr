@@ -210,11 +210,16 @@ export const weightPlanAPI = {
   accept: (data: {
     calorie_target: number; protein_target: number; carb_target: number; fat_target: number
     target_weight: number; notes?: string; weekly_trajectory: types.WeightPlanProjectionPoint[]
+    plan_detail?: types.PlanDetail
   }) => api.post<{ data: types.NutritionGoal }>('/weight/plan/accept', data).then(res => unwrap(res)),
   current: () => api.get<{ data: types.CurrentNutritionGoal }>('/weight/plan/current').then(res => unwrap(res)),
   history: () => api.get<{ data: types.NutritionGoal[] }>('/weight/plan/goals').then(res => unwrap(res)),
   adherence: (refresh?: boolean) =>
     api.get<{ data: types.WeightPlanAdherence }>('/weight/plan/adherence', { params: refresh ? { refresh: 1 } : undefined }).then(res => unwrap(res)),
+  // Named `progress`, not `history` — `history` above is the goal *list*.
+  // Omit `from` to use the user's remembered plan_history_start.
+  progress: (from?: string) =>
+    api.get<{ data: types.WeightPlanHistory }>('/weight/plan/history', { params: from ? { from } : undefined }).then(res => unwrap(res)),
 }
 
 export const foodAPI = {

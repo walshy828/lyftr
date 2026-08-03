@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import {
   Target, Sparkles, AlertCircle, Check, TrendingUp, TrendingDown, Flame,
   Utensils, Dumbbell, History, ArrowLeft, ShieldAlert, Gauge, RefreshCw, Info, Calendar,
+  RotateCcw, ListChecks,
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, CartesianGrid,
@@ -12,6 +13,9 @@ import Loading from '../components/Loading'
 import PageHeader from '../components/ui/PageHeader'
 import SectionHeader from '../components/ui/SectionHeader'
 import EmptyState from '../components/ui/EmptyState'
+import DateInput from '../components/ui/DateInput'
+import PlanDetailSections from '../components/PlanDetailSections'
+import { dayToLocalDate } from '../utils/dateUtils'
 import { profileAPI, weightPlanAPI, weightAPI, userAPI } from '../services/api'
 import { useSettingsStore, weightShort, lbsToDisplay, displayWeight } from '../stores/settings'
 import * as types from '../types'
@@ -21,6 +25,9 @@ const ACTUAL_COLOR = '#6366f1'
 // The forecast is a projection of the *actual* trend, not a new series — same
 // hue as Actual, dashed and dimmer, reads as "this line continues."
 const FORECAST_COLOR = ACTUAL_COLOR
+// The original plan is historical context, not a live series — deliberately
+// desaturated so it recedes behind Plan/Actual rather than competing with them.
+const ORIGINAL_COLOR = '#94a3b8'
 
 const TOOLTIP_STYLE = {
   background: 'var(--surface-raised)',
@@ -45,6 +52,7 @@ interface ChartRow {
   plan?: number
   actual?: number
   forecast?: number
+  original?: number
 }
 
 interface ChartTooltipProps {
@@ -70,10 +78,14 @@ function ChartTooltip({ active, label, payload, wUnit }: ChartTooltipProps) {
   if (byKey.plan !== undefined) rows.push({ name: 'Plan', value: byKey.plan, color: PLAN_COLOR })
   if (byKey.actual !== undefined) rows.push({ name: 'Actual', value: byKey.actual, color: ACTUAL_COLOR })
   if (byKey.forecast !== undefined) rows.push({ name: 'Forecast', value: byKey.forecast, color: FORECAST_COLOR })
+  if (byKey.original !== undefined) rows.push({ name: 'Original plan', value: byKey.original, color: ORIGINAL_COLOR })
 
   const deltas: { name: string; value: number }[] = []
   if (byKey.actual !== undefined && byKey.plan !== undefined) {
     deltas.push({ name: 'Actual vs plan', value: byKey.actual - byKey.plan })
+  }
+  if (byKey.actual !== undefined && byKey.original !== undefined) {
+    deltas.push({ name: 'Actual vs original', value: byKey.actual - byKey.original })
   }
   if (byKey.forecast !== undefined && byKey.plan !== undefined) {
     deltas.push({ name: 'Forecast vs plan', value: byKey.forecast - byKey.plan })
@@ -81,7 +93,7 @@ function ChartTooltip({ active, label, payload, wUnit }: ChartTooltipProps) {
 
   return (
     <div style={TOOLTIP_STYLE} className="px-3 py-2">
-      <p className="font-medium mb-1">{label ? format(new Date(label), 'MMM d, yyyy') : ''}</p>
+      <p className="font-medium mb-1">{label ? format(dayToLocalDate(String(label)), 'MMM d, yyyy') : ''}</p>
       {rows.map(r => (
         <p key={r.name} style={{ color: r.color }}>
           {r.name}: {r.value.toFixed(1)} {wUnit}
@@ -98,6 +110,44 @@ function ChartTooltip({ active, label, payload, wUnit }: ChartTooltipProps) {
       )}
     </div>
   )
+}
+
+// The four editable macro targets, held as strings so a half-typed field
+// (or a cleared one) doesn't get coerced to 0 mid-edit.
+interface DraftTargets {
+  calorie_target: string
+  protein_target: string
+  carb_target: string
+  fat_target: string
+}
+
+const TARGET_FIELDS: { key: keyof DraftTargets; label: string; unit: string }[] = [
+  { key: 'calorie_target', label: 'Calories', unit: 'kcal' },
+  { key: 'protein_target', label: 'Protein', unit: 'g' },
+  { key: 'carb_target', label: 'Carbs', unit: 'g' },
+  { key: 'fat_target', label: 'Fat', unit: 'g' },
+]
+
+function targetsFromDraft(d: types.DraftWeightPlan): DraftTargets {
+  return {
+    calorie_target: String(d.calorie_target),
+    protein_target: String(d.protein_target),
+    carb_target: String(d.carb_target),
+    fat_target: String(d.fat_target),
+  }
+}
+
+// Mirrors the backend's AcceptWeightPlanRequest validators (calories
+// 800-6000, macros >= 0) so an out-of-range edit is caught before the round
+// trip rather than coming back as a validation error.
+function targetsError(t: DraftTargets): string | null {
+  const cal = Number(t.calorie_target)
+  if (!Number.isFinite(cal) || cal < 800 || cal > 6000) return 'Calories must be between 800 and 6,000'
+  for (const f of TARGET_FIELDS.slice(1)) {
+    const v = Number(t[f.key])
+    if (!Number.isFinite(v) || v < 0) return `${f.label} must be 0 or more`
+  }
+  return null
 }
 
 // Linear interpolation across a sorted set of known points — used to fill in
@@ -135,6 +185,12 @@ export default function WeightPlan() {
   const [targetWeight, setTargetWeight] = useState('')
   const [timeframeWeeks, setTimeframeWeeks] = useState('')
   const [draft, setDraft] = useState<types.DraftWeightPlan | null>(null)
+  // The AI's macro suggestions are a starting point, not a verdict — these
+  // hold the user's edits between generating a draft and accepting it.
+  const [draftTargets, setDraftTargets] = useState<DraftTargets | null>(null)
+  const [progress, setProgress] = useState<types.WeightPlanHistory | null>(null)
+  const [historyStart, setHistoryStart] = useState('')
+  const [savingStart, setSavingStart] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [accepting, setAccepting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -146,13 +202,50 @@ export default function WeightPlan() {
     ])
     setProfile(p)
     setActualLogs(logs || [])
+    let loaded: types.CurrentNutritionGoal | null = null
     try {
-      const c = await weightPlanAPI.current()
-      setCurrent(c)
+      loaded = await weightPlanAPI.current()
+      setCurrent(loaded)
     } catch {
       setCurrent(null)
+      setProgress(null)
     }
     weightPlanAPI.history().then(setHistory).catch(() => {})
+    if (loaded) {
+      // No `from` — the server resolves the remembered plan_history_start,
+      // falling back to the journey start, and tells us which it used.
+      try {
+        const prog = await weightPlanAPI.progress()
+        setProgress(prog)
+        setHistoryStart(prog.from)
+      } catch {
+        setProgress(null)
+      }
+    }
+  }
+
+  // Changing the vantage point is a preference, not a one-off filter: persist
+  // it so the same window is waiting on the next device/visit.
+  const handleHistoryStartChange = async (value: string) => {
+    setHistoryStart(value)
+    if (!value) return
+    setSavingStart(true)
+    try {
+      const [prog] = await Promise.all([
+        weightPlanAPI.progress(value),
+        userAPI.updateSettings({ plan_history_start: value }),
+      ])
+      setProgress(prog)
+      useSettingsStore.setState(state => ({ settings: { ...state.settings, plan_history_start: value } }))
+    } catch {
+      setError('Could not update the progress start date')
+    } finally {
+      setSavingStart(false)
+    }
+  }
+
+  const handleResetHistoryStart = () => {
+    if (current?.journey_start) handleHistoryStartChange(current.journey_start.slice(0, 10))
   }
 
   useEffect(() => {
@@ -187,12 +280,14 @@ export default function WeightPlan() {
     setGenerating(true)
     setError(null)
     setDraft(null)
+    setDraftTargets(null)
     try {
       const plan = await weightPlanAPI.generate({
         target_weight: settings.weight_unit === 'lbs' ? t : t / 0.453592,
         timeframe_weeks: timeframeWeeks ? parseInt(timeframeWeeks) : undefined,
       })
       setDraft(plan)
+      setDraftTargets(targetsFromDraft(plan))
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Could not generate a plan — try again')
     } finally {
@@ -201,22 +296,29 @@ export default function WeightPlan() {
   }
 
   const handleAccept = async () => {
-    if (!draft) return
+    if (!draft || !draftTargets) return
+    const invalid = targetsError(draftTargets)
+    if (invalid) {
+      setError(invalid)
+      return
+    }
     setAccepting(true)
     setError(null)
     try {
       const t = parseFloat(targetWeight)
       const targetLbs = settings.weight_unit === 'lbs' ? t : t / 0.453592
       await weightPlanAPI.accept({
-        calorie_target: draft.calorie_target,
-        protein_target: draft.protein_target,
-        carb_target: draft.carb_target,
-        fat_target: draft.fat_target,
+        calorie_target: Number(draftTargets.calorie_target),
+        protein_target: Number(draftTargets.protein_target),
+        carb_target: Number(draftTargets.carb_target),
+        fat_target: Number(draftTargets.fat_target),
         target_weight: targetLbs,
         notes: [draft.rationale, draft.safety_notes].filter(Boolean).join(' '),
+        plan_detail: draft.detail,
         weekly_trajectory: draft.weekly_trajectory,
       })
       setDraft(null)
+      setDraftTargets(null)
       setTargetWeight('')
       // fetch() is a no-op once settings are already loaded — accepting a
       // plan changed the server's targets underneath the cached store, so
@@ -235,6 +337,7 @@ export default function WeightPlan() {
     const rows = new Map<string, ChartRow>()
     const planPoints: { ts: number; val: number }[] = []
     const forecastPoints: { ts: number; val: number }[] = []
+    const originalPoints: { ts: number; val: number }[] = []
     if (current) {
       for (const p of current.plan_timeline) {
         const d = p.expected_date ? p.expected_date.slice(0, 10) : ''
@@ -252,6 +355,16 @@ export default function WeightPlan() {
         forecastPoints.push({ ts, val })
         rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, forecast: val })
       }
+      // The original plan's own (unclipped) trajectory — the "where I first
+      // said I'd be" reference. Empty when the current plan *is* the original.
+      for (const p of current.original_plan) {
+        const d = p.expected_date ? p.expected_date.slice(0, 10) : ''
+        if (!d) continue
+        const ts = new Date(d).getTime()
+        const val = lbsToDisplay(p.expected_weight, settings.weight_unit)
+        originalPoints.push({ ts, val })
+        rows.set(d, { ...(rows.get(d) ?? { date: d, ts }), date: d, ts, original: val })
+      }
     }
     for (const l of actualLogs) {
       const d = l.logged_at.slice(0, 10)
@@ -260,6 +373,7 @@ export default function WeightPlan() {
     }
     planPoints.sort((a, b) => a.ts - b.ts)
     forecastPoints.sort((a, b) => a.ts - b.ts)
+    originalPoints.sort((a, b) => a.ts - b.ts)
     // Fill in interpolated plan/forecast values on every row so hovering any
     // actual-only date still shows a sensible plan/forecast comparison.
     for (const row of rows.values()) {
@@ -271,9 +385,18 @@ export default function WeightPlan() {
         const v = interpolateAt(forecastPoints, row.ts)
         if (v !== undefined) row.forecast = v
       }
+      if (row.original === undefined) {
+        const v = interpolateAt(originalPoints, row.ts)
+        if (v !== undefined) row.original = v
+      }
     }
-    return Array.from(rows.values()).sort((a, b) => a.ts - b.ts)
-  }, [current, actualLogs, settings.weight_unit])
+    // The chosen start date is a chart window too, not just a table filter —
+    // otherwise the two views on this page disagree about what "since" means.
+    const fromTs = historyStart ? new Date(historyStart).getTime() : -Infinity
+    return Array.from(rows.values())
+      .filter(r => r.ts >= fromTs)
+      .sort((a, b) => a.ts - b.ts)
+  }, [current, actualLogs, settings.weight_unit, historyStart])
 
   // Client-computed pace evaluation (#6): average lbs/week the accepted
   // plan's own projections imply, compared against the BMI-based safe-pace
@@ -311,6 +434,15 @@ export default function WeightPlan() {
       { key: 'obese', label: 'Obese', rangeText: `≥ ${Math.round(obeseDisp)}`, y1: obeseDisp, y2: obeseDisp + 1000, color: ZONE_COLORS.obese },
     ] as const
   }, [profile?.bmi, settings.weight_unit])
+
+  // Recomputed on every keystroke rather than memoized — it's four Number()
+  // calls, and stale validation on a disabled Accept button is worse than
+  // cheap recomputation.
+  const targetsInvalid = draftTargets ? targetsError(draftTargets) : null
+  const hasOriginalPlan = (current?.original_plan?.length ?? 0) > 0
+  const targetsEdited = draft && draftTargets
+    ? TARGET_FIELDS.some(f => draftTargets[f.key] !== String(draft[f.key]))
+    : false
 
   if (loading) return <Loading />
 
@@ -424,30 +556,52 @@ export default function WeightPlan() {
           </button>
         </form>
 
-        {draft && (
-          <div className="mt-4 space-y-3 border-t border-surface-border pt-4">
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { label: 'Calories', value: draft.calorie_target, unit: 'kcal' },
-                { label: 'Protein', value: draft.protein_target, unit: 'g' },
-                { label: 'Carbs', value: draft.carb_target, unit: 'g' },
-                { label: 'Fat', value: draft.fat_target, unit: 'g' },
-              ].map(m => (
-                <div key={m.label} className="card p-3 text-center">
-                  <p className="stat-label">{m.label}</p>
-                  <p className="stat-value text-lg mt-1">{m.value}</p>
-                  <p className="text-[10px] text-tx-muted">{m.unit}</p>
-                </div>
-              ))}
+        {draft && draftTargets && (
+          <div className="mt-4 space-y-4 border-t border-surface-border pt-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="label">Nutrition targets</p>
+                <button
+                  type="button"
+                  onClick={() => setDraftTargets(targetsFromDraft(draft))}
+                  disabled={targetsEdited === false}
+                  className="btn-secondary btn-sm"
+                >
+                  <RotateCcw className="w-3 h-3" /> Reset to AI values
+                </button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {TARGET_FIELDS.map(f => (
+                  <div key={f.key} className="card p-3">
+                    <label htmlFor={`target-${f.key}`} className="stat-label block">{f.label}</label>
+                    <input
+                      id={`target-${f.key}`}
+                      type="number"
+                      inputMode="numeric"
+                      value={draftTargets[f.key]}
+                      onChange={e => setDraftTargets({ ...draftTargets, [f.key]: e.target.value })}
+                      className="input w-full mt-1 text-lg"
+                      min={0}
+                    />
+                    <p className="text-[10px] text-tx-muted mt-1">{f.unit}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-tx-muted mt-2">
+                Adjust any of these before accepting — the values you save here become your daily targets.
+              </p>
+              {targetsInvalid && <p className="text-xs text-error-400 mt-1">{targetsInvalid}</p>}
             </div>
-            {draft.rationale && <p className="text-sm text-tx-secondary">{draft.rationale}</p>}
+
+            <PlanDetailSections detail={draft.detail} fallback={draft.rationale} />
+
             {draft.safety_notes && (
               <div className="flex items-start gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
                 <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                 <span>{draft.safety_notes}</span>
               </div>
             )}
-            <button onClick={handleAccept} disabled={accepting} className="btn-primary btn-md w-full">
+            <button onClick={handleAccept} disabled={accepting || !!targetsInvalid} className="btn-primary btn-md w-full">
               <Check className="w-4 h-4" /> {accepting ? 'Saving…' : 'Accept & Import to Settings'}
             </button>
           </div>
@@ -478,6 +632,25 @@ export default function WeightPlan() {
       {current && (
         <div className="card p-5">
           <SectionHeader icon={TrendingDown} title="Actual vs. Plan" />
+          <div className="flex flex-wrap items-end gap-2 mt-3">
+            <div className="flex-1 min-w-[10rem]">
+              <DateInput
+                label="Show progress from"
+                value={historyStart}
+                onChange={handleHistoryStartChange}
+                max={format(new Date(), 'yyyy-MM-dd')}
+              />
+            </div>
+            {current.journey_start && historyStart !== current.journey_start.slice(0, 10) && (
+              <button type="button" onClick={handleResetHistoryStart} disabled={savingStart} className="btn-secondary btn-sm">
+                <RotateCcw className="w-3 h-3" /> Whole journey
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-tx-muted mt-1.5">
+            Saved to your account — this window applies to the chart and the progress table below.
+            {current.journey_start && <> Journey started {format(new Date(current.journey_start), 'MMM d, yyyy')}.</>}
+          </p>
           {chartData.length < 2 ? (
             <div className="flex items-center justify-center h-40 text-tx-muted text-sm">Not enough data yet</div>
           ) : (
@@ -485,7 +658,7 @@ export default function WeightPlan() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="4 4" stroke="var(--surface-border)" opacity={0.3} />
-                  <XAxis dataKey="date" tickFormatter={d => format(new Date(d), 'MMM d')} fontSize={11} stroke="var(--tx-secondary)" />
+                  <XAxis dataKey="date" tickFormatter={d => format(dayToLocalDate(d), 'MMM d')} fontSize={11} stroke="var(--tx-secondary)" />
                   <YAxis fontSize={11} stroke="var(--tx-secondary)" domain={['auto', 'auto']} />
                   <Tooltip content={<ChartTooltip wUnit={wUnit} />} />
                   {bmiZones?.map(z => (
@@ -503,10 +676,29 @@ export default function WeightPlan() {
                   <Line type="monotone" dataKey="plan" name={`Plan (${wUnit})`} stroke={PLAN_COLOR} strokeWidth={2} dot={false} connectNulls />
                   <Line type="monotone" dataKey="actual" name={`Actual (${wUnit})`} stroke={ACTUAL_COLOR} strokeWidth={2} dot={{ r: 3 }} connectNulls />
                   <Line type="monotone" dataKey="forecast" name={`Forecast (${wUnit})`} stroke={FORECAST_COLOR} strokeOpacity={0.55} strokeDasharray="5 5" strokeWidth={2} dot={false} connectNulls />
+                  {hasOriginalPlan && (
+                    <Line type="monotone" dataKey="original" name={`Original plan (${wUnit})`} stroke={ORIGINAL_COLOR} strokeOpacity={0.7} strokeDasharray="2 4" strokeWidth={2} dot={false} connectNulls />
+                  )}
                 </LineChart>
               </ResponsiveContainer>
             </div>
           )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3">
+            {[
+              { label: 'Plan', color: PLAN_COLOR, dashed: false },
+              { label: 'Actual', color: ACTUAL_COLOR, dashed: false },
+              { label: 'Forecast', color: FORECAST_COLOR, dashed: true },
+              ...(hasOriginalPlan ? [{ label: 'Original plan', color: ORIGINAL_COLOR, dashed: true }] : []),
+            ].map(l => (
+              <span key={l.label} className="flex items-center gap-1.5 text-[11px] text-tx-muted">
+                <span
+                  className="w-4 h-0 border-t-2"
+                  style={{ borderColor: l.color, borderStyle: l.dashed ? 'dashed' : 'solid' }}
+                />
+                {l.label}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -525,7 +717,7 @@ export default function WeightPlan() {
               </span>
             </div>
 
-            {current.goal.notes && <p className="text-sm text-tx-secondary">{current.goal.notes}</p>}
+            <PlanDetailSections detail={current.goal.detail} fallback={current.goal.notes} />
 
             {planPace && (
               <div className={`flex items-start gap-2 text-xs rounded-lg p-3 border ${planPace.inRange ? 'text-tx-secondary bg-surface-overlay border-surface-border' : 'text-amber-400 bg-amber-500/10 border-amber-500/20'}`}>
@@ -601,6 +793,82 @@ export default function WeightPlan() {
             <div className="mt-4 flex items-start gap-2 text-sm text-tx-primary bg-brand-500/10 border border-brand-500/20 rounded-lg p-3">
               <TrendingUp className="w-4 h-4 text-brand-400 flex-shrink-0 mt-0.5" />
               <span>{adherence.motivational_note}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Progress against each plan: the locked target-vs-actual record.
+          Segments come straight from the server, which derives them from the
+          projections frozen when each plan was accepted — regenerating a plan
+          appends a new segment and never rewrites an elapsed one. */}
+      {current && progress && progress.segments.length > 0 && (
+        <div className="card p-5">
+          <SectionHeader icon={ListChecks} title="Progress vs. Plan" />
+          <div className="space-y-2 mt-3">
+            {progress.segments.map(seg => {
+              const behind = seg.actual_lbs_per_week < seg.target_lbs_per_week
+              return (
+                <div key={`${seg.goal_id}-${seg.from}`} className="p-3 rounded-lg bg-surface-overlay border border-surface-border">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-tx-primary">
+                      {format(dayToLocalDate(seg.from), 'MMM d, yyyy')} – {format(dayToLocalDate(seg.to), 'MMM d, yyyy')}
+                    </p>
+                    <span className={`badge ${seg.is_current ? 'bg-brand-500/10 border border-brand-500/20 text-brand-400' : 'badge-dim'}`}>
+                      {seg.is_current ? 'Current plan' : 'Previous plan'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div>
+                      <p className="text-[10px] uppercase text-tx-muted">Target pace</p>
+                      <p className="text-sm text-tx-primary">{seg.target_lbs_per_week.toFixed(1)} lbs/wk</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-tx-muted">Actual pace</p>
+                      <p className="text-sm" style={{ color: deltaColor(behind ? 1 : -1) }}>
+                        {seg.actual_lbs_per_week.toFixed(1)} lbs/wk
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase text-tx-muted">Span</p>
+                      <p className="text-sm text-tx-primary">{seg.weeks} {seg.weeks === 1 ? 'week' : 'weeks'}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {progress.weeks.some(w => w.has_actual) && (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-tx-muted text-left">
+                    <th className="py-1.5 pr-3 font-medium">Week of</th>
+                    <th className="py-1.5 pr-3 font-medium text-right">Target</th>
+                    <th className="py-1.5 pr-3 font-medium text-right">Actual</th>
+                    <th className="py-1.5 font-medium text-right">Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {progress.weeks.map(w => (
+                    <tr key={w.week_start} className="border-t border-surface-border">
+                      <td className="py-1.5 pr-3 text-tx-secondary whitespace-nowrap">{format(dayToLocalDate(w.week_start), 'MMM d')}</td>
+                      <td className="py-1.5 pr-3 text-right text-tx-secondary">
+                        {w.goal_id ? `${displayWeight(w.target_weight, settings.weight_unit)} ${wUnit}` : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right text-tx-primary">
+                        {w.has_actual ? `${displayWeight(w.actual_weight, settings.weight_unit)} ${wUnit}` : '—'}
+                      </td>
+                      <td className="py-1.5 text-right" style={{ color: w.has_actual && w.goal_id ? deltaColor(w.variance_lbs) : undefined }}>
+                        {w.has_actual && w.goal_id
+                          ? `${w.variance_lbs > 0 ? '+' : ''}${displayWeight(w.variance_lbs, settings.weight_unit)}`
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

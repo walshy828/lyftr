@@ -191,6 +191,23 @@ type DraftWeightPlan struct {
 	WeeklyTrajectory []WeightPlanWeek `json:"weekly_trajectory"`
 	Rationale        string           `json:"rationale"`
 	SafetyNotes      string           `json:"safety_notes"`
+	// Detail is the structured, renderable write-up — headed bullet sections
+	// instead of one prose blob, so the UI can lay it out without a markdown
+	// parser. Rationale/SafetyNotes are kept as the flat fallback for anything
+	// reading the plain-text form.
+	Detail PlanDetail `json:"detail"`
+}
+
+// PlanSection is one headed group of bullets in a structured plan write-up.
+type PlanSection struct {
+	Heading string   `json:"heading"`
+	Bullets []string `json:"bullets"`
+}
+
+// PlanDetail is a plan explanation as a one-line summary plus headed sections.
+type PlanDetail struct {
+	Summary  string        `json:"summary"`
+	Sections []PlanSection `json:"sections"`
 }
 
 // MotivationNoteRequest carries the adherence signals and today's date so the
@@ -565,7 +582,13 @@ func weightPlanPrompt(req GenerateWeightPlanRequest) string {
 
 	b.WriteString("Safety constraints (do not violate these): the rate of loss must never exceed about 2 lbs/week in any single week, even in the faster initial phase; daily calorie_target must never go below 1500 for a male or 1200 for a female, regardless of how aggressive the timeframe request is. If a safe, properly-tapered plan can't reach the target in the requested timeframe, extend the trajectory and say so in rationale rather than dropping calories further or exceeding the safe weekly rate.\n\n")
 
-	b.WriteString("Return: calorie_target (integer kcal/day), protein_target, carb_target, fat_target (integer grams/day, roughly consistent with the calorie target), weekly_trajectory (an array of {week, expected_weight} starting at week 0 with the user's current weight and following the three-phase tapering pace described above to the plan's final target weight — one entry per week), rationale (one short paragraph explaining the calorie/macro choices and why the pace is shaped the way it is), and safety_notes (any caveats, including a target adjustment if you moved it toward the healthy range, or a recommendation to consult a doctor for large or rapid changes).")
+	b.WriteString("Return: calorie_target (integer kcal/day), protein_target, carb_target, fat_target (integer grams/day, roughly consistent with the calorie target), weekly_trajectory (an array of {week, expected_weight} starting at week 0 with the user's current weight and following the three-phase tapering pace described above to the plan's final target weight — one entry per week), rationale (one short paragraph explaining the calorie/macro choices and why the pace is shaped the way it is), and safety_notes (any caveats, including a target adjustment if you moved it toward the healthy range, or a recommendation to consult a doctor for large or rapid changes).\n\n")
+
+	// The structured `detail` field is what the UI actually renders — headed
+	// bullet sections rather than the prose blob. Markdown syntax inside
+	// bullets is explicitly forbidden because the frontend renders these as
+	// plain text nodes in real <h4>/<ul> elements, with no markdown parser.
+	b.WriteString("Also return a `detail` object that presents the same explanation in a scannable, structured form for display. It must contain: summary (one sentence, at most ~25 words, stating the headline of the plan — e.g. the daily calorie target and the expected timeline), and sections (3 to 5 objects, each with a short heading of at most 5 words and 2 to 5 bullets). Cover, in this order where applicable: how the calorie and macro targets were derived; how the weekly trajectory is shaped and roughly when the target is reached; practical nutrition guidance for hitting these numbers; and safety guardrails and caveats. Each bullet must be a single self-contained sentence or phrase under about 20 words. Do NOT use any markdown syntax anywhere in detail — no asterisks, no dashes or bullet characters at the start of a bullet, no headings marks, no backticks. Write plain sentences; the app supplies the headings and bullet points itself. The detail sections must be consistent with rationale and safety_notes, not contradict them.")
 	return b.String()
 }
 
@@ -581,6 +604,30 @@ func weightPlanJSONSchema() map[string]any {
 		"required":             []string{"week", "expected_weight"},
 		"additionalProperties": false,
 	}
+	sectionSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"heading": map[string]any{"type": "string"},
+			"bullets": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "string"},
+			},
+		},
+		"required":             []string{"heading", "bullets"},
+		"additionalProperties": false,
+	}
+	detailSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"summary": map[string]any{"type": "string"},
+			"sections": map[string]any{
+				"type":  "array",
+				"items": sectionSchema,
+			},
+		},
+		"required":             []string{"summary", "sections"},
+		"additionalProperties": false,
+	}
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -594,8 +641,9 @@ func weightPlanJSONSchema() map[string]any {
 			},
 			"rationale":    map[string]any{"type": "string"},
 			"safety_notes": map[string]any{"type": "string"},
+			"detail":       detailSchema,
 		},
-		"required":             []string{"calorie_target", "protein_target", "carb_target", "fat_target", "weekly_trajectory", "rationale"},
+		"required":             []string{"calorie_target", "protein_target", "carb_target", "fat_target", "weekly_trajectory", "rationale", "detail"},
 		"additionalProperties": false,
 	}
 }

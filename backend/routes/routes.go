@@ -74,6 +74,7 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("weight/plan/current", h.GetCurrentNutritionGoal)
 		protected.GET("weight/plan/goals", h.GetNutritionGoalHistory)
 		protected.GET("weight/plan/adherence", h.GetWeightPlanAdherence)
+		protected.GET("weight/plan/history", h.GetWeightPlanHistory)
 
 		protected.GET("weight/:id", h.GetWeightLog)
 		protected.PATCH("weight/:id", h.UpdateWeightLog)

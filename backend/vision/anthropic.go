@@ -189,8 +189,10 @@ func (p *anthropicProvider) GenerateProgram(ctx context.Context, req GeneratePro
 
 func (p *anthropicProvider) GenerateWeightPlan(ctx context.Context, req GenerateWeightPlanRequest) (DraftWeightPlan, error) {
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     p.model,
-		MaxTokens: 2048,
+		Model: p.model,
+		// Raised from 2048: the response now carries the structured `detail`
+		// sections on top of a per-week trajectory that can run 100+ entries.
+		MaxTokens: 3072,
 		OutputConfig: anthropic.OutputConfigParam{
 			Effort: anthropic.OutputConfigEffortLow,
 			Format: anthropic.JSONOutputFormatParam{
