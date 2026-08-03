@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/db"
+	"github.com/Cawlumm/lyftr-backend/models"
 	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/Cawlumm/lyftr-backend/vision"
 )
@@ -708,4 +709,128 @@ func wk6GoalID(t *testing.T, weeks []any) float64 {
 	wk6, _ := weeks[6].(map[string]any)
 	id, _ := wk6["goal_id"].(float64)
 	return id
+}
+
+// --- planRegenerateSignal ----------------------------------------------------
+//
+// The regenerate CTA is the loudest thing on both the dashboard widget and the
+// plan page, so these pin down when it is allowed to appear. Weights are lbs;
+// a 200 -> 188 lb plan over 12 weeks (1 lb/week, so a 6 lb tolerance).
+
+// regenFixture builds a plan that started `weeksAgo` weeks back, running 12
+// weeks at 1 lb/week from 200 lbs down to a 188 lb target.
+func regenFixture(weeksAgo int, now time.Time) (models.NutritionGoal, []models.WeightPlanProjectionPoint) {
+	start := now.AddDate(0, 0, -7*weeksAgo)
+	goal := models.NutritionGoal{TargetWeight: 188, EffectiveAt: start}
+	points := make([]models.WeightPlanProjectionPoint, 0, 13)
+	for w := 0; w <= 12; w++ {
+		points = append(points, models.WeightPlanProjectionPoint{
+			Week:           w,
+			ExpectedWeight: 200 - float64(w),
+			ExpectedDate:   start.AddDate(0, 0, 7*w),
+		})
+	}
+	return goal, points
+}
+
+// flatForecast is a trend line that goes nowhere — what a plateaued (or
+// pre-plan) set of weigh-ins produces.
+func flatForecast(weight float64, from time.Time, weeks int) []models.WeightPlanProjectionPoint {
+	points := make([]models.WeightPlanProjectionPoint, 0, weeks)
+	for w := 1; w <= weeks; w++ {
+		points = append(points, models.WeightPlanProjectionPoint{
+			Week: w, ExpectedWeight: weight, ExpectedDate: from.AddDate(0, 0, 7*w),
+		})
+	}
+	return points
+}
+
+// The reported bug: a plan accepted today is fit against weigh-ins that
+// predate it, so its forecast necessarily still points at the old trend. That
+// must not tell the user to regenerate what they just generated.
+func TestPlanRegenerateSignal_quietDuringGracePeriod(t *testing.T) {
+	now := time.Now().UTC()
+	goal, projections := regenFixture(0, now)
+	forecast := flatForecast(200, now, 12) // trend says they stay at 200, 12 lbs off target
+
+	if should, reason := planRegenerateSignal(goal, projections, forecast, 200, now, now); should {
+		t.Fatalf("expected no regenerate prompt on a plan accepted today, got %q", reason)
+	}
+}
+
+// Slightly off the line is the normal state of any real plan — water weight,
+// one bad week — and must not trigger the CTA even once the plan is old
+// enough to judge.
+func TestPlanRegenerateSignal_quietWithinTolerance(t *testing.T) {
+	now := time.Now().UTC()
+	goal, projections := regenFixture(6, now)
+	// Expected 194 at week 6; 197.5 is 3.5 lbs behind — inside the 6 lb floor.
+	forecast := flatForecast(197.5, now, 6)
+
+	if should, reason := planRegenerateSignal(goal, projections, forecast, 197.5, now, now); should {
+		t.Fatalf("expected no regenerate prompt for a 3.5 lb drift, got %q", reason)
+	}
+}
+
+// Off the line today but trending back onto it: the plan is still a fair
+// description of where the user is headed, so no CTA.
+func TestPlanRegenerateSignal_quietWhenTrendIsClosingTheGap(t *testing.T) {
+	now := time.Now().UTC()
+	goal, projections := regenFixture(6, now)
+	// 9 lbs behind now, but the trend lands within a pound of the 188 target.
+	forecast := flatForecast(188.5, now, 6)
+
+	if should, reason := planRegenerateSignal(goal, projections, forecast, 203, now, now); should {
+		t.Fatalf("expected no regenerate prompt when the trend still reaches target, got %q", reason)
+	}
+}
+
+// The case the CTA exists for: well off the line and the trend says it stays
+// that way.
+func TestPlanRegenerateSignal_firesWhenWellOffPlanAndNotCatchingUp(t *testing.T) {
+	now := time.Now().UTC()
+	goal, projections := regenFixture(6, now)
+	forecast := flatForecast(203, now, 6)
+
+	should, reason := planRegenerateSignal(goal, projections, forecast, 203, now, now)
+	if !should {
+		t.Fatalf("expected a regenerate prompt for a 9 lb drift with a flat trend")
+	}
+	if reason == "" {
+		t.Fatalf("expected a non-empty reason")
+	}
+}
+
+// "Took a pause week or two, then came back" — with no recent weigh-ins there
+// is nothing left tracking the plan, so rebasing on today's weight is right.
+func TestPlanRegenerateSignal_firesAfterAWeighInGap(t *testing.T) {
+	now := time.Now().UTC()
+	goal, projections := regenFixture(6, now)
+	forecast := flatForecast(194, now, 6) // dead on plan, so only the gap can fire
+
+	stale := now.AddDate(0, 0, -planRegenerateStaleWeighInDays-1)
+	should, reason := planRegenerateSignal(goal, projections, forecast, 194, stale, now)
+	if !should {
+		t.Fatalf("expected a regenerate prompt after a %d-day weigh-in gap", planRegenerateStaleWeighInDays+1)
+	}
+	if reason == "" {
+		t.Fatalf("expected a non-empty reason")
+	}
+}
+
+// Tolerance scales with the plan's pace: an aggressive plan gets more room
+// than the 6 lb floor, a gentle one stays at the floor.
+func TestPlanDriftToleranceLbs_scalesWithPace(t *testing.T) {
+	now := time.Now().UTC()
+	_, gentle := regenFixture(0, now) // 1 lb/week -> 4 lbs, floored to 6
+	if got := planDriftToleranceLbs(gentle); got != planRegenerateDriftFloorLbs {
+		t.Fatalf("expected the floor for a 1 lb/week plan, got %v", got)
+	}
+
+	aggressive := []models.WeightPlanProjectionPoint{
+		{Week: 0, ExpectedWeight: 260}, {Week: 10, ExpectedWeight: 240}, // 2 lbs/week
+	}
+	if got := planDriftToleranceLbs(aggressive); got != 8 {
+		t.Fatalf("expected 8 lbs of tolerance for a 2 lb/week plan, got %v", got)
+	}
 }

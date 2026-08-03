@@ -624,10 +624,7 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 	}
 
 	now := time.Now().UTC()
-	weeksIntoPlan := int(now.Sub(goal.EffectiveAt).Hours() / (24 * 7))
-	if weeksIntoPlan < 0 {
-		weeksIntoPlan = 0
-	}
+	weeksIntoPlan := weeksSince(goal.EffectiveAt, now)
 	expected, hasExpected := nearestProjection(projections, weeksIntoPlan)
 
 	variance := 0.0
@@ -684,7 +681,16 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
-	shouldRegenerate, regenerateReason := planRegenerateSignal(goal, projections, forecast, now)
+	// Most recent weigh-in date, for the "you've stopped tracking" signal.
+	var lastWeighIn time.Time
+	recent, err := h.s.Weight.List(uid, stores.WeightFilter{Limit: 1})
+	if utils.DBError(c, err) {
+		return
+	}
+	if len(recent) > 0 {
+		lastWeighIn = recent[0].LoggedAt
+	}
+	shouldRegenerate, regenerateReason := planRegenerateSignal(goal, projections, forecast, weightStats.Latest, lastWeighIn, now)
 
 	utils.OK(c, gin.H{
 		"behind_plan":       behindPlan,
@@ -701,19 +707,49 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 	})
 }
 
-// planRegenerateStaleTargetLbs is how far the actual-weight forecast's
-// end-of-plan projection may diverge from the plan's target weight before
-// prompting the user to regenerate — small day-to-day variance is expected
-// and shouldn't trigger this, only a sustained trend that won't get there.
-const planRegenerateStaleTargetLbs = 5.0
+const (
+	// planRegenerateGraceWeeks is how long a newly accepted plan is left alone.
+	// The forecast is fit to weigh-ins from *before* the plan existed, so on
+	// day one it necessarily still points at the old trend — prompting then
+	// would tell a user who just built a plan to rebuild it.
+	planRegenerateGraceWeeks = 3
+	// planRegenerateDriftFloorLbs is the smallest drift from the plan line
+	// that can ever count as "way off track" — normal water/glycogen swing is
+	// several pounds, and nothing under this is signal.
+	planRegenerateDriftFloorLbs = 6.0
+	// planRegenerateDriftWeeksOfPace scales the tolerance with the plan's own
+	// pace: an aggressive 2 lb/week plan has to miss by more before its line
+	// is meaningfully wrong, a gentle 0.5 lb/week plan by less.
+	planRegenerateDriftWeeksOfPace = 4.0
+	// planRegenerateDriftCeilingLbs caps the scaled tolerance so a very
+	// aggressive plan can still be flagged.
+	planRegenerateDriftCeilingLbs = 15.0
+	// planRegenerateStaleWeighInDays is how long the user can go without a
+	// weigh-in before the plan is treated as untracked — the "paused for a
+	// week or two, then came back" case, where rebasing on today's weight is
+	// genuinely the right move.
+	planRegenerateStaleWeighInDays = 21
+)
 
 // planRegenerateSignal decides whether the current plan is stale enough to
-// prompt the user to regenerate it: either the plan's own timeline has run
-// out, or the actual-weight trend (already clamped/smoothed by
-// utils.ForecastActualWeight, so a single noisy week can't trigger this) is
-// projected to miss the target by more than planRegenerateStaleTargetLbs at
-// the plan's final projection date.
-func planRegenerateSignal(goal models.NutritionGoal, projections, forecast []models.WeightPlanProjectionPoint, now time.Time) (bool, string) {
+// prompt the user to regenerate it. The bar is deliberately high: this is a
+// call to action for a plan that has stopped describing reality, not a nag
+// for an ordinary bad week. It fires only when
+//
+//   - the plan's own timeline has run out; or
+//   - the user has stopped weighing in altogether (a pause), so there's
+//     nothing left to track the plan against; or
+//   - the user is *currently* off the plan line by more than the tolerance
+//     AND the smoothed trend says they'll still miss the target by more than
+//     that tolerance at the plan's end date.
+//
+// The last condition needs both halves. Forecast-only (the previous rule)
+// fires on a brand-new plan, because the trend it fits comes from weigh-ins
+// predating the plan — which is exactly the "I refreshed it today and it
+// still says refresh" case. Current-drift-only fires on a single noisy
+// weigh-in. Together they mean "you're off plan now and not catching up",
+// and a fresh plan starts on its own line so it can't trip them.
+func planRegenerateSignal(goal models.NutritionGoal, projections, forecast []models.WeightPlanProjectionPoint, latestWeight float64, lastWeighIn, now time.Time) (bool, string) {
 	if len(projections) == 0 {
 		return false, ""
 	}
@@ -721,6 +757,26 @@ func planRegenerateSignal(goal models.NutritionGoal, projections, forecast []mod
 	if now.After(last.ExpectedDate) {
 		return true, fmt.Sprintf("Your plan's projections ended on %s — generate a new plan to keep your targets current.", last.ExpectedDate.Format("Jan 2, 2006"))
 	}
+	if weeksSince(goal.EffectiveAt, now) < planRegenerateGraceWeeks {
+		return false, ""
+	}
+
+	if !lastWeighIn.IsZero() {
+		if days := int(now.Sub(lastWeighIn).Hours() / 24); days >= planRegenerateStaleWeighInDays {
+			return true, fmt.Sprintf("You haven't logged a weight in %d days — weigh in and regenerate your plan so it starts from where you are now.", days)
+		}
+	}
+
+	tolerance := planDriftToleranceLbs(projections)
+	expected, hasExpected := nearestProjection(projections, weeksSince(goal.EffectiveAt, now))
+	if !hasExpected || latestWeight <= 0 {
+		return false, ""
+	}
+	drift := math.Abs(latestWeight - expected.ExpectedWeight)
+	if drift <= tolerance {
+		return false, ""
+	}
+
 	if len(forecast) == 0 {
 		return false, ""
 	}
@@ -736,14 +792,44 @@ func planRegenerateSignal(goal models.NutritionGoal, projections, forecast []mod
 	if !found {
 		atPlanEnd = forecast[len(forecast)-1]
 	}
-	diff := atPlanEnd.ExpectedWeight - goal.TargetWeight
-	if diff < 0 {
-		diff = -diff
+	if math.Abs(atPlanEnd.ExpectedWeight-goal.TargetWeight) <= tolerance {
+		return false, ""
 	}
-	if diff > planRegenerateStaleTargetLbs {
-		return true, fmt.Sprintf("Your recent trend suggests you won't reach your target weight by %s — consider regenerating your plan.", last.ExpectedDate.Format("Jan 2, 2006"))
+
+	// Deliberately unit-free: weights are stored in lbs but displayed in the
+	// user's unit, and this string is rendered as-is.
+	behind := latestWeight > expected.ExpectedWeight
+	if goal.TargetWeight > expected.ExpectedWeight { // gain/maintenance plan
+		behind = latestWeight < expected.ExpectedWeight
 	}
-	return false, ""
+	if behind {
+		return true, fmt.Sprintf("You've drifted well behind your plan's line and the trend isn't closing the gap by %s — a fresh plan will give you a realistic target.", last.ExpectedDate.Format("Jan 2, 2006"))
+	}
+	return true, "You're well ahead of your plan's line — regenerate it so your targets and trajectory match the pace you're actually on."
+}
+
+// planDriftToleranceLbs is how far off the plan's line the user may be before
+// it counts as "way off track", scaled to the plan's own weekly pace and
+// clamped to a sane band.
+func planDriftToleranceLbs(projections []models.WeightPlanProjectionPoint) float64 {
+	tol := planRegenerateDriftFloorLbs
+	if len(projections) >= 2 {
+		first, last := projections[0], projections[len(projections)-1]
+		if weeks := last.Week - first.Week; weeks > 0 {
+			pace := math.Abs(last.ExpectedWeight-first.ExpectedWeight) / float64(weeks)
+			tol = pace * planRegenerateDriftWeeksOfPace
+		}
+	}
+	return math.Min(math.Max(tol, planRegenerateDriftFloorLbs), planRegenerateDriftCeilingLbs)
+}
+
+// weeksSince returns whole elapsed weeks between two instants, floored at 0.
+func weeksSince(start, now time.Time) int {
+	weeks := int(now.Sub(start).Hours() / (24 * 7))
+	if weeks < 0 {
+		return 0
+	}
+	return weeks
 }
 
 // canned rule-based fallback messages, used when no AI provider is

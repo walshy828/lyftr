@@ -115,7 +115,11 @@ export default function PlanAdherenceHero({
 
       <div className="flex items-center justify-between">
         {adherence.should_regenerate ? (
-          <Link to="/weight/plan" className="text-xs text-amber-400 hover:text-amber-300 inline-flex items-center gap-1">
+          <Link
+            to="/weight/plan"
+            title={adherence.regenerate_reason || undefined}
+            className="text-xs text-amber-400 hover:text-amber-300 inline-flex items-center gap-1"
+          >
             <Sparkles className="w-3 h-3" /> Time to refresh your plan
           </Link>
         ) : <span />}
