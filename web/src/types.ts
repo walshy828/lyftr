@@ -102,9 +102,11 @@ export interface FoodLog {
   cholesterol?: number
   servings: number
   serving_size?: string
+  /** Mass of one serving in grams; 0/undefined means unknown or not mass-based. */
+  serving_size_grams?: number
   barcode?: string
   image_url?: string
-  source?: 'off' | 'saved' | 'manual' | 'photo' | 'ai'
+  source?: 'off' | 'fdc' | 'saved' | 'manual' | 'photo' | 'ai'
   logged_at: string
   created_at?: string
 }
@@ -127,6 +129,16 @@ export interface DailyStats {
   workout_count: number
 }
 
+/**
+ * A household measure a food source publishes, with its exact mass — e.g.
+ * { label: '1 tbsp', grams: 13.8 }. Only present when the source stated the
+ * gram weight; we never derive one, since that needs a density we don't have.
+ */
+export interface FoodPortion {
+  label: string
+  grams: number
+}
+
 export interface FoodSearchResult {
   name: string
   brand?: string
@@ -139,8 +151,11 @@ export interface FoodSearchResult {
   sodium?: number
   cholesterol?: number
   serving_size: string
+  /** Mass the quoted nutrition numbers describe; 0/undefined means unknown. */
+  serving_size_grams?: number
+  portions?: FoodPortion[]
   image_url?: string
-  source: 'off' | 'saved' | 'manual' | 'photo' | 'ai'
+  source: 'off' | 'fdc' | 'saved' | 'manual' | 'photo' | 'ai'
 }
 
 export interface NutritionExtraction {
@@ -201,6 +216,7 @@ export interface SavedFood {
   sodium?: number
   cholesterol?: number
   serving_size: string
+  serving_size_grams?: number
   barcode?: string
   image_url?: string
 }

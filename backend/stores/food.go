@@ -12,13 +12,13 @@ type FoodStore struct{ db *sql.DB }
 
 func NewFoodStore(db *sql.DB) *FoodStore { return &FoodStore{db: db} }
 
-const foodLogSelect = `SELECT id, user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, barcode, image_url, source, logged_at, created_at FROM food_logs`
+const foodLogSelect = `SELECT id, user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, serving_size_grams, barcode, image_url, source, logged_at, created_at FROM food_logs`
 
 func scanFoodLog(row interface{ Scan(...any) error }, f *models.FoodLog) error {
 	return row.Scan(
 		&f.ID, &f.UserID, &f.Name, &f.Brand, &f.Meal,
 		&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol,
-		&f.Servings, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.Source,
+		&f.Servings, &f.ServingSize, &f.ServingSizeGrams, &f.Barcode, &f.ImageURL, &f.Source,
 		&f.LoggedAt, &f.CreatedAt,
 	)
 }
@@ -52,10 +52,10 @@ func (s *FoodStore) Get(uid, id int64) (models.FoodLog, error) {
 
 func (s *FoodStore) Create(uid int64, req models.LogFoodRequest) (models.FoodLog, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO food_logs (user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, barcode, image_url, source, logged_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO food_logs (user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, serving_size_grams, barcode, image_url, source, logged_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uid, req.Name, req.Brand, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium, req.Cholesterol,
-		req.Servings, req.ServingSize, req.Barcode, req.ImageURL, req.Source, req.LoggedAt,
+		req.Servings, req.ServingSize, req.ServingSizeGrams, req.Barcode, req.ImageURL, req.Source, req.LoggedAt,
 	)
 	if err != nil {
 		return models.FoodLog{}, err
@@ -67,10 +67,10 @@ func (s *FoodStore) Create(uid int64, req models.LogFoodRequest) (models.FoodLog
 func (s *FoodStore) Update(uid, id int64, req models.LogFoodRequest) (models.FoodLog, error) {
 	res, err := s.db.Exec(
 		`UPDATE food_logs SET name=?, brand=?, meal=?, calories=?, protein=?, carbs=?, fat=?, fiber=?, sugar=?, sodium=?, cholesterol=?,
-		 servings=?, serving_size=?, barcode=?, image_url=?, source=?, logged_at=?
+		 servings=?, serving_size=?, serving_size_grams=?, barcode=?, image_url=?, source=?, logged_at=?
 		 WHERE id=? AND user_id=?`,
 		req.Name, req.Brand, req.Meal, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium, req.Cholesterol,
-		req.Servings, req.ServingSize, req.Barcode, req.ImageURL, req.Source, req.LoggedAt,
+		req.Servings, req.ServingSize, req.ServingSizeGrams, req.Barcode, req.ImageURL, req.Source, req.LoggedAt,
 		id, uid,
 	)
 	if err != nil {
@@ -166,7 +166,7 @@ func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]mode
 		// logged_at is kept as a bare column (not MAX) so it retains DATETIME
 		// affinity and scans into time.Time; last_logged is a throwaway that only
 		// exists to trigger the rule.
-		`SELECT id, user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, barcode, image_url, source, logged_at, created_at, COUNT(*) AS log_count, MAX(logged_at) AS last_logged
+		`SELECT id, user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, serving_size_grams, barcode, image_url, source, logged_at, created_at, COUNT(*) AS log_count, MAX(logged_at) AS last_logged
 		 FROM food_logs
 		 WHERE user_id = ? AND logged_at >= date('now', ?)
 		 GROUP BY `+foodNameKey("name")+`
@@ -186,7 +186,7 @@ func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]mode
 		if err := rows.Scan(
 			&f.ID, &f.UserID, &f.Name, &f.Brand, &f.Meal,
 			&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol,
-			&f.Servings, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.Source,
+			&f.Servings, &f.ServingSize, &f.ServingSizeGrams, &f.Barcode, &f.ImageURL, &f.Source,
 			&f.LoggedAt, &f.CreatedAt, &f.LogCount, &lastLogged,
 		); err != nil {
 			return nil, err
@@ -235,11 +235,11 @@ func (s *FoodStore) LoggedDaysCount(uid int64, days int) (int, error) {
 	return n, err
 }
 
-const savedFoodSelect = `SELECT id, user_id, name, brand, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, serving_size, barcode, image_url, created_at FROM saved_foods`
+const savedFoodSelect = `SELECT id, user_id, name, brand, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, serving_size, serving_size_grams, barcode, image_url, created_at FROM saved_foods`
 
 func scanSavedFood(row interface{ Scan(...any) error }, f *models.SavedFood) error {
 	return row.Scan(&f.ID, &f.UserID, &f.Name, &f.Brand, &f.Calories, &f.Protein, &f.Carbs, &f.Fat,
-		&f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol, &f.ServingSize, &f.Barcode, &f.ImageURL, &f.CreatedAt)
+		&f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol, &f.ServingSize, &f.ServingSizeGrams, &f.Barcode, &f.ImageURL, &f.CreatedAt)
 }
 
 func (s *FoodStore) ListSaved(uid int64) ([]models.SavedFood, error) {
@@ -263,10 +263,10 @@ func (s *FoodStore) ListSaved(uid int64) ([]models.SavedFood, error) {
 
 func (s *FoodStore) CreateSaved(uid int64, req models.SaveFoodRequest) (models.SavedFood, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO saved_foods (user_id, name, brand, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, serving_size, barcode, image_url)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO saved_foods (user_id, name, brand, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, serving_size, serving_size_grams, barcode, image_url)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uid, req.Name, req.Brand, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium, req.Cholesterol,
-		req.ServingSize, req.Barcode, req.ImageURL,
+		req.ServingSize, req.ServingSizeGrams, req.Barcode, req.ImageURL,
 	)
 	if err != nil {
 		return models.SavedFood{}, err
@@ -286,10 +286,10 @@ func (s *FoodStore) GetSaved(uid, id int64) (models.SavedFood, error) {
 func (s *FoodStore) UpdateSaved(uid, id int64, req models.UpdateSavedFoodRequest) (models.SavedFood, error) {
 	res, err := s.db.Exec(
 		`UPDATE saved_foods SET name=?, brand=?, calories=?, protein=?, carbs=?, fat=?, fiber=?, sugar=?, sodium=?, cholesterol=?,
-		 serving_size=?, barcode=?, image_url=?
+		 serving_size=?, serving_size_grams=?, barcode=?, image_url=?
 		 WHERE id=? AND user_id=?`,
 		req.Name, req.Brand, req.Calories, req.Protein, req.Carbs, req.Fat, req.Fiber, req.Sugar, req.Sodium, req.Cholesterol,
-		req.ServingSize, req.Barcode, req.ImageURL,
+		req.ServingSize, req.ServingSizeGrams, req.Barcode, req.ImageURL,
 		id, uid,
 	)
 	if err != nil {

@@ -159,13 +159,12 @@ test.describe('Food', () => {
       route.fulfill({ json: { data: [] } })
     )
     await page.goto(`/food/log?meal=breakfast&date=${today}`)
-    await expect(page.locator('input[placeholder="Search food…"]')).toBeVisible()
+    await expect(page.locator('input[placeholder^="Search your foods"]')).toBeVisible()
 
-    // Typing auto-switches to the Search tab
-    await page.fill('input[placeholder="Search food…"]', name)
+    await page.fill('input[placeholder^="Search your foods"]', name)
     await expect(page.getByText(`No results for "${name}"`)).toBeVisible({ timeout: 2000 })
 
-    // Click "Enter X manually"
+    // Manual entry sits in the result list, not below it
     await page.getByRole('button').filter({ hasText: /manually/ }).click()
 
     // Detail phase — sticky Log Food button
@@ -181,7 +180,7 @@ test.describe('Food', () => {
       route.fulfill({ json: { data: [] } })
     )
     await page.goto('/food/log')
-    await page.fill('input[placeholder="Search food…"]', '500')
+    await page.fill('input[placeholder^="Search your foods"]', '500')
     await expect(page.getByText('Quick add 500 kcal')).toBeVisible()
 
     await page.getByText('Quick add 500 kcal').click()
@@ -191,7 +190,7 @@ test.describe('Food', () => {
   })
 
   // @mobile: touch stepper (+/- taps) — a phone-viewport touch interaction.
-  test('servings stepper scales macros in detail phase', { tag: '@mobile' }, async ({ page }) => {
+  test('portion stepper scales macros in detail phase', { tag: '@mobile' }, async ({ page }) => {
     await page.route('**/api/v1/food/search**', route =>
       route.fulfill({
         json: {
@@ -200,16 +199,50 @@ test.describe('Food', () => {
       })
     )
     await page.goto('/food/log')
-    await page.fill('input[placeholder="Search food…"]', 'rice')
+    await page.fill('input[placeholder^="Search your foods"]', 'rice')
     await page.getByText('Test Rice').click()
 
     // Default 1 serving = 200 kcal shown
     await expect(page.getByText('200').first()).toBeVisible()
 
-    // Stepper increments by 0.5 — click twice to reach 2 servings → 400 kcal
-    await page.getByRole('button', { name: 'Increase servings' }).click()
-    await page.getByRole('button', { name: 'Increase servings' }).click()
+    // No gram basis on this food, so the amount is the servings multiplier and
+    // steps by 0.5 — two taps reaches 2 → 400 kcal.
+    await page.getByRole('button', { name: 'Increase amount' }).click()
+    await page.getByRole('button', { name: 'Increase amount' }).click()
     await expect(page.getByText('400').first()).toBeVisible()
+  })
+
+  // @mobile: the capture bar must stay on one row at a phone width.
+  test('capture bar offers all four entry points at a glance', { tag: '@mobile' }, async ({ page }) => {
+    await page.goto('/food/log')
+    for (const label of ['Barcode', 'Label', 'Describe', 'Manual']) {
+      await expect(page.getByRole('button', { name: label })).toBeVisible()
+    }
+    // One tap from a cold search screen to a blank entry form.
+    await page.getByRole('button', { name: 'Manual' }).click()
+    await expect(page.getByPlaceholder('Food name')).toBeVisible()
+  })
+
+  test('scaling a per-100g food by a household measure', async ({ page }) => {
+    await page.route('**/api/v1/food/search**', route =>
+      route.fulfill({
+        json: {
+          data: [{
+            name: 'Test Mayo', calories: 680, protein: 1, carbs: 1, fat: 75, fiber: 0,
+            serving_size: 'per 100g', serving_size_grams: 100,
+            portions: [{ label: '1 tbsp', grams: 14 }], source: 'fdc',
+          }],
+        },
+      })
+    )
+    await page.goto('/food/log')
+    await page.fill('input[placeholder^="Search your foods"]', 'mayo')
+    await page.getByText('Test Mayo').click()
+
+    await page.getByLabel('Unit').selectOption('portion:1 tbsp')
+    await expect(page.getByText('1 tbsp = 14 g')).toBeVisible()
+    // 680 kcal per 100 g → 95 kcal for one 14 g tbsp
+    await expect(page.getByText('95').first()).toBeVisible()
   })
 
   // @mobile: touch chip selector that sets the entry's meal.
@@ -218,7 +251,7 @@ test.describe('Food', () => {
       route.fulfill({ json: { data: [] } })
     )
     await page.goto('/food/log?meal=breakfast')
-    await page.fill('input[placeholder="Search food…"]', 'test')
+    await page.fill('input[placeholder^="Search your foods"]', 'test')
     await page.getByRole('button').filter({ hasText: /manually/ }).click()
 
     // Should start on breakfast
@@ -238,7 +271,7 @@ test.describe('Food', () => {
       })
     )
     await page.goto('/food/log')
-    await page.fill('input[placeholder="Search food…"]', 'banana')
+    await page.fill('input[placeholder^="Search your foods"]', 'banana')
     await expect(page.getByText('Mocked Banana')).toBeVisible({ timeout: 2000 })
   })
 
@@ -251,7 +284,7 @@ test.describe('Food', () => {
       })
     )
     await page.goto('/food/log')
-    await page.fill('input[placeholder="Search food…"]', 'apple')
+    await page.fill('input[placeholder^="Search your foods"]', 'apple')
     await page.getByText('Test Apple').click()
 
     await expect(page.getByRole('button', { name: 'Log Food' })).toBeVisible()
@@ -263,7 +296,7 @@ test.describe('Food', () => {
       route.fulfill({ status: 429, body: 'Too Many Requests' })
     )
     await page.goto('/food/log')
-    await page.fill('input[placeholder="Search food…"]', 'pizza')
+    await page.fill('input[placeholder^="Search your foods"]', 'pizza')
     await expect(page.getByText(/too many requests/i)).toBeVisible({ timeout: 2000 })
   })
 
@@ -348,7 +381,7 @@ test.describe('Food', () => {
       route.fulfill({ json: { data: [] } })
     )
     await page.goto('/food/log')
-    await page.fill('input[placeholder="Search food…"]', savedName)
+    await page.fill('input[placeholder^="Search your foods"]', savedName)
     await expect(page.getByText(`No results for "${savedName}"`)).toBeVisible({ timeout: 2000 })
     await page.getByRole('button').filter({ hasText: /manually/ }).click()
 
@@ -375,18 +408,18 @@ test.describe('Food', () => {
 
   // ─── Barcode scanner ──────────────────────────────────────────────────────
 
-  test('Scan button renders scan phase overlay with close button', { tag: '@mobile' }, async ({ page }) => {
+  test('Barcode button renders scan phase overlay with close button', { tag: '@mobile' }, async ({ page }) => {
     test.slow()
     await page.goto('/food/log')
-    await page.getByRole('button', { name: /scan/i }).click()
+    await page.getByRole('button', { name: 'Barcode' }).click()
     await expect(page.getByRole('button', { name: 'Close scanner' })).toBeVisible({ timeout: 3000 })
   })
 
   test('Close scanner button returns to search phase', { tag: '@mobile' }, async ({ page }) => {
     await page.goto('/food/log')
-    await page.getByRole('button', { name: /scan/i }).click()
+    await page.getByRole('button', { name: 'Barcode' }).click()
     await page.getByRole('button', { name: 'Close scanner' }).click()
-    await expect(page.locator('input[placeholder="Search food…"]')).toBeVisible()
+    await expect(page.locator('input[placeholder^="Search your foods"]')).toBeVisible()
   })
 
   // NOTE: the food API-contract tests (GET/PATCH /food, /food/search, /food/history,

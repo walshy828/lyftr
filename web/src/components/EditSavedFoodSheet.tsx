@@ -45,6 +45,7 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
   const [sodium, setSodium]           = useState(food.sodium ?? 0)
   const [cholesterol, setCholesterol] = useState(food.cholesterol ?? 0)
   const [servingSize, setServingSize] = useState(food.serving_size)
+  const [servingSizeGrams, setServingSizeGrams] = useState(food.serving_size_grams ?? 0)
   const [imageUrl, setImageUrl]       = useState(food.image_url ?? '')
   const [cameraMode, setCameraMode]   = useState<CameraMode>('none')
   const [saving, setSaving]           = useState(false)
@@ -67,6 +68,7 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
     setSodium(food.sodium ?? 0)
     setCholesterol(food.cholesterol ?? 0)
     setServingSize(food.serving_size)
+    setServingSizeGrams(food.serving_size_grams ?? 0)
     setImageUrl(food.image_url ?? '')
     setError(null)
     setSaved(false)
@@ -99,6 +101,7 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
         sodium,
         cholesterol,
         serving_size: servingSize.trim(),
+        serving_size_grams: servingSizeGrams,
         barcode: food.barcode ?? '',
         image_url: imageUrl,
       })
@@ -253,9 +256,26 @@ export default function EditSavedFoodSheet({ food, open, onClose, onSaved, onDel
                 <label className="label mb-1.5 block">Brand <span className="text-tx-muted font-normal">(optional)</span></label>
                 <input type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="e.g. Chobani" className="input w-full" maxLength={200} />
               </div>
-              <div>
-                <label className="label mb-1.5 block">Serving Size</label>
-                <input type="text" value={servingSize} onChange={e => setServingSize(e.target.value)} placeholder="e.g. 1 cup (227g)" className="input w-full" maxLength={100} />
+              <div className="grid grid-cols-[1fr_auto] gap-2.5">
+                <div>
+                  <label className="label mb-1.5 block">Serving Size</label>
+                  <input type="text" value={servingSize} onChange={e => setServingSize(e.target.value)} placeholder="e.g. 1 cup (227g)" className="input w-full" maxLength={100} />
+                </div>
+                <div className="w-24">
+                  <label className="label mb-1.5 block">Grams</label>
+                  {/* The serving's mass is what lets the logger offer exact
+                      amounts (30 g, 1 tbsp) instead of a bare multiplier.
+                      Blank means unknown — better than a wrong number, which
+                      would rescale every macro derived from it. */}
+                  <input
+                    type="number"
+                    value={servingSizeGrams || ''}
+                    onChange={e => setServingSizeGrams(Math.max(0, Number(e.target.value) || 0))}
+                    placeholder="—"
+                    min={0}
+                    className="input w-full tabular-nums"
+                  />
+                </div>
               </div>
             </div>
 

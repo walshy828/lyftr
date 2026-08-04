@@ -12,8 +12,10 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/config"
@@ -326,6 +328,8 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 	useServing := p.Nutriments.EnergyKcalServing > 0 && strings.TrimSpace(p.ServingSize) != ""
 	var cal, pro, carb, fat, fiber, sugar, sodium, cholesterol float64
 	var servingLabel string
+	var servingGrams float64
+	var portions []models.FoodPortion
 	if useServing {
 		cal = p.Nutriments.EnergyKcalServing
 		pro = p.Nutriments.ProteinsServing
@@ -336,6 +340,14 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		sodium = offGramsToMg(p.Nutriments.SodiumServing)
 		cholesterol = offGramsToMg(p.Nutriments.CholesterolServing)
 		servingLabel = p.ServingSize
+		// OFF serving_size is free text ("30 g (2 tbsp)"). Recover a gram basis
+		// where we can, and surface the household measure it names — that's the
+		// only portion data OFF carries.
+		mass, measure := parseServingMass(p.ServingSize)
+		servingGrams = mass
+		if measure != "" && mass > 0 {
+			portions = append(portions, models.FoodPortion{Label: measure, Grams: mass})
+		}
 	} else {
 		cal = p.Nutriments.EnergyKcal100g
 		pro = p.Nutriments.Proteins100g
@@ -346,22 +358,30 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		sodium = offGramsToMg(p.Nutriments.Sodium100g)
 		cholesterol = offGramsToMg(p.Nutriments.Cholesterol100g)
 		servingLabel = "per 100g"
+		servingGrams = 100
+		// The label OFF couldn't attach to per-serving numbers may still name a
+		// mass we can offer as a portion — e.g. "15 g" on a condiment.
+		if mass, _ := parseServingMass(p.ServingSize); mass > 0 {
+			portions = append(portions, models.FoodPortion{Label: strings.TrimSpace(p.ServingSize), Grams: mass})
+		}
 	}
 
 	return models.FoodSearchResult{
-		Name:        p.ProductName,
-		Brand:       brand,
-		Calories:    cal,
-		Protein:     pro,
-		Carbs:       carb,
-		Fat:         fat,
-		Fiber:       fiber,
-		Sugar:       sugar,
-		Sodium:      sodium,
-		Cholesterol: cholesterol,
-		ServingSize: servingLabel,
-		ImageURL:    imageURL,
-		Source:      "off",
+		Name:             p.ProductName,
+		Brand:            brand,
+		Calories:         cal,
+		Protein:          pro,
+		Carbs:            carb,
+		Fat:              fat,
+		Fiber:            fiber,
+		Sugar:            sugar,
+		Sodium:           sodium,
+		Cholesterol:      cholesterol,
+		ServingSize:      servingLabel,
+		ServingSizeGrams: servingGrams,
+		Portions:         portions,
+		ImageURL:         imageURL,
+		Source:           "off",
 	}
 }
 
@@ -394,6 +414,70 @@ func (h *Handler) SearchFood(c *gin.Context) {
 		limit = l
 	}
 
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	// Fan out to both sources concurrently under the one timeout. Either source
+	// alone is enough to answer: OFF covers barcoded packaged goods, FDC covers
+	// generic whole foods, and a user searching "chicken breast" should not get
+	// an error page because the packaged-goods index was down.
+	fdcKey := ""
+	if config.C != nil {
+		fdcKey = config.C.FDCAPIKey
+	}
+
+	var (
+		wg         sync.WaitGroup
+		offResults []models.FoodSearchResult
+		offErr     error
+		offStatus  int
+		fdcResults []models.FoodSearchResult
+		fdcErr     error
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		offResults, offStatus, offErr = searchOFF(ctx, q, limit)
+	}()
+
+	if fdcKey != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			fdcResults, fdcErr = searchFDC(ctx, fdcKey, q, limit)
+			log.Printf("[food/search] FDC response: results=%d duration=%dms err=%v",
+				len(fdcResults), time.Since(start).Milliseconds(), fdcErr)
+		}()
+	}
+	wg.Wait()
+
+	// Only surface a failure when neither source produced anything.
+	if len(offResults) == 0 && len(fdcResults) == 0 {
+		switch {
+		case offErr != nil && ctx.Err() == context.DeadlineExceeded:
+			utils.ServiceUnavailable(c, "food search timed out — try again")
+		case offStatus == 429:
+			c.Header("Retry-After", "60")
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests — wait a moment and try again"})
+		case offErr != nil:
+			utils.ServiceUnavailable(c, "could not reach food database")
+		case fdcErr != nil && fdcKey != "":
+			utils.ServiceUnavailable(c, "food search temporarily unavailable")
+		default:
+			utils.OK(c, []models.FoodSearchResult{})
+		}
+		return
+	}
+
+	utils.OK(c, mergeSearchResults(q, offResults, fdcResults, limit))
+}
+
+// searchOFF runs the Open Food Facts leg of a search. The HTTP status is
+// returned alongside the error so the caller can preserve OFF's rate-limit
+// signalling when it's the only source that ran.
+func searchOFF(ctx context.Context, q string, limit int) ([]models.FoodSearchResult, int, error) {
 	start := time.Now()
 	searchURL := fmt.Sprintf(
 		"https://search.openfoodfacts.org/search?q=%s&lang=en&cc=world&page_size=%d&page=1&fields=product_name,brands,nutriments,serving_size,image_url",
@@ -401,45 +485,23 @@ func (h *Handler) SearchFood(c *gin.Context) {
 	)
 	log.Printf("[food/search] OFF request: q=%q limit=%d", q, limit)
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
-
 	body, status, err := doOFFRequest(ctx, searchURL)
 	elapsed := time.Since(start)
 	log.Printf("[food/search] OFF response: status=%d duration=%dms", status, elapsed.Milliseconds())
 
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("[food/search] OFF timeout after %dms", elapsed.Milliseconds())
-			utils.ServiceUnavailable(c, "food search timed out — try again")
-			return
-		}
 		log.Printf("[food/search] OFF network error: %v", err)
-		utils.ServiceUnavailable(c, "could not reach food database")
-		return
+		return nil, status, err
 	}
-
-	switch {
-	case status == 429:
-		log.Printf("[food/search] OFF rate limit hit")
-		c.Header("Retry-After", "60")
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests — wait a moment and try again"})
-		return
-	case status >= 500:
-		log.Printf("[food/search] OFF upstream error: %d", status)
-		utils.ServiceUnavailable(c, "food search temporarily unavailable")
-		return
-	case status != 200:
-		log.Printf("[food/search] OFF unexpected status: %d", status)
-		utils.ServiceUnavailable(c, "food search temporarily unavailable")
-		return
+	if status != http.StatusOK {
+		log.Printf("[food/search] OFF upstream status: %d", status)
+		return nil, status, fmt.Errorf("off: unexpected status %d", status)
 	}
 
 	var parsed offSearchResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		log.Printf("[food/search] OFF parse error: %v", err)
-		utils.InternalError(c)
-		return
+		return nil, status, err
 	}
 
 	products := parsed.Hits
@@ -453,7 +515,69 @@ func (h *Handler) SearchFood(c *gin.Context) {
 		}
 		results = append(results, offProductToResult(p))
 	}
-	utils.OK(c, results)
+	return results, status, nil
+}
+
+// mergeSearchResults dedupes across sources and interleaves them, so neither
+// OFF's branded products nor FDC's generic entries monopolize the top of the
+// list — the user's query alone rarely says which of the two they meant.
+// Within each source, results keep their relevance order but are stably
+// re-sorted so closer name matches float up.
+func mergeSearchResults(query string, off, fdc []models.FoodSearchResult, limit int) []models.FoodSearchResult {
+	off = rankByQuery(query, off)
+	fdc = rankByQuery(query, fdc)
+
+	merged := make([]models.FoodSearchResult, 0, len(off)+len(fdc))
+	seen := map[string]bool{}
+	add := func(r models.FoodSearchResult) bool {
+		key := normalizeFoodName(r.Name) + "|" + normalizeFoodName(r.Brand)
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+		merged = append(merged, r)
+		return true
+	}
+
+	for i := 0; i < len(off) || i < len(fdc); i++ {
+		if i < len(off) {
+			add(off[i])
+		}
+		if i < len(fdc) {
+			add(fdc[i])
+		}
+	}
+
+	if len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged
+}
+
+// rankByQuery stably re-sorts results by how directly the name answers the
+// query: exact match, then prefix, then substring, then everything else.
+func rankByQuery(query string, results []models.FoodSearchResult) []models.FoodSearchResult {
+	q := normalizeFoodName(query)
+	if q == "" || len(results) < 2 {
+		return results
+	}
+	score := func(r models.FoodSearchResult) int {
+		name := normalizeFoodName(r.Name)
+		switch {
+		case name == q:
+			return 0
+		case strings.HasPrefix(name, q):
+			return 1
+		case strings.Contains(name, q):
+			return 2
+		default:
+			return 3
+		}
+	}
+	sorted := make([]models.FoodSearchResult, len(results))
+	copy(sorted, results)
+	sort.SliceStable(sorted, func(i, j int) bool { return score(sorted[i]) < score(sorted[j]) })
+	return sorted
 }
 
 // offBarcodeResponse is a partial decode of the OFF v3 product endpoint.

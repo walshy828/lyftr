@@ -46,6 +46,13 @@ type Config struct {
 	OpenAIModel     string
 	GeminiModel     string
 
+	// FDCAPIKey enables USDA FoodData Central as a second food-search source
+	// alongside Open Food Facts (optional). OFF is packaged-goods heavy; FDC
+	// covers generic whole foods and — the reason it's worth a second call —
+	// publishes real household-measure gram weights (1 tbsp = 13.8 g) that the
+	// portion picker needs. Empty means FDC is skipped entirely.
+	FDCAPIKey string
+
 	// MealPhotoDir is where persisted meal photos (from AnalyzeMealPhoto) are
 	// stored on disk, one subdirectory per user. Defaults to a subdirectory
 	// of the sqlite data dir so it rides the same docker-compose volume with
@@ -94,6 +101,8 @@ func Load() {
 		AnthropicModel:  getEnv("ANTHROPIC_MODEL", ""),
 		OpenAIModel:     getEnv("OPENAI_MODEL", ""),
 		GeminiModel:     getEnv("GEMINI_MODEL", ""),
+
+		FDCAPIKey: getEnv("FDC_API_KEY", ""),
 
 		MealPhotoDir: getEnv("MEAL_PHOTO_DIR", "data/meal-photos"),
 	}

@@ -47,7 +47,7 @@ describe('LogFood manual entry', () => {
     renderLogFood()
 
     // Search phase: type a query with no results, then "Enter ... manually"
-    const input = await screen.findByPlaceholderText('Search food…')
+    const input = await screen.findByPlaceholderText(/search your foods/i)
     fireEvent.change(input, { target: { value: 'Homemade Chili' } })
 
     await waitFor(() => expect(screen.getByText(/enter "homemade chili" manually/i)).toBeTruthy())
@@ -60,11 +60,10 @@ describe('LogFood manual entry', () => {
     const calorieInput = screen.getAllByRole('spinbutton')[0]
     fireEvent.change(calorieInput, { target: { value: '400' } })
 
-    // Bump servings to 2 — the calorie input shows the total, so editing it
-    // after the bump should still reflect back into the per-serving base.
-    const servingsInputs = screen.getAllByRole('spinbutton')
-    const servingsInput = servingsInputs[servingsInputs.length - 1] // last spinbutton is the Servings stepper
-    fireEvent.change(servingsInput, { target: { value: '2' } })
+    // Bump the amount to 2 — the calorie input shows the total, so editing it
+    // after the bump should still reflect back into the per-serving base. A
+    // hand-entered food has no gram basis, so the amount *is* the multiplier.
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '2' } })
 
     fireEvent.click(screen.getByRole('button', { name: /log food/i }))
 
@@ -84,14 +83,73 @@ describe('LogFood manual entry', () => {
 
     renderLogFood()
 
-    const input = await screen.findByPlaceholderText('Search food…')
+    const input = await screen.findByPlaceholderText(/search your foods/i)
     fireEvent.change(input, { target: { value: 'Peanut Butter' } })
 
     await screen.findByText('Peanut Butter (Brand A)')
 
-    expect(screen.getByText(/not the right match/i)).toBeTruthy()
+    // Manual entry stays reachable without scrolling past the results, and the
+    // capture bar keeps label scanning one tap away.
     expect(screen.getByText(/enter "peanut butter" manually/i)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /scan label/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /label/i })).toBeTruthy()
+  })
+
+  it('offers manual entry with an empty query and in every filter', async () => {
+    renderLogFood()
+    await screen.findByPlaceholderText(/search your foods/i)
+
+    expect(screen.getByText(/add a food manually/i)).toBeTruthy()
+
+    for (const filter of ['Recent', 'My Foods', 'Database']) {
+      fireEvent.click(screen.getByRole('button', { name: filter }))
+      expect(screen.getByText(/add a food manually/i)).toBeTruthy()
+    }
+  })
+})
+
+describe('LogFood unified search', () => {
+  const recentEntry = {
+    id: 7, name: 'Mayonnaise', brand: "Hellmann's", meal: 'lunch',
+    calories: 94, protein: 0, carbs: 0, fat: 10, fiber: 0, sugar: 0, sodium: 90, cholesterol: 5,
+    servings: 1, serving_size: '1 tbsp', serving_size_grams: 14,
+    source: 'off', logged_at: '2026-01-01T12:00:00Z',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(foodAPI.list as any).mockResolvedValue([])
+    ;(foodAPI.recent as any).mockResolvedValue([recentEntry, { ...recentEntry, id: 8, name: 'Mustard', brand: '' }])
+    ;(savedFoodsAPI.list as any).mockResolvedValue([])
+    ;(foodAPI.search as any).mockResolvedValue([])
+  })
+
+  it('filters your own foods as you type, without waiting on the database', async () => {
+    renderLogFood()
+
+    const input = await screen.findByPlaceholderText(/search your foods/i)
+    await waitFor(() => expect(screen.getByText('Mustard')).toBeTruthy())
+
+    fireEvent.change(input, { target: { value: 'mayo' } })
+
+    // Filtering is local, so it applies immediately — before the 300ms debounce
+    // has even fired the database request.
+    expect(screen.getByText('Mayonnaise')).toBeTruthy()
+    expect(screen.queryByText('Mustard')).toBeNull()
+    expect(foodAPI.search).not.toHaveBeenCalled()
+  })
+
+  it('shows your foods and database results together in one list', async () => {
+    ;(foodAPI.search as any).mockResolvedValue([
+      { name: 'Mayonnaise, light', calories: 350, protein: 0, carbs: 5, fat: 35, fiber: 0, serving_size: 'per 100g', serving_size_grams: 100, source: 'fdc' },
+    ])
+
+    renderLogFood()
+    fireEvent.change(await screen.findByPlaceholderText(/search your foods/i), { target: { value: 'mayo' } })
+
+    await waitFor(() => expect(screen.getByText('Mayonnaise, light')).toBeTruthy())
+    expect(screen.getByText('Mayonnaise')).toBeTruthy()
+    expect(screen.getByText(/your foods/i)).toBeTruthy()
+    expect(screen.getByText(/food database/i)).toBeTruthy()
   })
 })
 
@@ -112,11 +170,10 @@ describe('LogFood condensed quick-log (My Foods)', () => {
   it('renders a condensed view (no macro-grid inputs, read-only nutrition) and logs quickly', async () => {
     renderLogFood()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'My Foods' }))
     fireEvent.click(await screen.findByText('Greek Yogurt'))
 
     // Condensed detail: calories render as read-only text, not a macro-grid input.
-    // The only spinbutton is the Servings stepper.
+    // The only spinbutton is the portion amount.
     await waitFor(() => expect(screen.getByText('120')).toBeTruthy())
     expect(screen.getAllByRole('spinbutton')).toHaveLength(1)
     // No "Save to My Foods" toggle in condensed mode — it's already saved.
@@ -139,12 +196,101 @@ describe('LogFood condensed quick-log (My Foods)', () => {
 
     renderLogFood()
 
-    const input = await screen.findByPlaceholderText('Search food…')
+    const input = await screen.findByPlaceholderText(/search your foods/i)
     fireEvent.change(input, { target: { value: 'Peanut Butter' } })
     fireEvent.click(await screen.findByText('Peanut Butter'))
 
     // Full review exposes editable calorie + macro-grid inputs (many spinbuttons).
     await waitFor(() => expect(screen.getAllByRole('spinbutton').length).toBeGreaterThan(2))
+  })
+})
+
+describe('LogFood portions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(foodAPI.list as any).mockResolvedValue([])
+    ;(foodAPI.log as any).mockResolvedValue({})
+    ;(foodAPI.recent as any).mockResolvedValue([])
+    ;(savedFoodsAPI.list as any).mockResolvedValue([])
+  })
+
+  it('logs a per-100g food by a household measure instead of a fraction of a serving', async () => {
+    // The motivating case: mayo is quoted per 100 g, but nobody eats 100 g of
+    // it. Picking "1 tbsp" must scale the macros to the tbsp, not to a serving.
+    ;(foodAPI.search as any).mockResolvedValue([
+      {
+        name: 'Mayonnaise', brand: "Hellmann's",
+        calories: 680, protein: 1, carbs: 0.6, fat: 75, fiber: 0, sugar: 0.6, sodium: 635, cholesterol: 42,
+        serving_size: 'per 100g', serving_size_grams: 100,
+        portions: [{ label: '1 tbsp', grams: 14 }],
+        source: 'fdc',
+      },
+    ])
+
+    renderLogFood()
+    fireEvent.change(await screen.findByPlaceholderText(/search your foods/i), { target: { value: 'mayonnaise' } })
+    fireEvent.click(await screen.findByText('Mayonnaise'))
+
+    fireEvent.change(await screen.findByLabelText('Unit'), { target: { value: 'portion:1 tbsp' } })
+    await waitFor(() => expect(screen.getByText(/1 tbsp = 14 g/)).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /log food/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    expect(payload.calories).toBeCloseTo(95.2, 1)  // 680 per 100 g × 14/100
+    expect(payload.fat).toBeCloseTo(10.5, 1)       // 75 per 100 g × 14/100
+
+    // The entry is stored against the unit the user chose, so all three fields
+    // describe the same thing and it reads back as "1 tbsp" — not as 0.14 of a
+    // 100 g serving, which is what the raw multiplier would have recorded.
+    expect(payload.servings).toBe(1)
+    expect(payload.serving_size).toBe('1 tbsp')
+    expect(payload.serving_size_grams).toBe(14)
+  })
+
+  it('reopens a logged entry on the unit it was logged with', async () => {
+    // The stored trio (servings / serving_size / serving_size_grams) must
+    // describe one another, or editing a tbsp of mayo reopens as a fraction of
+    // a 100 g serving and every macro on screen is restated against the wrong
+    // basis.
+    ;(foodAPI.get as any).mockResolvedValue({
+      id: 42, name: 'Mayonnaise', brand: "Hellmann's", meal: 'lunch',
+      calories: 190, protein: 0.2, carbs: 0.2, fat: 21, fiber: 0, sugar: 0.2, sodium: 178, cholesterol: 12,
+      servings: 2, serving_size: '1 tbsp', serving_size_grams: 14,
+      source: 'fdc', logged_at: '2026-01-01T12:00:00Z',
+    })
+
+    renderLogFood('/food/log?edit=42&date=2026-01-01')
+
+    const amountInput = await screen.findByLabelText('Amount')
+    expect((amountInput as HTMLInputElement).value).toBe('2')
+    expect((await screen.findByLabelText('Unit') as HTMLSelectElement).selectedOptions[0].text).toBe('1 tbsp')
+    // Per-unit macros, back-solved from the stored totals: 190 / 2 tbsp.
+    expect(screen.getByText(/1 tbsp = 14 g/)).toBeTruthy()
+    expect((screen.getAllByRole('spinbutton')[0] as HTMLInputElement).value).toBe('190')
+  })
+
+  it('falls back to a plain multiplier when the food has no gram basis', async () => {
+    ;(foodAPI.search as any).mockResolvedValue([
+      { name: 'Homemade Soup', calories: 200, protein: 10, carbs: 20, fat: 5, fiber: 2, serving_size: '1 bowl', source: 'off' },
+    ])
+
+    renderLogFood()
+    fireEvent.change(await screen.findByPlaceholderText(/search your foods/i), { target: { value: 'soup' } })
+    fireEvent.click(await screen.findByText('Homemade Soup'))
+
+    // Only the food's own serving is offered — we never invent a conversion.
+    const unitSelect = await screen.findByLabelText('Unit')
+    expect(unitSelect.querySelectorAll('option')).toHaveLength(1)
+
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /log food/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    expect(payload.servings).toBe(2)
+    expect(payload.calories).toBe(400)
   })
 })
 
@@ -172,7 +318,7 @@ describe('LogFood photo review flow', () => {
 
     renderLogFood()
 
-    fireEvent.click(await screen.findByText(/describe your meal/i))
+    fireEvent.click(await screen.findByRole('button', { name: 'Describe' }))
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File(['fake'], 'meal.jpg', { type: 'image/jpeg' })

@@ -77,6 +77,13 @@ func alterMigrations() {
 	ensureColumn("user_settings", "cholesterol_target", `ALTER TABLE user_settings ADD COLUMN cholesterol_target INTEGER NOT NULL DEFAULT 300`)
 	ensureColumn("user_settings", "sodium_target", `ALTER TABLE user_settings ADD COLUMN sodium_target INTEGER NOT NULL DEFAULT 2300`)
 
+	// Structured portions: the mass of one serving, so the client can offer an
+	// amount + unit picker (1 tbsp, 30 g, 1.5 oz) instead of a bare servings
+	// multiplier. 0 means unknown — existing rows keep the multiplier-only
+	// behaviour, since their serving_size is free text we can't reliably parse.
+	ensureColumn("food_logs", "serving_size_grams", `ALTER TABLE food_logs ADD COLUMN serving_size_grams REAL NOT NULL DEFAULT 0`)
+	ensureColumn("saved_foods", "serving_size_grams", `ALTER TABLE saved_foods ADD COLUMN serving_size_grams REAL NOT NULL DEFAULT 0`)
+
 	// Food preferences for the AI meal recommender (#mealRecommend): free-text
 	// comma lists fed into the recommendation prompt. Allergies are treated as
 	// a hard exclusion, dislikes/likes as soft taste signals.

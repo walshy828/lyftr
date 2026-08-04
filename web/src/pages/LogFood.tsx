@@ -1,27 +1,36 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ArrowLeft, Search, Scan, Minus, Plus, X,
+  ArrowLeft, Search, X,
   Bookmark, BookmarkCheck, AlertCircle, Utensils, Zap,
   Coffee, Sun, Moon, Cookie, ChevronRight, Camera, Pencil,
-  Sparkles,
+  Plus, Sparkles,
 } from 'lucide-react'
 import { foodAPI, savedFoodsAPI } from '../services/api'
 import { todayStr, dayToIsoNoon } from '../utils/dateUtils'
 import { MACRO_COLORS } from '../utils/macroColors'
+import { filterFoods, normalizeFoodName } from '../utils/foodMatch'
+import {
+  buildUnitOptions, findUnit, amountToServings, formatServingLabel,
+  matchUnitForLabel, SERVING_UNIT_ID, type UnitOption,
+} from '../utils/portions'
 import BarcodeScanner from '../components/BarcodeScanner'
 import NutritionLabelCamera from '../components/NutritionLabelCamera'
 import SmartMealEntry from '../components/SmartMealEntry'
 import EditSavedFoodSheet from '../components/EditSavedFoodSheet'
 import MealItemEditCard, { type EditableMealItem } from '../components/MealItemEditCard'
-import IconButton from '../components/ui/IconButton'
+import FoodCaptureBar from '../components/food/FoodCaptureBar'
+import PortionPicker from '../components/food/PortionPicker'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import DateInput from '../components/ui/DateInput'
 import AuthedImg from '../components/ui/AuthedImg'
 import * as types from '../types'
 
 type Phase = 'search' | 'detail' | 'scan' | 'scan-label' | 'smart' | 'smart-review' | 'photo-review'
-type SearchTab = 'recent' | 'myfoods' | 'all'
+// Which sections of the unified result list are shown. Not a mode: the query
+// always filters your own foods and always searches the database, so these only
+// narrow what's already on screen.
+type SearchFilter = 'all' | 'recent' | 'myfoods' | 'database'
 
 type ReviewItem = EditableMealItem
 type PhotoReviewItem = types.MealPhotoItem & { servings: number; include: boolean }
@@ -52,6 +61,7 @@ function entryToResult(e: types.FoodLog): types.FoodSearchResult {
     sodium: (e.sodium ?? 0) / s,
     cholesterol: (e.cholesterol ?? 0) / s,
     serving_size: e.serving_size ?? '',
+    serving_size_grams: e.serving_size_grams,
     image_url: e.image_url,
     source: (e.source as types.FoodSearchResult['source']) || 'saved',
   }
@@ -63,8 +73,44 @@ function savedToResult(s: types.SavedFood): types.FoodSearchResult {
     calories: s.calories, protein: s.protein, carbs: s.carbs,
     fat: s.fat, fiber: s.fiber, sugar: s.sugar, sodium: s.sodium, cholesterol: s.cholesterol,
     serving_size: s.serving_size,
+    serving_size_grams: s.serving_size_grams,
     image_url: s.image_url, source: 'saved',
   }
+}
+
+/** A blank food, ready for hand entry. */
+function manualResult(name = ''): types.FoodSearchResult {
+  return {
+    name, calories: 0, protein: 0, carbs: 0, fat: 0,
+    fiber: 0, sugar: 0, sodium: 0, cholesterol: 0,
+    serving_size: '1 serving', source: 'manual',
+  }
+}
+
+/**
+ * Picks the amount + unit to open the portion picker on. For a food with a
+ * gram basis this restores the unit the entry was saved with (so editing
+ * "1 tbsp" doesn't reopen as "0.14 servings"); otherwise the servings
+ * multiplier is the amount, matching the old stepper.
+ */
+function initPortion(result: types.FoodSearchResult, servings: number): { amount: number; unitId: string } {
+  const options = buildUnitOptions(result)
+  const basis = result.serving_size_grams ?? 0
+  if (basis <= 0) return { amount: servings, unitId: SERVING_UNIT_ID }
+
+  const unit = matchUnitForLabel(options, result.serving_size)
+  if (unit.id === SERVING_UNIT_ID) return { amount: servings, unitId: SERVING_UNIT_ID }
+  return { amount: +((servings * basis) / unit.grams).toFixed(2), unitId: unit.id }
+}
+
+/** Divider naming where the rows beneath it came from. */
+function SectionHeader({ label, busy = false }: { label: string; busy?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-4 py-2 bg-surface-muted/60 border-b border-surface-border">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-tx-muted">{label}</span>
+      {busy && <span className="text-[10px] text-tx-muted">Searching…</span>}
+    </div>
+  )
 }
 
 function FoodResultRow({ item, onClick }: { item: types.FoodSearchResult; onClick: () => void }) {
@@ -116,17 +162,22 @@ export default function LogFood() {
   const initDate = searchParams.get('date') ?? todayStr()
 
   const [phase, setPhase] = useState<Phase>('search')
-  const [tab, setTab] = useState<SearchTab>('recent')
+  const [filter, setFilter] = useState<SearchFilter>('all')
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState<types.FoodSearchResult[]>([])
   const [recentItems, setRecentItems] = useState<types.FoodSearchResult[]>([])
+  const [recentError, setRecentError] = useState(false)
   const [savedFoods, setSavedFoods] = useState<types.SavedFood[]>([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [rateLimited, setRateLimited] = useState(false)
 
   const [selected, setSelected] = useState<types.FoodSearchResult | null>(null)
-  const [servings, setServings] = useState(1)
+  // Portion state. `servings` — the multiplier the API stores and every macro
+  // is scaled by — is derived from these, so the amount the user typed stays
+  // the source of truth and the stored value is always consistent with it.
+  const [amount, setAmount] = useState(1)
+  const [unitId, setUnitId] = useState<string>(SERVING_UNIT_ID)
   const [meal, setMeal] = useState<types.FoodLog['meal']>(initMeal)
   const [date, setDate] = useState(initDate)
   // Pre-qualified items (My Foods / Recent) get a stripped-down quick-log detail
@@ -152,8 +203,11 @@ export default function LogFood() {
   useEffect(() => {
     if (!editId) return
     foodAPI.get(editId).then(entry => {
-      setSelected(entryToResult(entry))
-      setServings(entry.servings || 1)
+      const result = entryToResult(entry)
+      const portion = initPortion(result, entry.servings || 1)
+      setSelected(result)
+      setAmount(portion.amount)
+      setUnitId(portion.unitId)
       setMeal(entry.meal)
       setDate(entry.logged_at.slice(0, 10))
       setPhase('detail')
@@ -166,12 +220,12 @@ export default function LogFood() {
     // are one tap away even on a fresh day.
     foodAPI.recent().then(items => {
       setRecentItems((items || []).slice(0, 15).map(entryToResult))
-    }).catch(() => {})
+      setRecentError(false)
+    }).catch(() => setRecentError(true))
     savedFoodsAPI.list().then(setSavedFoods).catch(() => {})
   }, [])
 
   useEffect(() => {
-    if (tab !== 'all') return
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (!query.trim()) { setSearchResults([]); return }
     debounceRef.current = setTimeout(async () => {
@@ -189,15 +243,20 @@ export default function LogFood() {
       }
     }, 300)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [query, tab])
+  }, [query])
 
   const selectResult = (result: types.FoodSearchResult, quick = false) => {
+    const portion = initPortion(result, 1)
     setSelected(result)
-    setServings(1)
+    setAmount(portion.amount)
+    setUnitId(portion.unitId)
     setCondensed(quick)
     setShowDate(false)
     setPhase('detail')
   }
+
+  /** Opens the full detail form on a blank food, optionally pre-named from the query. */
+  const startManual = (name = '') => selectResult(manualResult(name.trim()))
 
   const handleBarcodeResult = async (code: string) => {
     setPhase('search')
@@ -205,7 +264,7 @@ export default function LogFood() {
       selectResult(await foodAPI.barcode(code))
     } catch (err: any) {
       if (err?.response?.status === 404) {
-        selectResult({ name: '', calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0, serving_size: '1 serving', source: 'manual' })
+        startManual()
       } else {
         setSearchError('Product not found — enter details manually')
       }
@@ -338,9 +397,10 @@ export default function LogFood() {
         source: 'photo',
       }
     })
-    if (!selected) setServings(1)
+    if (!selected) { setAmount(1); setUnitId(SERVING_UNIT_ID) }
     setPhase('detail')
   }
+
   const handleLog = async () => {
     if (!selected || saving) return
     setSaving(true)
@@ -358,8 +418,15 @@ export default function LogFood() {
         sugar: +((selected.sugar ?? 0) * servings).toFixed(1),
         sodium: +((selected.sodium ?? 0) * servings).toFixed(1),
         cholesterol: +((selected.cholesterol ?? 0) * servings).toFixed(1),
-        servings,
-        serving_size: selected.serving_size ?? '',
+        // Store the entry against the unit the user actually chose: servings
+        // counts those units, serving_size names one, and serving_size_grams is
+        // one's mass. All three then describe the same thing, so re-opening
+        // reads back as "2 × 1 tbsp" rather than "0.276 × per 100g" — and the
+        // macro totals above, which are scaled by the derived multiplier, stay
+        // exactly what was eaten either way.
+        servings: amount,
+        serving_size: unit.id === SERVING_UNIT_ID ? (selected.serving_size ?? '') : unit.label,
+        serving_size_grams: unit.grams,
         image_url: selected.image_url ?? '',
         source: selected.source,
         logged_at: dayToIsoNoon(date),
@@ -374,6 +441,7 @@ export default function LogFood() {
             calories: selected.calories, protein: selected.protein,
             carbs: selected.carbs, fat: selected.fat, fiber: selected.fiber ?? 0,
             serving_size: selected.serving_size ?? '',
+            serving_size_grams: selected.serving_size_grams ?? 0,
             image_url: capturedImageUrl,
           }).catch(() => {})
         }
@@ -384,6 +452,26 @@ export default function LogFood() {
       setSaving(false)
     }
   }
+
+  // Derived state — declared before the full-screen camera/AI phases return
+  // early, so the hook order stays stable across every phase.
+
+  // Your own foods filter instantly: they're already in memory, so narrowing
+  // them needs no request and lands well before the database results do.
+  const filteredRecent = useMemo(() => filterFoods(recentItems, query), [recentItems, query])
+  const filteredSaved = useMemo(() => {
+    // A saved food that's also in Recent is the same food twice on screen;
+    // Recent wins, since it carries the portion the user last actually logged.
+    const recentNames = new Set(filteredRecent.map(r => normalizeFoodName(r.name)))
+    return filterFoods(savedFoods, query).filter(sf => !recentNames.has(normalizeFoodName(sf.name)))
+  }, [savedFoods, query, filteredRecent])
+
+  // Portion → servings. Every macro is scaled by `servings` exactly as before;
+  // only the control the user drives it with has changed.
+  const unitOptions: UnitOption[] = useMemo(
+    () => selected ? buildUnitOptions(selected) : [{ id: SERVING_UNIT_ID, label: '1 serving', grams: 0 }],
+    [selected],
+  )
 
   if (phase === 'scan') {
     return (
@@ -414,6 +502,14 @@ export default function LogFood() {
     )
   }
 
+  const unit = findUnit(unitOptions, unitId)
+  const servings = amountToServings(amount, unit, selected?.serving_size_grams ?? 0)
+
+  const setPortion = (nextAmount: number, nextUnitId: string) => {
+    setAmount(nextAmount)
+    setUnitId(nextUnitId)
+  }
+
   const cal = selected ? Math.round(selected.calories * servings) : 0
   const pro = selected ? +(selected.protein * servings).toFixed(1) : 0
   const carb = selected ? +(selected.carbs * servings).toFixed(1) : 0
@@ -423,6 +519,11 @@ export default function LogFood() {
   const sod = selected ? +((selected.sodium ?? 0) * servings).toFixed(1) : 0
   const chol = selected ? +((selected.cholesterol ?? 0) * servings).toFixed(1) : 0
   const quickAddCals = /^\d+(\.\d+)?$/.test(query.trim()) ? Number(query.trim()) : null
+
+  const showRecent = filter === 'all' || filter === 'recent'
+  const showSaved = filter === 'all' || filter === 'myfoods'
+  const showDatabase = filter === 'all' || filter === 'database'
+  const yourFoodsCount = (showRecent ? filteredRecent.length : 0) + (showSaved ? filteredSaved.length : 0)
 
   // Macro inputs edit the displayed (servings-multiplied) total; back-solve the
   // per-serving base value stored on `selected` so the Servings stepper keeps working.
@@ -479,82 +580,53 @@ export default function LogFood() {
       {/* Search phase */}
       {phase === 'search' && (
         <div className="space-y-4">
-          {/* Search input + scan button */}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-tx-muted pointer-events-none" />
-              <input
-                ref={searchInputRef}
-                autoFocus
-                type="text"
-                value={query}
-                onChange={e => { setQuery(e.target.value); if (e.target.value.trim()) setTab('all') }}
-                placeholder="Search food…"
-                className="input pl-10 pr-10 w-full h-12 text-base"
-              />
-              {query && (
-                <button
-                  onClick={() => { setQuery(''); searchInputRef.current?.focus() }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-surface-muted flex items-center justify-center hover:bg-surface-overlay transition-colors"
-                >
-                  <X className="w-3.5 h-3.5 text-tx-muted" />
-                </button>
-              )}
-            </div>
-            <button
-              onClick={() => setPhase('scan')}
-              className="flex items-center gap-1.5 px-3.5 h-12 rounded-xl bg-surface-muted hover:bg-surface-overlay border border-surface-border text-tx-secondary hover:text-tx-primary transition-colors flex-shrink-0"
-              aria-label="Scan barcode"
-            >
-              <Scan className="w-5 h-5" />
-              <span className="text-xs font-medium">Scan</span>
-            </button>
+          {/* Search — filters your own foods instantly and queries the food
+              database in parallel; there is no mode to switch between. */}
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-tx-muted pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              autoFocus
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search your foods and the food database…"
+              className="input pl-10 pr-10 w-full h-12 text-base"
+            />
+            {query && (
+              <button
+                onClick={() => { setQuery(''); searchInputRef.current?.focus() }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-surface-muted flex items-center justify-center hover:bg-surface-overlay transition-colors"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5 text-tx-muted" />
+              </button>
+            )}
           </div>
 
-          {/* Smart food entry */}
-          <button
-            onClick={() => setPhase('smart')}
-            className="flex items-center gap-2.5 w-full px-4 py-3.5 rounded-xl bg-brand-500/10 hover:bg-brand-500/15 border border-brand-500/20 transition-colors"
-          >
-            <div className="w-9 h-9 rounded-full bg-brand-500/15 flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-4.5 h-4.5 text-brand-500" />
-            </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-sm font-semibold text-tx-primary">Describe your meal</p>
-              <p className="text-xs text-tx-muted mt-0.5">Let AI split it into items to log</p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
-          </button>
-
-          {/* Tabs */}
-          <SegmentedControl
-            options={[
-              { value: 'recent', label: 'Recent' },
-              { value: 'myfoods', label: 'My Foods' },
-              { value: 'all', label: 'Search' },
-            ] as const}
-            value={tab}
-            onChange={setTab}
+          <FoodCaptureBar
+            onScanBarcode={() => setPhase('scan')}
+            onScanLabel={() => setPhase('scan-label')}
+            onDescribeMeal={() => setPhase('smart')}
+            onAddManually={() => startManual(query)}
           />
 
-          {rateLimited && (
-            <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3.5 py-3 text-xs text-amber-400">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              Too many requests — wait a moment and try again
-            </div>
-          )}
-          {searchError && (
-            <div className="flex items-center gap-2 rounded-xl border border-error-500/20 bg-error-500/10 px-3.5 py-3 text-xs text-error-400">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {searchError}
-            </div>
-          )}
+          <SegmentedControl
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'recent', label: 'Recent' },
+              { value: 'myfoods', label: 'My Foods' },
+              { value: 'database', label: 'Database' },
+            ] as const}
+            value={filter}
+            onChange={setFilter}
+          />
 
-          {/* Results */}
+          {/* Results — one list, sectioned by where each food came from */}
           <div className="card overflow-hidden">
-            {tab === 'all' && quickAddCals !== null && (
+            {quickAddCals !== null && (
               <button
-                onClick={() => selectResult({ name: `${quickAddCals} kcal`, calories: quickAddCals, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0, serving_size: '1 serving', source: 'manual' })}
+                onClick={() => selectResult({ ...manualResult(`${quickAddCals} kcal`), calories: quickAddCals })}
                 className="flex items-center gap-3 w-full px-4 py-3.5 hover:bg-surface-muted transition-colors border-b border-surface-border"
               >
                 <div className="w-11 h-11 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
@@ -568,120 +640,125 @@ export default function LogFood() {
               </button>
             )}
 
-            {tab === 'recent' && (
-              recentItems.length === 0
-                ? (
-                  <div className="px-4 py-14 text-center">
+            {/* ─── Your foods ─── */}
+            {yourFoodsCount > 0 && <SectionHeader label="Your foods" />}
+
+            {showRecent && filteredRecent.map((item, i) => (
+              <FoodResultRow
+                key={`recent-${item.name}-${item.brand}-${item.calories}-${i}`}
+                item={item}
+                onClick={() => selectResult(item, true)}
+              />
+            ))}
+
+            {showSaved && filteredSaved.map(sf => (
+              <div key={sf.id} className="flex items-center border-b border-surface-border last:border-0">
+                <button
+                  className="flex items-center gap-3 flex-1 min-w-0 px-4 py-3.5 hover:bg-surface-muted active:bg-surface-muted/80 transition-colors text-left"
+                  onClick={() => selectResult(savedToResult(sf), true)}
+                >
+                  <AuthedImg
+                    src={sf.image_url}
+                    alt=""
+                    className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border"
+                    fallback={
+                      <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
+                        <Utensils className="w-5 h-5 text-tx-muted" />
+                      </div>
+                    }
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-tx-primary truncate">{sf.name}</p>
+                    {sf.brand && <p className="text-xs text-tx-muted truncate mt-0.5">{sf.brand}</p>}
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-xs font-semibold text-tx-secondary tabular-nums">{Math.round(sf.calories)} kcal</span>
+                      <span className="text-[10px] text-tx-muted">·</span>
+                      <span className="text-xs text-emerald-400 tabular-nums">{sf.protein.toFixed(0)}g P</span>
+                      <span className="text-[10px] text-tx-muted">·</span>
+                      <span className="text-xs text-amber-400 tabular-nums">{sf.carbs.toFixed(0)}g C</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); setEditingSavedFood(sf) }}
+                  className="px-3 py-4 text-tx-muted hover:text-tx-primary transition-colors flex-shrink-0"
+                  aria-label={`Edit ${sf.name}`}
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+
+            {yourFoodsCount === 0 && (showRecent || showSaved) && (
+              <div className="px-4 py-8 text-center border-b border-surface-border">
+                {recentError ? (
+                  <p className="text-sm text-tx-muted">Couldn't load your recent foods</p>
+                ) : query.trim() ? (
+                  <p className="text-sm text-tx-muted">Nothing in your foods matches "{query.trim()}"</p>
+                ) : (
+                  <>
                     <Utensils className="w-8 h-8 text-tx-muted opacity-30 mx-auto mb-2" />
                     <p className="text-sm text-tx-muted">No go-to items yet</p>
                     <p className="text-xs text-tx-muted mt-1 opacity-60">Foods you log often show up here</p>
-                  </div>
-                )
-                : recentItems.map((item, i) => <FoodResultRow key={`${item.name}-${item.brand}-${item.calories}-${i}`} item={item} onClick={() => selectResult(item, true)} />)
+                  </>
+                )}
+              </div>
             )}
 
-            {tab === 'myfoods' && (
-              savedFoods.length === 0
-                ? (
-                  <div className="px-4 py-14 text-center">
-                    <Bookmark className="w-8 h-8 text-tx-muted opacity-30 mx-auto mb-2" />
-                    <p className="text-sm text-tx-muted">No saved foods yet</p>
-                    <p className="text-xs text-tx-muted mt-1 opacity-60">Save foods while logging to find them here</p>
-                  </div>
-                )
-                : savedFoods.map(sf => (
-                  <div key={sf.id} className="flex items-center border-b border-surface-border last:border-0">
-                    <button
-                      className="flex items-center gap-3 flex-1 min-w-0 px-4 py-3.5 hover:bg-surface-muted active:bg-surface-muted/80 transition-colors text-left"
-                      onClick={() => selectResult(savedToResult(sf), true)}
-                    >
-                      <AuthedImg
-                        src={sf.image_url}
-                        alt=""
-                        className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border"
-                        fallback={
-                          <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
-                            <Utensils className="w-5 h-5 text-tx-muted" />
-                          </div>
-                        }
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-tx-primary truncate">{sf.name}</p>
-                        {sf.brand && <p className="text-xs text-tx-muted truncate mt-0.5">{sf.brand}</p>}
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span className="text-xs font-semibold text-tx-secondary tabular-nums">{Math.round(sf.calories)} kcal</span>
-                          <span className="text-[10px] text-tx-muted">·</span>
-                          <span className="text-xs text-emerald-400 tabular-nums">{sf.protein.toFixed(0)}g P</span>
-                          <span className="text-[10px] text-tx-muted">·</span>
-                          <span className="text-xs text-amber-400 tabular-nums">{sf.carbs.toFixed(0)}g C</span>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
-                    </button>
-                    <button
-                      onClick={e => { e.stopPropagation(); setEditingSavedFood(sf) }}
-                      className="px-3 py-4 text-tx-muted hover:text-tx-primary transition-colors flex-shrink-0"
-                      aria-label={`Edit ${sf.name}`}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
+            {/* ─── Food database ─── */}
+            {showDatabase && (
+              <>
+                <SectionHeader label="Food database" busy={searching && !!query.trim()} />
+
+                {rateLimited && (
+                  <p className="flex items-center gap-2 px-4 py-3 text-xs text-amber-400 border-b border-surface-border">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    Too many requests — wait a moment and try again
+                  </p>
+                )}
+                {searchError && (
+                  <p className="flex items-center gap-2 px-4 py-3 text-xs text-error-400 border-b border-surface-border">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {searchError}
+                  </p>
+                )}
+
+                {!query.trim() && (
+                  <p className="px-4 py-6 text-center text-xs text-tx-muted">
+                    Type to search millions of foods
+                  </p>
+                )}
+                {query.trim() && !searching && searchResults.length === 0 && !searchError && !rateLimited && (
+                  <p className="px-4 py-6 text-center text-sm text-tx-muted">No results for "{query.trim()}"</p>
+                )}
+                {searchResults.map(item => (
+                  <FoodResultRow
+                    key={`db-${item.source}-${item.name}-${item.brand}-${item.calories}`}
+                    item={item}
+                    onClick={() => selectResult(item)}
+                  />
+                ))}
+              </>
             )}
 
-            {tab === 'all' && !query.trim() && (
-              <div className="px-4 py-14 text-center">
-                <Search className="w-8 h-8 text-tx-muted opacity-30 mx-auto mb-2" />
-                <p className="text-sm text-tx-muted">Search millions of foods</p>
-                <p className="text-xs text-tx-muted mt-1 opacity-60">Or scan a barcode</p>
+            {/* Always reachable, in every filter — hand entry is the fallback
+                for everything the two sources between them can't answer. */}
+            <button
+              onClick={() => startManual(query)}
+              className="flex items-center gap-3 w-full px-4 py-3.5 border-t border-surface-border hover:bg-surface-muted transition-colors text-left"
+            >
+              <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
+                <Plus className="w-5 h-5 text-tx-muted" />
               </div>
-            )}
-            {tab === 'all' && query.trim() && searching && (
-              <div className="px-4 py-14 text-center text-sm text-tx-muted">Searching…</div>
-            )}
-            {tab === 'all' && query.trim() && !searching && searchResults.length === 0 && !searchError && !rateLimited && (
-              <div className="px-4 py-14 text-center space-y-3">
-                <p className="text-sm text-tx-muted">No results for "{query}"</p>
-                <div className="flex items-center justify-center gap-2">
-                  <button
-                    onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0, serving_size: '1 serving', source: 'manual' })}
-                    className="btn-secondary text-xs"
-                  >
-                    + Enter "{query.trim()}" manually
-                  </button>
-                  <button
-                    onClick={() => setPhase('scan-label')}
-                    className="btn-secondary text-xs flex items-center gap-1.5"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    Scan label
-                  </button>
-                </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-tx-primary truncate">
+                  {query.trim() ? `Enter "${query.trim()}" manually` : 'Add a food manually'}
+                </p>
+                <p className="text-xs text-tx-muted mt-0.5">Type in the nutrition yourself</p>
               </div>
-            )}
-            {tab === 'all' && !searching && searchResults.map((item) => (
-              <FoodResultRow key={`${item.name}-${item.calories}`} item={item} onClick={() => selectResult(item)} />
-            ))}
-            {tab === 'all' && query.trim() && !searching && searchResults.length > 0 && (
-              <div className="px-4 py-4 text-center space-y-2 border-t border-surface-border">
-                <p className="text-xs text-tx-muted">Not the right match?</p>
-                <div className="flex items-center justify-center gap-2">
-                  <button
-                    onClick={() => selectResult({ name: query.trim(), calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0, serving_size: '1 serving', source: 'manual' })}
-                    className="btn-secondary text-xs"
-                  >
-                    + Enter "{query.trim()}" manually
-                  </button>
-                  <button
-                    onClick={() => setPhase('scan-label')}
-                    className="btn-secondary text-xs flex items-center gap-1.5"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    Scan label
-                  </button>
-                </div>
-              </div>
-            )}
+              <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
+            </button>
           </div>
         </div>
       )}
@@ -745,16 +822,25 @@ export default function LogFood() {
                     />
                     <span className="text-sm text-tx-muted">kcal</span>
                   </div>
-                  <p className="text-xs text-tx-muted mt-1">
-                    per {servings === 1 ? '' : `${servings} × `}
-                    <input
-                      type="text"
-                      value={selected.serving_size ?? ''}
-                      onChange={e => setSelected(s => s && ({ ...s, serving_size: e.target.value }))}
-                      placeholder="1 serving"
-                      className="inline-block bg-transparent border-0 border-b border-transparent hover:border-surface-border focus:border-brand-500 outline-none w-28 px-0"
-                    />
-                  </p>
+                  {/* With a gram basis the amount picker owns the portion, so
+                      state it as chosen — showing the raw multiplier ("per
+                      0.138 × per 100g") exposes bookkeeping the user never
+                      typed. Without one, serving_size is still free text they
+                      need to be able to write. */}
+                  {unitOptions.length > 1 ? (
+                    <p className="text-xs text-tx-muted mt-1">for {formatServingLabel(amount, unit)}</p>
+                  ) : (
+                    <p className="text-xs text-tx-muted mt-1">
+                      per {servings === 1 ? '' : `${servings} × `}
+                      <input
+                        type="text"
+                        value={selected.serving_size ?? ''}
+                        onChange={e => setSelected(s => s && ({ ...s, serving_size: e.target.value }))}
+                        placeholder="1 serving"
+                        className="inline-block bg-transparent border-0 border-b border-transparent hover:border-surface-border focus:border-brand-500 outline-none w-28 px-0"
+                      />
+                    </p>
+                  )}
                 </div>
                 {/* Macro composition mini-bars */}
                 {(pro + carb + fat_) > 0 && (
@@ -808,25 +894,16 @@ export default function LogFood() {
             </div>
           </div>
 
-          {/* Servings */}
+          {/* Amount */}
           <div className="card p-4 space-y-3">
-            <div className="flex items-baseline gap-2">
-              <label className="label">Servings</label>
-              {selected.serving_size && (
-                <span className="text-xs text-tx-muted">({selected.serving_size} each)</span>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <IconButton icon={Minus} variant="secondary" size="lg" label="Decrease servings" onClick={() => setServings(s => Math.max(0.5, +(s - 0.5).toFixed(1)))} />
-              <input
-                type="number"
-                value={servings}
-                onChange={e => setServings(Math.max(0.5, Number(e.target.value) || 1))}
-                step="0.5" min="0.5"
-                className="input text-center flex-1 h-12 text-lg font-semibold tabular-nums"
-              />
-              <IconButton icon={Plus} variant="secondary" size="lg" label="Increase servings" onClick={() => setServings(s => +(s + 0.5).toFixed(1))} />
-            </div>
+            <label className="label">Amount</label>
+            <PortionPicker
+              options={unitOptions}
+              amount={amount}
+              unitId={unitId}
+              onChange={setPortion}
+              size="lg"
+            />
           </div>
 
           {/* Log to: meal + when */}
@@ -909,7 +986,9 @@ export default function LogFood() {
                 </div>
                 {selected.serving_size && (
                   <p className="text-xs text-tx-muted mt-1 truncate">
-                    {servings === 1 ? '' : `${servings} × `}{selected.serving_size}
+                    {unitOptions.length > 1
+                      ? formatServingLabel(amount, unit)
+                      : `${servings === 1 ? '' : `${servings} × `}${selected.serving_size}`}
                   </p>
                 )}
               </div>
@@ -920,18 +999,13 @@ export default function LogFood() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span className="label flex-shrink-0">Servings</span>
-              <IconButton icon={Minus} variant="secondary" size="md" label="Decrease servings" onClick={() => setServings(s => Math.max(0.5, +(s - 0.5).toFixed(1)))} />
-              <input
-                type="number"
-                value={servings}
-                onChange={e => setServings(Math.max(0.5, Number(e.target.value) || 1))}
-                step="0.5" min="0.5"
-                className="input text-center flex-1 h-10 font-semibold tabular-nums"
-              />
-              <IconButton icon={Plus} variant="secondary" size="md" label="Increase servings" onClick={() => setServings(s => +(s + 0.5).toFixed(1))} />
-            </div>
+            <PortionPicker
+              options={unitOptions}
+              amount={amount}
+              unitId={unitId}
+              onChange={setPortion}
+              size="md"
+            />
           </div>
 
           {/* Meal + collapsed date */}

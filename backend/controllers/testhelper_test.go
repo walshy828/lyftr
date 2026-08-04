@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS food_logs (
   cholesterol  REAL    NOT NULL DEFAULT 0,
   servings     REAL    NOT NULL DEFAULT 1,
   serving_size TEXT    NOT NULL DEFAULT '',
+  serving_size_grams REAL NOT NULL DEFAULT 0,
   barcode      TEXT    NOT NULL DEFAULT '',
   image_url    TEXT    NOT NULL DEFAULT '',
   source       TEXT    NOT NULL DEFAULT '',
@@ -192,6 +193,7 @@ CREATE TABLE IF NOT EXISTS saved_foods (
   sodium       REAL    NOT NULL DEFAULT 0,
   cholesterol  REAL    NOT NULL DEFAULT 0,
   serving_size TEXT    NOT NULL DEFAULT '',
+  serving_size_grams REAL NOT NULL DEFAULT 0,
   barcode      TEXT    NOT NULL DEFAULT '',
   image_url    TEXT    NOT NULL DEFAULT '',
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

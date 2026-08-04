@@ -109,26 +109,30 @@ type WeightLog struct {
 }
 
 type FoodLog struct {
-	ID          int64     `json:"id" db:"id"`
-	UserID      int64     `json:"user_id" db:"user_id"`
-	Name        string    `json:"name" db:"name"`
-	Brand       string    `json:"brand,omitempty" db:"brand"`
-	Meal        string    `json:"meal" db:"meal"` // "breakfast", "lunch", "dinner", "snacks"
-	Calories    float64   `json:"calories" db:"calories"`
-	Protein     float64   `json:"protein" db:"protein"`
-	Carbs       float64   `json:"carbs" db:"carbs"`
-	Fat         float64   `json:"fat" db:"fat"`
-	Fiber       float64   `json:"fiber" db:"fiber"`
-	Sugar       float64   `json:"sugar" db:"sugar"`
-	Sodium      float64   `json:"sodium" db:"sodium"`
-	Cholesterol float64   `json:"cholesterol" db:"cholesterol"`
-	Servings    float64   `json:"servings" db:"servings"`
-	ServingSize string    `json:"serving_size" db:"serving_size"`
-	Barcode     string    `json:"barcode,omitempty" db:"barcode"`
-	ImageURL    string    `json:"image_url,omitempty" db:"image_url"`
-	Source      string    `json:"source,omitempty" db:"source"` // "off" | "saved" | "manual" | "photo"
-	LoggedAt    time.Time `json:"logged_at" db:"logged_at"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID          int64   `json:"id" db:"id"`
+	UserID      int64   `json:"user_id" db:"user_id"`
+	Name        string  `json:"name" db:"name"`
+	Brand       string  `json:"brand,omitempty" db:"brand"`
+	Meal        string  `json:"meal" db:"meal"` // "breakfast", "lunch", "dinner", "snacks"
+	Calories    float64 `json:"calories" db:"calories"`
+	Protein     float64 `json:"protein" db:"protein"`
+	Carbs       float64 `json:"carbs" db:"carbs"`
+	Fat         float64 `json:"fat" db:"fat"`
+	Fiber       float64 `json:"fiber" db:"fiber"`
+	Sugar       float64 `json:"sugar" db:"sugar"`
+	Sodium      float64 `json:"sodium" db:"sodium"`
+	Cholesterol float64 `json:"cholesterol" db:"cholesterol"`
+	Servings    float64 `json:"servings" db:"servings"`
+	ServingSize string  `json:"serving_size" db:"serving_size"`
+	// ServingSizeGrams is the mass of one serving, so re-opening this entry can
+	// restore the amount/unit picker instead of falling back to a bare
+	// multiplier. 0 means unknown or not mass-based.
+	ServingSizeGrams float64   `json:"serving_size_grams" db:"serving_size_grams"`
+	Barcode          string    `json:"barcode,omitempty" db:"barcode"`
+	ImageURL         string    `json:"image_url,omitempty" db:"image_url"`
+	Source           string    `json:"source,omitempty" db:"source"` // "off" | "fdc" | "saved" | "manual" | "photo" | "ai"
+	LoggedAt         time.Time `json:"logged_at" db:"logged_at"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
 }
 
 // RecentFood is a food the user logs often: the most-recent logged entry for a
@@ -140,22 +144,33 @@ type RecentFood struct {
 }
 
 type SavedFood struct {
-	ID          int64     `json:"id" db:"id"`
-	UserID      int64     `json:"user_id,omitempty" db:"user_id"`
-	Name        string    `json:"name" db:"name"`
-	Brand       string    `json:"brand" db:"brand"`
-	Calories    float64   `json:"calories" db:"calories"`
-	Protein     float64   `json:"protein" db:"protein"`
-	Carbs       float64   `json:"carbs" db:"carbs"`
-	Fat         float64   `json:"fat" db:"fat"`
-	Fiber       float64   `json:"fiber" db:"fiber"`
-	Sugar       float64   `json:"sugar" db:"sugar"`
-	Sodium      float64   `json:"sodium" db:"sodium"`
-	Cholesterol float64   `json:"cholesterol" db:"cholesterol"`
-	ServingSize string    `json:"serving_size" db:"serving_size"`
-	Barcode     string    `json:"barcode,omitempty" db:"barcode"`
-	ImageURL    string    `json:"image_url,omitempty" db:"image_url"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID               int64     `json:"id" db:"id"`
+	UserID           int64     `json:"user_id,omitempty" db:"user_id"`
+	Name             string    `json:"name" db:"name"`
+	Brand            string    `json:"brand" db:"brand"`
+	Calories         float64   `json:"calories" db:"calories"`
+	Protein          float64   `json:"protein" db:"protein"`
+	Carbs            float64   `json:"carbs" db:"carbs"`
+	Fat              float64   `json:"fat" db:"fat"`
+	Fiber            float64   `json:"fiber" db:"fiber"`
+	Sugar            float64   `json:"sugar" db:"sugar"`
+	Sodium           float64   `json:"sodium" db:"sodium"`
+	Cholesterol      float64   `json:"cholesterol" db:"cholesterol"`
+	ServingSize      string    `json:"serving_size" db:"serving_size"`
+	ServingSizeGrams float64   `json:"serving_size_grams" db:"serving_size_grams"`
+	Barcode          string    `json:"barcode,omitempty" db:"barcode"`
+	ImageURL         string    `json:"image_url,omitempty" db:"image_url"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+}
+
+// FoodPortion is a household measure a source publishes for a food, together
+// with its exact mass — e.g. {"1 tbsp", 13.8}. Only sources that report gram
+// weights (USDA FDC, and OFF serving_size strings we can parse) contribute
+// these: a volume-to-mass conversion is density-dependent, so we surface one
+// only when the data provider stated it rather than guessing.
+type FoodPortion struct {
+	Label string  `json:"label"`
+	Grams float64 `json:"grams"`
 }
 
 type FoodSearchResult struct {
@@ -170,8 +185,12 @@ type FoodSearchResult struct {
 	Sodium      float64 `json:"sodium"`
 	Cholesterol float64 `json:"cholesterol"`
 	ServingSize string  `json:"serving_size"`
-	ImageURL    string  `json:"image_url,omitempty"`
-	Source      string  `json:"source"` // "off" | "saved" | "manual" | "photo"
+	// ServingSizeGrams is the mass the quoted nutrition numbers represent, so
+	// the client can rescale to any amount exactly. 0 = unknown/not mass-based.
+	ServingSizeGrams float64       `json:"serving_size_grams,omitempty"`
+	Portions         []FoodPortion `json:"portions,omitempty"`
+	ImageURL         string        `json:"image_url,omitempty"`
+	Source           string        `json:"source"` // "off" | "fdc" | "saved" | "manual" | "photo"
 }
 
 type FoodHistoryPoint struct {
@@ -558,23 +577,24 @@ type WeightPlanHistory struct {
 }
 
 type LogFoodRequest struct {
-	Name        string    `json:"name" validate:"required"`
-	Brand       string    `json:"brand"`
-	Meal        string    `json:"meal" validate:"required,oneof=breakfast lunch dinner snacks"`
-	Calories    float64   `json:"calories" validate:"gte=0"`
-	Protein     float64   `json:"protein" validate:"gte=0"`
-	Carbs       float64   `json:"carbs" validate:"gte=0"`
-	Fat         float64   `json:"fat" validate:"gte=0"`
-	Fiber       float64   `json:"fiber" validate:"gte=0"`
-	Sugar       float64   `json:"sugar" validate:"gte=0"`
-	Sodium      float64   `json:"sodium" validate:"gte=0"`
-	Cholesterol float64   `json:"cholesterol" validate:"gte=0"`
-	Servings    float64   `json:"servings" validate:"gte=0"`
-	ServingSize string    `json:"serving_size"`
-	Barcode     string    `json:"barcode"`
-	ImageURL    string    `json:"image_url"`
-	Source      string    `json:"source" validate:"omitempty,oneof=off manual photo saved ai"`
-	LoggedAt    time.Time `json:"logged_at"`
+	Name             string    `json:"name" validate:"required"`
+	Brand            string    `json:"brand"`
+	Meal             string    `json:"meal" validate:"required,oneof=breakfast lunch dinner snacks"`
+	Calories         float64   `json:"calories" validate:"gte=0"`
+	Protein          float64   `json:"protein" validate:"gte=0"`
+	Carbs            float64   `json:"carbs" validate:"gte=0"`
+	Fat              float64   `json:"fat" validate:"gte=0"`
+	Fiber            float64   `json:"fiber" validate:"gte=0"`
+	Sugar            float64   `json:"sugar" validate:"gte=0"`
+	Sodium           float64   `json:"sodium" validate:"gte=0"`
+	Cholesterol      float64   `json:"cholesterol" validate:"gte=0"`
+	Servings         float64   `json:"servings" validate:"gte=0"`
+	ServingSize      string    `json:"serving_size"`
+	ServingSizeGrams float64   `json:"serving_size_grams" validate:"gte=0"`
+	Barcode          string    `json:"barcode"`
+	ImageURL         string    `json:"image_url"`
+	Source           string    `json:"source" validate:"omitempty,oneof=off fdc manual photo saved ai"`
+	LoggedAt         time.Time `json:"logged_at"`
 }
 
 type AnalyzeLabelRequest struct {
@@ -598,35 +618,37 @@ type RecommendMealsRequest struct {
 }
 
 type SaveFoodRequest struct {
-	Name        string  `json:"name" validate:"required"`
-	Brand       string  `json:"brand"`
-	Calories    float64 `json:"calories" validate:"gte=0"`
-	Protein     float64 `json:"protein" validate:"gte=0"`
-	Carbs       float64 `json:"carbs" validate:"gte=0"`
-	Fat         float64 `json:"fat" validate:"gte=0"`
-	Fiber       float64 `json:"fiber" validate:"gte=0"`
-	Sugar       float64 `json:"sugar" validate:"gte=0"`
-	Sodium      float64 `json:"sodium" validate:"gte=0"`
-	Cholesterol float64 `json:"cholesterol" validate:"gte=0"`
-	ServingSize string  `json:"serving_size"`
-	Barcode     string  `json:"barcode"`
-	ImageURL    string  `json:"image_url"`
+	Name             string  `json:"name" validate:"required"`
+	Brand            string  `json:"brand"`
+	Calories         float64 `json:"calories" validate:"gte=0"`
+	Protein          float64 `json:"protein" validate:"gte=0"`
+	Carbs            float64 `json:"carbs" validate:"gte=0"`
+	Fat              float64 `json:"fat" validate:"gte=0"`
+	Fiber            float64 `json:"fiber" validate:"gte=0"`
+	Sugar            float64 `json:"sugar" validate:"gte=0"`
+	Sodium           float64 `json:"sodium" validate:"gte=0"`
+	Cholesterol      float64 `json:"cholesterol" validate:"gte=0"`
+	ServingSize      string  `json:"serving_size"`
+	ServingSizeGrams float64 `json:"serving_size_grams" validate:"gte=0"`
+	Barcode          string  `json:"barcode"`
+	ImageURL         string  `json:"image_url"`
 }
 
 type UpdateSavedFoodRequest struct {
-	Name        string  `json:"name" validate:"required"`
-	Brand       string  `json:"brand"`
-	Calories    float64 `json:"calories" validate:"gte=0"`
-	Protein     float64 `json:"protein" validate:"gte=0"`
-	Carbs       float64 `json:"carbs" validate:"gte=0"`
-	Fat         float64 `json:"fat" validate:"gte=0"`
-	Fiber       float64 `json:"fiber" validate:"gte=0"`
-	Sugar       float64 `json:"sugar" validate:"gte=0"`
-	Sodium      float64 `json:"sodium" validate:"gte=0"`
-	Cholesterol float64 `json:"cholesterol" validate:"gte=0"`
-	ServingSize string  `json:"serving_size"`
-	Barcode     string  `json:"barcode"`
-	ImageURL    string  `json:"image_url"`
+	Name             string  `json:"name" validate:"required"`
+	Brand            string  `json:"brand"`
+	Calories         float64 `json:"calories" validate:"gte=0"`
+	Protein          float64 `json:"protein" validate:"gte=0"`
+	Carbs            float64 `json:"carbs" validate:"gte=0"`
+	Fat              float64 `json:"fat" validate:"gte=0"`
+	Fiber            float64 `json:"fiber" validate:"gte=0"`
+	Sugar            float64 `json:"sugar" validate:"gte=0"`
+	Sodium           float64 `json:"sodium" validate:"gte=0"`
+	Cholesterol      float64 `json:"cholesterol" validate:"gte=0"`
+	ServingSize      string  `json:"serving_size"`
+	ServingSizeGrams float64 `json:"serving_size_grams" validate:"gte=0"`
+	Barcode          string  `json:"barcode"`
+	ImageURL         string  `json:"image_url"`
 }
 
 // UpdateSettingsRequest is a PATCH: every field is a pointer so a nil (absent
