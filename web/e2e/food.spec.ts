@@ -215,7 +215,7 @@ test.describe('Food', () => {
   // @mobile: the capture bar must stay on one row at a phone width.
   test('capture bar offers all four entry points at a glance', { tag: '@mobile' }, async ({ page }) => {
     await page.goto('/food/log')
-    for (const label of ['Barcode', 'Label', 'Describe', 'Manual']) {
+    for (const label of ['Describe', 'Barcode', 'Label', 'Manual']) {
       await expect(page.getByRole('button', { name: label })).toBeVisible()
     }
     // One tap from a cold search screen to a blank entry form.

@@ -23,10 +23,12 @@ interface FoodCaptureBarProps {
 export default function FoodCaptureBar({
   onScanBarcode, onScanLabel, onDescribeMeal, onAddManually,
 }: FoodCaptureBarProps) {
+  // Ordered by how often each gets reached for, most-used first: describing a
+  // meal leads, scanning follows, and hand entry sits last as the fallback.
   const actions: { icon: React.ElementType; label: string; onClick: () => void; accent: string }[] = [
+    { icon: Sparkles, label: 'Describe', onClick: onDescribeMeal, accent: 'text-brand-400' },
     { icon: Scan, label: 'Barcode', onClick: onScanBarcode, accent: 'text-sky-400' },
     { icon: Camera, label: 'Label', onClick: onScanLabel, accent: 'text-amber-400' },
-    { icon: Sparkles, label: 'Describe', onClick: onDescribeMeal, accent: 'text-brand-400' },
     { icon: Plus, label: 'Manual', onClick: onAddManually, accent: 'text-tx-secondary' },
   ]
 
