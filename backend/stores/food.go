@@ -277,6 +277,24 @@ func (s *FoodStore) CreateSaved(uid int64, req models.SaveFoodRequest) (models.S
 	return f, err
 }
 
+// FindSavedMatch returns an existing saved food that already stands for the
+// same item, so saving a food twice updates one row instead of leaving two
+// near-identical entries in My Foods. A barcode is exact identity when both
+// sides carry one; otherwise name+brand are compared case- and
+// whitespace-insensitively, matching how the log screen dedupes Recent against
+// My Foods. Returns sql.ErrNoRows when the food is new.
+func (s *FoodStore) FindSavedMatch(uid int64, name, brand, barcode string) (models.SavedFood, error) {
+	var f models.SavedFood
+	err := scanSavedFood(s.db.QueryRow(savedFoodSelect+`
+		 WHERE user_id = ?
+		   AND ( (? <> '' AND barcode = ?)
+		         OR (lower(trim(name)) = lower(trim(?)) AND lower(trim(brand)) = lower(trim(?))) )
+		 ORDER BY id ASC LIMIT 1`,
+		uid, barcode, barcode, name, brand,
+	), &f)
+	return f, err
+}
+
 func (s *FoodStore) GetSaved(uid, id int64) (models.SavedFood, error) {
 	var f models.SavedFood
 	err := scanSavedFood(s.db.QueryRow(savedFoodSelect+` WHERE id = ? AND user_id = ?`, id, uid), &f)

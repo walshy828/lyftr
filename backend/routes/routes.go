@@ -98,6 +98,7 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.POST("food/analyze-meal-photo", h.AnalyzeMealPhoto)
 		protected.GET("food/photos/:userID/:filename", h.ServeMealPhoto)
 		protected.POST("food/recommend", h.RecommendMeals)
+		protected.POST("food/:id/save", h.SaveFoodLogToMyFoods)
 		protected.GET("food/:id", h.GetFoodLog)
 		protected.PATCH("food/:id", h.UpdateFoodLog)
 		protected.DELETE("food/:id", h.DeleteFoodLog)

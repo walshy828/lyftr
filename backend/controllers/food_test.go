@@ -1086,6 +1086,176 @@ func TestDeleteSavedFood_ownershipEnforced(t *testing.T) {
 	}
 }
 
+// ─── SaveFoodLogToMyFoods ─────────────────────────────────────────────────────
+
+// insertPortionedFoodLog writes an entry whose macros are already multiplied by
+// `servings`, the way the log screen stores them — the shape savedFoodFromLog
+// has to divide back out.
+func insertPortionedFoodLog(t *testing.T, uid int64, name, brand string, servings float64, calories, protein float64, servingSize, barcode string) int64 {
+	t.Helper()
+	res, err := db.DB.Exec(
+		`INSERT INTO food_logs (user_id, name, brand, meal, calories, protein, carbs, fat, fiber, servings, serving_size, serving_size_grams, barcode, image_url, logged_at)
+		 VALUES (?, ?, ?, 'lunch', ?, ?, 0, 0, 0, ?, ?, 30, ?, '', ?)`,
+		uid, name, brand, calories, protein, servings, servingSize, barcode,
+		time.Now().AddDate(0, 0, -5).Format("2006-01-02T15:04:05Z"),
+	)
+	if err != nil {
+		t.Fatalf("insertPortionedFoodLog: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+func TestSaveFoodLogToMyFoods_storesOneServing(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	id := insertPortionedFoodLog(t, uid, "Overnight oats", "Quaker", 2, 300, 24, "1 cup", "")
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/"+fmt.Sprint(id)+"/save", nil)
+	setParam(c, "id", fmt.Sprint(id))
+	th.SaveFoodLogToMyFoods(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].(map[string]any)
+	if data["calories"].(float64) != 150 || data["protein"].(float64) != 12 {
+		t.Errorf("expected per-serving macros 150/12, got %v/%v", data["calories"], data["protein"])
+	}
+	if data["serving_size"].(string) != "1 cup" || data["serving_size_grams"].(float64) != 30 {
+		t.Errorf("serving unit not carried over: %v / %v", data["serving_size"], data["serving_size_grams"])
+	}
+	if data["name"].(string) != "Overnight oats" || data["brand"].(string) != "Quaker" {
+		t.Errorf("unexpected name/brand: %v / %v", data["name"], data["brand"])
+	}
+}
+
+func TestSaveFoodLogToMyFoods_conflictsWhenAlreadySaved(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	savedID := insertSavedFood(t, uid, "Greek yogurt")
+	// Different case and padding: the same food to a human, so it must not
+	// produce a second row.
+	id := insertPortionedFoodLog(t, uid, "  greek YOGURT ", "", 1, 220, 20, "1 tub", "")
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/"+fmt.Sprint(id)+"/save", nil)
+	setParam(c, "id", fmt.Sprint(id))
+	th.SaveFoodLogToMyFoods(c)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	if resp["error"] == nil {
+		t.Error("conflict response carried no error message")
+	}
+	existing := resp["data"].(map[string]any)
+	if int64(existing["id"].(float64)) != savedID {
+		t.Errorf("conflict pointed at saved food %v, want %d", existing["id"], savedID)
+	}
+	var count int
+	db.DB.QueryRow(`SELECT COUNT(*) FROM saved_foods WHERE user_id = ?`, uid).Scan(&count)
+	if count != 1 {
+		t.Fatalf("expected no duplicate row, saved_foods has %d", count)
+	}
+}
+
+func TestSaveFoodLogToMyFoods_overwriteRefreshesExisting(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	savedID := insertSavedFood(t, uid, "Greek yogurt") // seeded at 100 kcal
+	id := insertPortionedFoodLog(t, uid, "Greek yogurt", "", 1, 220, 20, "1 tub", "")
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/"+fmt.Sprint(id)+"/save?overwrite=true", nil)
+	setParam(c, "id", fmt.Sprint(id))
+	th.SaveFoodLogToMyFoods(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].(map[string]any)
+	if int64(data["id"].(float64)) != savedID {
+		t.Errorf("overwrote the wrong row: %v", data["id"])
+	}
+	if data["calories"].(float64) != 220 {
+		t.Errorf("expected refreshed calories 220, got %v", data["calories"])
+	}
+	var count int
+	db.DB.QueryRow(`SELECT COUNT(*) FROM saved_foods WHERE user_id = ?`, uid).Scan(&count)
+	if count != 1 {
+		t.Fatalf("overwrite added a row: saved_foods has %d", count)
+	}
+}
+
+func TestSaveFoodLogToMyFoods_matchesOnBarcodeAcrossNames(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	_, err := db.DB.Exec(
+		`INSERT INTO saved_foods (user_id, name, brand, calories, protein, carbs, fat, fiber, serving_size, barcode)
+		 VALUES (?, 'Protein bar', '', 200, 20, 20, 7, 3, '1 bar', '0123456789012')`, uid)
+	if err != nil {
+		t.Fatalf("seed saved food: %v", err)
+	}
+	id := insertPortionedFoodLog(t, uid, "Choc protein bar", "", 1, 210, 21, "1 bar", "0123456789012")
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/"+fmt.Sprint(id)+"/save", nil)
+	setParam(c, "id", fmt.Sprint(id))
+	th.SaveFoodLogToMyFoods(c)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 on barcode match, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSaveFoodLogToMyFoods_ownershipEnforced(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	other := otherUser(t)
+	id := insertPortionedFoodLog(t, other, "Secret meal", "", 1, 500, 30, "1 plate", "")
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/"+fmt.Sprint(id)+"/save", nil)
+	setParam(c, "id", fmt.Sprint(id))
+	th.SaveFoodLogToMyFoods(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for another user's entry, got %d", w.Code)
+	}
+	var count int
+	db.DB.QueryRow(`SELECT COUNT(*) FROM saved_foods WHERE user_id = ?`, uid).Scan(&count)
+	if count != 0 {
+		t.Fatal("saved a food from another user's log")
+	}
+}
+
+func TestSaveFoodLogToMyFoods_scopedByUserWhenMatching(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	other := otherUser(t)
+	insertSavedFood(t, other, "Greek yogurt") // another user's My Foods must not block
+	id := insertPortionedFoodLog(t, uid, "Greek yogurt", "", 1, 220, 20, "1 tub", "")
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/"+fmt.Sprint(id)+"/save", nil)
+	setParam(c, "id", fmt.Sprint(id))
+	th.SaveFoodLogToMyFoods(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSaveFoodLogToMyFoods_invalidID(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/abc/save", nil)
+	setParam(c, "id", "abc")
+	th.SaveFoodLogToMyFoods(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid id, got %d", w.Code)
+	}
+}
+
 // ─── sugar/sodium/source round-trip ───────────────────────────────────────────
 
 func TestLogFood_withSugarSodiumSource(t *testing.T) {

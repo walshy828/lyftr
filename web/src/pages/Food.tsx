@@ -4,6 +4,7 @@ import { format, subDays, addDays } from 'date-fns'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Flame, Plus, Trash2,
   AlertCircle, Coffee, Sun, Moon, Cookie, CalendarDays, Utensils, Sparkles,
+  Bookmark, BookmarkCheck,
 } from 'lucide-react'
 import IconButton from '../components/ui/IconButton'
 import SectionHeader from '../components/ui/SectionHeader'
@@ -58,11 +59,21 @@ export default function Food() {
   const [showMoreNutrients, setShowMoreNutrients] = useState(false)
   const [recommendMeal, setRecommendMeal] = useState<types.FoodLog['meal'] | null>(null)
 
+  // Saving a past entry into My Foods. `savedIds` only marks entries saved in
+  // this session — the day's logs don't carry a "is it in My Foods?" flag, so
+  // the icon is a receipt for the tap, not a stored state.
+  const [savingId, setSavingId] = useState<number | null>(null)
+  const [savedIds, setSavedIds] = useState<number[]>([])
+  const [saveNotice, setSaveNotice] = useState<string | null>(null)
+  const [duplicate, setDuplicate] = useState<{ entryId: number; existing: types.SavedFood } | null>(null)
+
   const loadDay = useCallback(async (date: string) => {
     setLoading(true)
     setLogs([])
     setStats(null)
     setError(null)
+    setSaveNotice(null)
+    setDuplicate(null)
     try {
       const defaultStats: types.DailyStats = {
         date, total_calories: 0, total_protein: 0, total_carbs: 0,
@@ -117,6 +128,26 @@ export default function Food() {
       setError('Failed to delete entry')
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  // Save an already-logged entry into My Foods. A 409 means the same food is
+  // already saved, and rather than quietly making a second copy we ask — the
+  // retry with `overwrite` refreshes the saved values from this entry.
+  const handleSaveToMyFoods = async (entry: types.FoodLog, overwrite = false) => {
+    setSavingId(entry.id)
+    setSaveNotice(null)
+    try {
+      await foodAPI.saveToMyFoods(entry.id, overwrite)
+      setSavedIds(prev => [...prev, entry.id])
+      setDuplicate(null)
+      setSaveNotice(overwrite ? `Updated ${entry.name} in My Foods` : `Saved ${entry.name} to My Foods`)
+    } catch (err: any) {
+      const existing = err?.response?.status === 409 ? err.response.data?.data : null
+      if (existing) setDuplicate({ entryId: entry.id, existing })
+      else setSaveNotice(err?.response?.data?.error || 'Failed to save to My Foods')
+    } finally {
+      setSavingId(null)
     }
   }
 
@@ -181,6 +212,16 @@ export default function Food() {
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
+      )}
+
+      {saveNotice && (
+        <button
+          onClick={() => setSaveNotice(null)}
+          className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500/10 border border-brand-500/20 text-xs text-brand-400 text-left"
+        >
+          <BookmarkCheck className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">{saveNotice}</span>
+        </button>
       )}
 
       {/* Date navigator */}
@@ -365,7 +406,26 @@ export default function Food() {
                   <div className="divide-y divide-surface-border border-t border-surface-border">
                     {entries.map(entry => (
                       <div key={entry.id}>
-                        {deleteConfirmId === entry.id ? (
+                        {duplicate?.entryId === entry.id ? (
+                          <div className="px-4 py-3 flex items-center justify-between gap-3 bg-brand-500/5 border-l-2 border-brand-500">
+                            <p className="text-xs text-tx-secondary flex-1 min-w-0">
+                              <span className="font-medium text-tx-primary">{duplicate.existing.name}</span> is already in
+                              My Foods. Update it with this entry?
+                            </p>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <button onClick={() => setDuplicate(null)} className="btn-secondary btn-sm">
+                                Keep
+                              </button>
+                              <button
+                                onClick={() => handleSaveToMyFoods(entry, true)}
+                                disabled={savingId === entry.id}
+                                className="btn-primary btn-sm disabled:opacity-50"
+                              >
+                                {savingId === entry.id ? '…' : 'Update'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : deleteConfirmId === entry.id ? (
                           <div className="px-4 py-3 flex items-center justify-between gap-3 bg-error-500/5 border-l-2 border-error-500">
                             <p className="text-xs text-tx-secondary flex-1 min-w-0">
                               Delete <span className="font-medium text-tx-primary">{entry.name}</span>?
@@ -414,6 +474,13 @@ export default function Food() {
                               </div>
                               <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
                             </button>
+                            <IconButton
+                              icon={savedIds.includes(entry.id) ? BookmarkCheck : Bookmark}
+                              variant={savedIds.includes(entry.id) ? 'brand' : 'ghost'}
+                              label={`Save ${entry.name} to My Foods`}
+                              disabled={savingId === entry.id}
+                              onClick={() => handleSaveToMyFoods(entry)}
+                            />
                             <IconButton icon={Trash2} variant="danger" label="Delete" onClick={() => setDeleteConfirmId(entry.id)} />
                           </div>
                         )}

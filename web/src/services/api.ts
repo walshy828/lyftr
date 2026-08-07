@@ -229,6 +229,13 @@ export const foodAPI = {
   update:  (id: number, data: any) => api.patch<{ data: types.FoodLog }>(`/food/${id}`, data).then(res => unwrap(res)),
   delete:  (id: number) => api.delete(`/food/${id}`),
   stats:   (date?: string) => api.get<{ data: types.DailyStats }>('/food/stats', { params: { date } }).then(res => unwrap(res)),
+  // Copies a logged entry (any day) into My Foods, normalised to one serving.
+  // Without `overwrite` a name/brand/barcode match rejects with 409 and the
+  // existing saved food in `err.response.data.data`, so the caller can offer to
+  // refresh it instead of creating a near-duplicate.
+  saveToMyFoods: (id: number, overwrite = false) =>
+    api.post<{ data: types.SavedFood }>(`/food/${id}/save`, null, { params: overwrite ? { overwrite: 'true' } : undefined })
+      .then(res => unwrap(res)),
   history: (days = 30) => api.get<{ data: types.FoodHistoryPoint[] }>('/food/history', { params: { days } }).then(res => unwrap(res)),
   recent:  () => api.get<{ data: types.RecentFood[] }>('/food/recent').then(res => unwrap(res)),
   search:  (q: string, limit = 20) => api.get<{ data: types.FoodSearchResult[] }>('/food/search', { params: { q, limit } }).then(res => unwrap(res)),

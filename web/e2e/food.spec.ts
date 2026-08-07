@@ -397,6 +397,48 @@ test.describe('Food', () => {
     await expect(page.getByText(savedName)).toBeVisible({ timeout: 8000 })
   })
 
+  test('saves a previous day\'s entry to My Foods and refuses to duplicate it', async ({ page, request }) => {
+    const h = { Authorization: `Bearer ${authToken}` }
+    const name = `E2EPastSave-${Date.now()}`
+    const y = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() - 1, 12, 0, 0, 0)
+
+    // A food logged on an earlier day and never saved — the case this feature
+    // exists for.
+    const created = await request.post(`${API}/food`, {
+      headers: h,
+      data: {
+        name, meal: 'dinner', calories: 500, protein: 40, carbs: 30, fat: 20,
+        servings: 2, serving_size: '1 bowl', logged_at: y.toISOString(),
+      },
+    })
+    const logId = (await created.json()).data.id
+
+    try {
+      await page.goto('/food')
+      await page.getByRole('button', { name: 'Previous day' }).click()
+      await expect(page.getByText(name)).toBeVisible({ timeout: 8000 })
+
+      await page.getByRole('button', { name: `Save ${name} to My Foods` }).click()
+      await expect(page.getByText(`Saved ${name} to My Foods`)).toBeVisible({ timeout: 8000 })
+
+      // Saving the same entry again asks instead of making a second copy.
+      await page.getByRole('button', { name: `Save ${name} to My Foods` }).click()
+      await expect(page.getByText(/is already in\s+My Foods/)).toBeVisible({ timeout: 8000 })
+
+      // One serving, not the two that were eaten.
+      const saved = await (await request.get(`${API}/food/saved`, { headers: h })).json()
+      const match = saved.data.filter((f: any) => f.name === name)
+      expect(match).toHaveLength(1)
+      expect(match[0].calories).toBe(250)
+    } finally {
+      await request.delete(`${API}/food/${logId}`, { headers: h })
+      const saved = await (await request.get(`${API}/food/saved`, { headers: h })).json()
+      for (const f of saved.data.filter((f: any) => f.name === name)) {
+        await request.delete(`${API}/food/saved/${f.id}`, { headers: h })
+      }
+    }
+  })
+
   test('selecting from My Foods goes to detail phase', async ({ page }) => {
     await page.goto('/food/log')
     await page.getByRole('button', { name: 'My Foods' }).click()

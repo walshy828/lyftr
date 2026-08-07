@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -693,6 +694,99 @@ func (h *Handler) CreateSavedFood(c *gin.Context) {
 		return
 	}
 	utils.Created(c, f)
+}
+
+// savedFoodFromLog turns a logged entry back into a reusable single-serving
+// food. A food log stores what was *eaten* (macros already multiplied by
+// `servings`), while a saved food stores one serving — so every nutrient is
+// divided back out, and `serving_size`/`serving_size_grams` describe that one
+// unit exactly as the entry recorded it.
+func savedFoodFromLog(l models.FoodLog) models.SaveFoodRequest {
+	per := l.Servings
+	if per <= 0 {
+		per = 1
+	}
+	div := func(v float64) float64 {
+		// Two decimals: the entry's totals were themselves rounded to one, so
+		// anything finer is noise, but a 1/3-serving entry still round-trips.
+		return math.Round((v/per)*100) / 100
+	}
+	name := strings.TrimSpace(l.Name)
+	if name == "" {
+		name = "Custom entry"
+	}
+	return models.SaveFoodRequest{
+		Name:             name,
+		Brand:            l.Brand,
+		Calories:         div(l.Calories),
+		Protein:          div(l.Protein),
+		Carbs:            div(l.Carbs),
+		Fat:              div(l.Fat),
+		Fiber:            div(l.Fiber),
+		Sugar:            div(l.Sugar),
+		Sodium:           div(l.Sodium),
+		Cholesterol:      div(l.Cholesterol),
+		ServingSize:      l.ServingSize,
+		ServingSizeGrams: l.ServingSizeGrams,
+		Barcode:          l.Barcode,
+		ImageURL:         l.ImageURL,
+	}
+}
+
+// SaveFoodLogToMyFoods copies an already-logged entry — from any day — into the
+// user's saved foods, so a meal entered by hand and forgotten at log time can
+// still be kept without re-typing it.
+//
+// Saving the same food twice is the common case (a staple gets logged for weeks
+// before anyone thinks to save it), so a name/brand/barcode match is reported as
+// 409 with the existing row attached rather than silently duplicating it. The
+// client then either leaves it alone or retries with ?overwrite=true, which
+// refreshes the saved copy from this entry.
+func (h *Handler) SaveFoodLogToMyFoods(c *gin.Context) {
+	uid := middleware.UserID(c)
+	fid, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid id")
+		return
+	}
+
+	entry, err := h.s.Food.Get(uid, fid)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "food log not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+
+	req := savedFoodFromLog(entry)
+	existing, err := h.s.Food.FindSavedMatch(uid, req.Name, req.Brand, req.Barcode)
+	switch {
+	case err == nil && c.Query("overwrite") != "true":
+		// Not utils.Conflict: the client needs the existing row to name it in the
+		// "already saved — update it?" prompt.
+		c.JSON(http.StatusConflict, gin.H{
+			"error": fmt.Sprintf("%q is already in My Foods", existing.Name),
+			"data":  existing,
+		})
+		return
+	case err == nil:
+		// SaveFoodRequest and UpdateSavedFoodRequest carry identical fields; the
+		// conversion keeps them from drifting apart silently.
+		f, err := h.s.Food.UpdateSaved(uid, existing.ID, models.UpdateSavedFoodRequest(req))
+		if utils.DBError(c, err) {
+			return
+		}
+		utils.OK(c, f)
+	case err == sql.ErrNoRows:
+		f, err := h.s.Food.CreateSaved(uid, req)
+		if utils.DBError(c, err) {
+			return
+		}
+		utils.Created(c, f)
+	default:
+		utils.DBError(c, err)
+	}
 }
 
 func (h *Handler) GetSavedFood(c *gin.Context) {

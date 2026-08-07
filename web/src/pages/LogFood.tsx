@@ -460,11 +460,17 @@ export default function LogFood() {
   // them needs no request and lands well before the database results do.
   const filteredRecent = useMemo(() => filterFoods(recentItems, query), [recentItems, query])
   const filteredSaved = useMemo(() => {
+    const list = filterFoods(savedFoods, query)
     // A saved food that's also in Recent is the same food twice on screen;
     // Recent wins, since it carries the portion the user last actually logged.
+    // Only while both sections share the list, though — under the My Foods
+    // filter the user asked for their saved foods specifically, and dropping
+    // one they just saved (because they also ate it this week) reads as the
+    // save having failed.
+    if (filter !== 'all') return list
     const recentNames = new Set(filteredRecent.map(r => normalizeFoodName(r.name)))
-    return filterFoods(savedFoods, query).filter(sf => !recentNames.has(normalizeFoodName(sf.name)))
-  }, [savedFoods, query, filteredRecent])
+    return list.filter(sf => !recentNames.has(normalizeFoodName(sf.name)))
+  }, [savedFoods, query, filteredRecent, filter])
 
   // Portion → servings. Every macro is scaled by `servings` exactly as before;
   // only the control the user drives it with has changed.
