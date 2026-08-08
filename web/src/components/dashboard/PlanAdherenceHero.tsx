@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Target, Utensils, Dumbbell, Flame, Sparkles, ArrowRight, Check, TrendingUp } from 'lucide-react'
+import { Target, Utensils, Dumbbell, Flame, Sparkles, ArrowRight, Check, TrendingUp, Stethoscope } from 'lucide-react'
 import * as types from '../../types'
 import { displayWeight, weightShort } from '../../stores/settings'
 import { goalDirection, goalProgress } from '../../utils/dashboardMetrics'
@@ -123,9 +123,14 @@ export default function PlanAdherenceHero({
             <Sparkles className="w-3 h-3" /> Time to refresh your plan
           </Link>
         ) : <span />}
-        <Link to="/weight/plan" className="text-xs text-brand-400 hover:text-brand-300 inline-flex items-center gap-0.5">
-          View plan <ArrowRight className="w-3 h-3" />
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link to="/weight/checkin" className="text-xs text-brand-400 hover:text-brand-300 inline-flex items-center gap-1">
+            <Stethoscope className="w-3 h-3" /> Check-in
+          </Link>
+          <Link to="/weight/plan" className="text-xs text-brand-400 hover:text-brand-300 inline-flex items-center gap-0.5">
+            View plan <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
       </div>
     </div>
   )

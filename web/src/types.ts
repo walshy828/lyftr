@@ -447,6 +447,107 @@ export interface WeightPlanAdherence {
   regenerate_reason: string
 }
 
+// --- Progress check-in -----------------------------------------------------
+// A user-triggered coaching review of the whole journey. `facts` is computed
+// server-side and always present; `report` is the AI narrative and is null
+// when no provider is configured or the call failed — the page renders every
+// fact either way.
+
+export type CheckinPattern =
+  | 'ahead' | 'steady' | 'accelerating' | 'slowing' | 'stalled' | 'regaining'
+
+// One rolling-window slice of logging/training consistency. avg_calories and
+// avg_protein are averaged over days that were actually logged, not over the
+// whole window — a blank day is a missing measurement, not a zero.
+export interface PlanCheckinWindow {
+  days: number
+  food_logged_days: number
+  workout_days: number
+  avg_calories: number
+  avg_protein: number
+  calorie_target: number
+  protein_target: number
+}
+
+export interface PlanCheckinFacts {
+  generated_at: string
+  weeks_into_plan: number
+  plan_start: string
+  plan_end: string
+  journey_start: string
+
+  start_weight: number
+  current_weight: number
+  target_weight: number
+  expected_weight_now: number
+  variance_lbs: number // magnitude; behind_plan carries the direction
+  behind_plan: boolean
+  lost_lbs: number
+  pct_body_weight_lost: number
+
+  // Both in lbs LOST per week: positive = losing, negative = gaining.
+  // `overall` spans the whole weigh-in record; `recent` just the last
+  // recent_window_days. The contrast between them is the point of the feature.
+  overall_lbs_per_week: number
+  recent_lbs_per_week: number
+  recent_window_days: number
+  plan_lbs_per_week: number
+  pattern: CheckinPattern
+
+  projected_goal_date: string // zero-time when the trend never reaches the goal
+  days_vs_plan_goal_date: number // + = later than the plan, - = earlier
+
+  adherence: PlanCheckinWindow[]
+  weekly_variance: WeightPlanHistoryWeek[]
+
+  basis?: PlanEnergyBasis | null
+  bmi: BMIInfo
+  profile: UserProfile
+}
+
+// A peer-comparison row. These figures come from the AI, not from the app —
+// the prompt constrains them to ranges rather than point estimates.
+export interface CheckinBenchmark {
+  label: string
+  user_value: string
+  typical_range: string
+  verdict: 'ahead' | 'typical' | 'behind'
+  context: string
+}
+
+export interface CheckinPoint {
+  title: string
+  detail: string
+}
+
+export interface CheckinRecommendation {
+  title: string
+  detail: string
+  why_it_works: string
+  effort: 'easy' | 'moderate' | 'hard'
+}
+
+export interface PlanCheckinReport {
+  headline: string
+  overall_assessment: string
+  recent_assessment: string
+  benchmarks: CheckinBenchmark[]
+  whats_working: CheckinPoint[]
+  whats_slipping: CheckinPoint[]
+  recommendations: CheckinRecommendation[]
+  what_works_generally: CheckinPoint[]
+  outlook: string
+}
+
+export interface PlanCheckin {
+  id: number
+  user_id: number
+  goal_id: number
+  created_at: string
+  facts: PlanCheckinFacts | null
+  report: PlanCheckinReport | null
+}
+
 export interface ProgramSet {
   id?: number
   set_number: number

@@ -233,7 +233,15 @@ CREATE TABLE IF NOT EXISTS motivation_notes (
   message    TEXT     NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_motivation_notes_user_week ON motivation_notes(user_id, week_start);`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_motivation_notes_user_week ON motivation_notes(user_id, week_start);
+CREATE TABLE IF NOT EXISTS plan_checkins (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  goal_id    INTEGER NOT NULL REFERENCES nutrition_goals(id) ON DELETE CASCADE,
+  facts      TEXT     NOT NULL,
+  report     TEXT     NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
 	_, err := db.DB.Exec(schema)
 	return err
 }

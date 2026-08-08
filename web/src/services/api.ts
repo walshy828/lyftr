@@ -220,6 +220,18 @@ export const weightPlanAPI = {
   // Omit `from` to use the user's remembered plan_history_start.
   progress: (from?: string) =>
     api.get<{ data: types.WeightPlanHistory }>('/weight/plan/history', { params: from ? { from } : undefined }).then(res => unwrap(res)),
+  // Progress check-in. `checkin()` only reads the last stored run and resolves
+  // null when there isn't one — reading never spends an AI call. `runCheckin()`
+  // is the explicit generate, and is slow (up to ~60s).
+  checkin: () =>
+    api.get<{ data: types.PlanCheckin }>('/weight/plan/checkin')
+      .then(res => unwrap(res))
+      .catch(err => {
+        if (err?.response?.status === 404) return null
+        throw err
+      }),
+  runCheckin: () =>
+    api.post<{ data: types.PlanCheckin }>('/weight/plan/checkin').then(res => unwrap(res)),
 }
 
 export const foodAPI = {

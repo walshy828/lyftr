@@ -227,6 +227,49 @@ func (p *anthropicProvider) GenerateWeightPlan(ctx context.Context, req Generate
 	return out, nil
 }
 
+func (p *anthropicProvider) GenerateProgressCheckin(ctx context.Context, req ProgressCheckinRequest) (ProgressCheckinReport, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model: p.model,
+		// The largest response in this package: two assessments, up to five
+		// benchmark rows, three separate lists, and an outlook — all prose.
+		MaxTokens: 4096,
+		OutputConfig: anthropic.OutputConfigParam{
+			// Higher effort than the other calls: this one has to weigh the
+			// overall trend against the recent one and recall population
+			// norms, not just reformat numbers it was handed.
+			Effort: anthropic.OutputConfigEffortMedium,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: progressCheckinJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(progressCheckinPrompt(req)),
+			),
+		},
+	})
+	if err != nil {
+		return ProgressCheckinReport{}, fmt.Errorf("anthropic progress checkin call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return ProgressCheckinReport{}, fmt.Errorf("anthropic progress checkin call: no text content in response")
+	}
+
+	var out ProgressCheckinReport
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return ProgressCheckinReport{}, fmt.Errorf("anthropic progress checkin call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}
+
 func (p *anthropicProvider) GenerateMotivationNote(ctx context.Context, req MotivationNoteRequest) (string, error) {
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     p.model,

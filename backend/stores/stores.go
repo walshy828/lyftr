@@ -24,6 +24,7 @@ type Stores struct {
 	Profile       *ProfileStore
 	NutritionGoal *NutritionGoalStore
 	Motivation    *MotivationStore
+	Checkin       *CheckinStore
 }
 
 func New(db *sql.DB) *Stores {
@@ -39,6 +40,7 @@ func New(db *sql.DB) *Stores {
 		Profile:       NewProfileStore(db),
 		NutritionGoal: NewNutritionGoalStore(db),
 		Motivation:    NewMotivationStore(db),
+		Checkin:       NewCheckinStore(db),
 	}
 }
 

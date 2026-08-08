@@ -86,6 +86,41 @@ func ForecastActualWeight(logs []models.WeightLog, guidance models.WeeklyLossGui
 	return points
 }
 
+// PaceLbsPerWeek fits the same OLS trend as ForecastActualWeight to the logs
+// falling in [from, to] and reports its slope as **pounds lost per week** —
+// positive means losing, negative means gaining. The sign is deliberately
+// flipped relative to the raw regression (which is lbs gained per day) so that
+// callers comparing a user's pace against a plan's pace never have to reason
+// about which direction is "good".
+//
+// Unlike ForecastActualWeight the slope is NOT clamped to a safe-pace band:
+// this reports what actually happened, and clamping an observation would hide
+// exactly the fast-loss weeks a check-in needs to see.
+//
+// The second return is the number of distinct days the fit used; ok is false
+// when there aren't enough of them (same forecastMinDays bar — two points fit
+// a line perfectly and that precision is fake). Callers should treat !ok as
+// "not enough data to say", not as a zero pace.
+func PaceLbsPerWeek(logs []models.WeightLog, from, to time.Time) (pace float64, days int, ok bool) {
+	windowed := make([]models.WeightLog, 0, len(logs))
+	for _, l := range logs {
+		t := l.LoggedAt.UTC()
+		if t.Before(from) || t.After(to) {
+			continue
+		}
+		windowed = append(windowed, l)
+	}
+
+	daily := dailyWeights(windowed)
+	if len(daily) < forecastMinDays {
+		return 0, len(daily), false
+	}
+	if daily[len(daily)-1].day.Sub(daily[0].day) < time.Duration(forecastMinDays-1)*24*time.Hour {
+		return 0, len(daily), false
+	}
+	return -olsSlopePerDay(daily) * 7, len(daily), true
+}
+
 type dailyPoint struct {
 	day    time.Time
 	weight float64

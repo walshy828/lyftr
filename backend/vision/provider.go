@@ -232,6 +232,82 @@ type MotivationNoteRequest struct {
 	WeeksIntoPlan int
 }
 
+// ProgressCheckinRequest carries the fully-computed picture of a user's
+// journey so the model only has to interpret, never to calculate. Everything
+// here is derived server-side from weight/food/workout logs — see
+// controllers.buildCheckinFacts.
+//
+// FactsJSON is the whole models.CheckinFacts blob, passed verbatim so the
+// model can reference any detail (the weekly variance table, the per-window
+// adherence numbers) without this struct having to mirror every field. The
+// named fields above it are the ones the prompt text interpolates directly.
+type ProgressCheckinRequest struct {
+	CurrentDate   string // "2026-08-07"
+	Sex           string
+	Age           int
+	WeeksIntoPlan int
+
+	StartWeight       float64
+	CurrentWeight     float64
+	TargetWeight      float64
+	ExpectedWeightNow float64
+	PctBodyWeightLost float64
+	BMICategory       string
+
+	// The overall-vs-recent contrast, in lbs LOST per week (negative = gaining).
+	OverallLbsPerWeek float64
+	RecentLbsPerWeek  float64
+	RecentWindowDays  int
+	PlanLbsPerWeek    float64
+	Pattern           string // see models.CheckinPattern* — the deterministic verdict
+
+	CalorieTarget int
+	ProteinTarget int
+
+	FactsJSON string
+}
+
+// CheckinBenchmark is one peer-comparison row. The model supplies these
+// values; the app does not compute or verify them, which is why the prompt
+// demands ranges over point estimates and forbids invented citations.
+type CheckinBenchmark struct {
+	Label        string `json:"label"`
+	UserValue    string `json:"user_value"`
+	TypicalRange string `json:"typical_range"`
+	Verdict      string `json:"verdict"`
+	Context      string `json:"context"`
+}
+
+// CheckinPoint is a titled observation ("what's working" / "what's slipping").
+type CheckinPoint struct {
+	Title  string `json:"title"`
+	Detail string `json:"detail"`
+}
+
+// CheckinRecommendation is one concrete change plus why it tends to work.
+type CheckinRecommendation struct {
+	Title      string `json:"title"`
+	Detail     string `json:"detail"`
+	WhyItWorks string `json:"why_it_works"`
+	Effort     string `json:"effort"`
+}
+
+// ProgressCheckinReport is the AI's coaching read on a journey. Overall and
+// recent assessments are separate fields on purpose: the case this feature
+// exists to catch — on plan overall but stalled for three weeks — disappears
+// if the model is allowed to average them into one verdict.
+type ProgressCheckinReport struct {
+	Headline           string                  `json:"headline"`
+	OverallAssessment  string                  `json:"overall_assessment"`
+	RecentAssessment   string                  `json:"recent_assessment"`
+	Benchmarks         []CheckinBenchmark      `json:"benchmarks"`
+	WhatsWorking       []CheckinPoint          `json:"whats_working"`
+	WhatsSlipping      []CheckinPoint          `json:"whats_slipping"`
+	Recommendations    []CheckinRecommendation `json:"recommendations"`
+	WhatWorksGenerally []CheckinPoint          `json:"what_works_generally"`
+	Outlook            string                  `json:"outlook"`
+}
+
 // Provider is implemented once per vision backend (Anthropic/OpenAI/Gemini).
 type Provider interface {
 	// AnalyzeLabel takes a base64-encoded photo of a nutrition facts label
@@ -291,6 +367,19 @@ type Provider interface {
 	// it fits naturally. Called at most once per user per calendar week by
 	// the caller (results are cached) — never invoke this on every page load.
 	GenerateMotivationNote(ctx context.Context, req MotivationNoteRequest) (string, error)
+
+	// GenerateProgressCheckin writes the coaching read on a whole weight-loss
+	// journey: how the plan is going overall, how the last few weeks compare
+	// to that, how the user's numbers sit against what people in the same
+	// situation typically see, what's working, what's slipping, and what to
+	// change. Every figure it reasons from is precomputed in req — the model
+	// interprets, it does not calculate.
+	//
+	// The peer benchmarks it returns are the model's own, not values the app
+	// verifies, so implementations must pass the shared prompt through
+	// unmodified: it is what constrains those numbers to honest ranges. This
+	// is user-triggered and slow — callers must not invoke it on page load.
+	GenerateProgressCheckin(ctx context.Context, req ProgressCheckinRequest) (ProgressCheckinReport, error)
 }
 
 // Config carries the selected provider, all three providers' API keys — only
@@ -691,6 +780,115 @@ func motivationNoteJSONSchema() map[string]any {
 			"message": map[string]any{"type": "string"},
 		},
 		"required":             []string{"message"},
+		"additionalProperties": false,
+	}
+}
+
+// progressCheckinPrompt builds the shared GenerateProgressCheckin prompt —
+// one builder used by all three providers so they can't drift apart.
+//
+// Two things in here are load-bearing and shouldn't be trimmed:
+//
+//  1. The overall/recent split is stated as two separate required questions.
+//     A model given both slopes will otherwise average them into a single
+//     verdict, which erases the exact situation this feature was built for:
+//     on plan overall, but stalled for the last few weeks.
+//  2. The benchmark guardrails. Unlike every other number in this app, the
+//     peer-comparison figures are the model's and are never verified against
+//     anything. So the prompt demands ranges rather than point estimates, and
+//     forbids attributing a specific statistic to a named study unless the
+//     model is genuinely confident — a fabricated citation next to the user's
+//     real data is worse than no benchmark at all.
+func progressCheckinPrompt(req ProgressCheckinRequest) string {
+	var b strings.Builder
+
+	b.WriteString("You are a weight-management coach reviewing one person's progress. Today's date is ")
+	b.WriteString(req.CurrentDate)
+	b.WriteString(".\n\n")
+
+	fmt.Fprintf(&b, "The person is a %d-year-old %s, BMI category %q, %d weeks into their current plan. They started at %.1f lbs, weigh %.1f lbs today, and are aiming for %.1f lbs. Their plan expected them to be at %.1f lbs by now. They have lost %.1f%% of their starting body weight.\n\n",
+		req.Age, req.Sex, req.BMICategory, req.WeeksIntoPlan,
+		req.StartWeight, req.CurrentWeight, req.TargetWeight, req.ExpectedWeightNow, req.PctBodyWeightLost)
+
+	fmt.Fprintf(&b, "Rate of change (positive = losing, negative = gaining), fitted by linear regression over daily weigh-ins:\n- Over their whole weigh-in history: %.2f lbs/week\n- Over just the last %d days: %.2f lbs/week\n- What the plan asks for: %.2f lbs/week\nThe app has already classified this pattern as %q.\n\n",
+		req.OverallLbsPerWeek, req.RecentWindowDays, req.RecentLbsPerWeek, req.PlanLbsPerWeek, req.Pattern)
+
+	fmt.Fprintf(&b, "Their daily targets are %d kcal and %d g protein.\n\n", req.CalorieTarget, req.ProteinTarget)
+
+	b.WriteString("Here is the complete computed picture as JSON — food-logging and workout consistency over 7/28/90-day windows, the week-by-week actual-vs-target weight table, and their energy basis (BMR, maintenance calories, macro bands). Reason from these numbers; do not compute your own metabolic estimates and do not contradict any figure here:\n\n")
+	b.WriteString(req.FactsJSON)
+	b.WriteString("\n\n")
+
+	b.WriteString("Answer TWO separate questions, and never merge them into one verdict:\n")
+	b.WriteString("1. overall_assessment: how is the plan going across its whole span? Judge this against the overall rate and the cumulative result.\n")
+	b.WriteString("2. recent_assessment: how do the last few weeks look ON THEIR OWN, compared to that overall trend? If the recent rate differs meaningfully from the overall rate — a slowdown, a stall, a regain, or an acceleration — say so plainly and lead with it. Someone who is on plan overall but has not moved in three weeks needs to hear about those three weeks, not be told they are doing fine.\n\n")
+
+	b.WriteString("BENCHMARKS — the peer comparison. Return 3 to 5 benchmark rows placing this person against what people in a comparable situation typically experience. Good subjects: percentage of body weight lost by this point in a program; average weekly rate of loss; food-logging consistency; training frequency; and the prevalence and timing of plateaus. For each row give label, user_value (this person's actual figure, taken from the data above), typical_range (what is commonly seen, expressed as a RANGE), verdict (exactly one of \"ahead\", \"typical\", or \"behind\"), and context (one sentence on why that comparison is meaningful).\n")
+	b.WriteString("Rules for these figures, and they matter: base them on the established weight-management literature (large lifestyle-intervention trials, self-monitoring research, weight-maintenance registries). Always give a range, never false precision. Do NOT attribute a specific number to a specific named study or year unless you are genuinely confident it is correct — write \"typically\" or \"commonly reported as\" instead. Never invent a citation, a percentage, or a sample size. If you are not confident about a benchmark, leave it out rather than guessing; three solid rows beat five shaky ones.\n\n")
+
+	b.WriteString("Then return:\n")
+	b.WriteString("- whats_working: 2 to 4 things this person is genuinely doing well, each grounded in a specific number from the data. Do not invent praise — if adherence is poor, say less here.\n")
+	b.WriteString("- whats_slipping: 0 to 4 things that are working against them, again each tied to a specific number. Return an empty array if there is honestly nothing.\n")
+	b.WriteString("- recommendations: 2 to 5 concrete changes, ordered most-impactful first. Each has a title (under 8 words), detail (what to actually do this week, specific and actionable), why_it_works (the mechanism or the evidence, one sentence), and effort (\"easy\", \"moderate\", or \"hard\"). If the recent trend has slowed or stalled, at least one recommendation must directly address getting back on pace.\n")
+	b.WriteString("- what_works_generally: 2 to 4 things that reliably work for people in this situation regardless of this individual's data — the general playbook, clearly distinct from the personalized recommendations above.\n")
+	b.WriteString("- headline: one sentence, under 15 words, capturing the whole verdict. When overall and recent disagree, the headline must convey both (e.g. \"On plan overall, but the last three weeks have stalled\").\n")
+	b.WriteString("- outlook: two or three sentences on where this lands if the current trend holds, and what changes that.\n\n")
+
+	b.WriteString("Tone: direct, warm, and honest. Do not soften a real problem into a compliment, and do not shame — this person is still logging, which is why you have data at all. No medical claims, no diagnosis, and no advice that would push intake below the plan's calorie floor or a loss rate above about 2 lbs/week. If the data suggests a medical cause or disordered pattern, note it gently and suggest speaking with a doctor. Write plain prose with no markdown syntax anywhere — no asterisks, no bullet characters, no headings, no backticks — the app supplies all formatting itself.")
+
+	return b.String()
+}
+
+// progressCheckinJSONSchema is the JSON schema all three providers' structured
+// output requests should target for GenerateProgressCheckin.
+func progressCheckinJSONSchema() map[string]any {
+	benchmarkSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"label":         map[string]any{"type": "string"},
+			"user_value":    map[string]any{"type": "string"},
+			"typical_range": map[string]any{"type": "string"},
+			"verdict":       map[string]any{"type": "string", "enum": []string{"ahead", "typical", "behind"}},
+			"context":       map[string]any{"type": "string"},
+		},
+		"required":             []string{"label", "user_value", "typical_range", "verdict", "context"},
+		"additionalProperties": false,
+	}
+	pointSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"title":  map[string]any{"type": "string"},
+			"detail": map[string]any{"type": "string"},
+		},
+		"required":             []string{"title", "detail"},
+		"additionalProperties": false,
+	}
+	recommendationSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"title":        map[string]any{"type": "string"},
+			"detail":       map[string]any{"type": "string"},
+			"why_it_works": map[string]any{"type": "string"},
+			"effort":       map[string]any{"type": "string", "enum": []string{"easy", "moderate", "hard"}},
+		},
+		"required":             []string{"title", "detail", "why_it_works", "effort"},
+		"additionalProperties": false,
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"headline":             map[string]any{"type": "string"},
+			"overall_assessment":   map[string]any{"type": "string"},
+			"recent_assessment":    map[string]any{"type": "string"},
+			"benchmarks":           map[string]any{"type": "array", "items": benchmarkSchema},
+			"whats_working":        map[string]any{"type": "array", "items": pointSchema},
+			"whats_slipping":       map[string]any{"type": "array", "items": pointSchema},
+			"recommendations":      map[string]any{"type": "array", "items": recommendationSchema},
+			"what_works_generally": map[string]any{"type": "array", "items": pointSchema},
+			"outlook":              map[string]any{"type": "string"},
+		},
+		"required": []string{"headline", "overall_assessment", "recent_assessment", "benchmarks",
+			"whats_working", "whats_slipping", "recommendations", "what_works_generally", "outlook"},
 		"additionalProperties": false,
 	}
 }

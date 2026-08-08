@@ -206,6 +206,36 @@ func (p *openAIProvider) GenerateWeightPlan(ctx context.Context, req GenerateWei
 	return out, nil
 }
 
+func (p *openAIProvider) GenerateProgressCheckin(ctx context.Context, req ProgressCheckinRequest) (ProgressCheckinReport, error) {
+	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: p.model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(progressCheckinPrompt(req)),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+				JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:   "progress_checkin",
+					Schema: progressCheckinJSONSchema(),
+					Strict: openai.Bool(true),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return ProgressCheckinReport{}, fmt.Errorf("openai progress checkin call: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return ProgressCheckinReport{}, fmt.Errorf("openai progress checkin call: no choices in response")
+	}
+
+	var out ProgressCheckinReport
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &out); err != nil {
+		return ProgressCheckinReport{}, fmt.Errorf("openai progress checkin call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}
+
 func (p *openAIProvider) GenerateMotivationNote(ctx context.Context, req MotivationNoteRequest) (string, error) {
 	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Model: p.model,

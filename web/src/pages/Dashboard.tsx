@@ -10,6 +10,7 @@ import { useAuthStore } from '../stores/auth'
 import { displayWeight } from '../stores/settings'
 import ThisWeekScorecard from '../components/dashboard/ThisWeekScorecard'
 import PlanAdherenceHero from '../components/dashboard/PlanAdherenceHero'
+import JourneyRoad from '../components/dashboard/JourneyRoad'
 import InsightsCard from '../components/dashboard/InsightsCard'
 import WeightTrendCard from '../components/dashboard/WeightTrendCard'
 import ConsistencyHeatmap from '../components/dashboard/ConsistencyHeatmap'
@@ -93,6 +94,14 @@ export default function Dashboard() {
       {/* Plan adherence hero (only with an active plan) */}
       {d.plan && d.adherence && (
         <PlanAdherenceHero plan={d.plan} adherence={d.adherence} weightStats={d.weightStats} settings={d.settings} />
+      )}
+
+      {/* The road ahead. Deliberately a separate card from the hero above:
+          that one answers "where am I right now", this one "where am I
+          heading". It needs no adherence data, so it renders on a brand-new
+          plan the hero can't yet describe. */}
+      {d.plan && (
+        <JourneyRoad plan={d.plan} weightLogs={d.weightLogs} settings={d.settings} />
       )}
 
       {/* Insights */}

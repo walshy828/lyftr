@@ -505,6 +505,148 @@ type MotivationNote struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
+// --- Progress check-in (#planCheckin) ---------------------------------------
+//
+// The adherence endpoint answers "am I on the plan's line right now?" over a
+// 7-day window. The check-in is the other question: how is the whole journey
+// going, how do the last few weeks compare to it, and what should change. It
+// is user-triggered (not computed on every dashboard load) because it costs an
+// AI call, and each run is persisted so a report is stable once read.
+
+// CheckinWindow is one rolling-window slice of logging/training consistency.
+// The check-in reports several (7/28/90 days) side by side — that contrast is
+// what separates "always been loose about logging" from "stopped logging three
+// weeks ago", which need completely different advice.
+type CheckinWindow struct {
+	Days           int     `json:"days"`
+	FoodLoggedDays int     `json:"food_logged_days"`
+	WorkoutDays    int     `json:"workout_days"`
+	AvgCalories    float64 `json:"avg_calories"` // mean over days with any food logged
+	AvgProtein     float64 `json:"avg_protein"`
+	CalorieTarget  int     `json:"calorie_target"`
+	ProteinTarget  int     `json:"protein_target"`
+}
+
+// Check-in trend patterns. Derived deterministically from the overall vs.
+// recent regression slopes (see controllers.classifyPattern) so the verdict,
+// the headline accent, and the empty-AI fallback all exist without a provider.
+const (
+	CheckinPatternAhead        = "ahead"        // beating the plan's pace
+	CheckinPatternSteady       = "steady"       // recent pace ≈ overall pace ≈ plan
+	CheckinPatternAccelerating = "accelerating" // recent pace meaningfully faster
+	CheckinPatternSlowing      = "slowing"      // still losing, but notably slower
+	CheckinPatternStalled      = "stalled"      // recent pace ≈ 0
+	CheckinPatternRegaining    = "regaining"    // recent trend is upward
+)
+
+// CheckinFacts is everything the check-in report is grounded in, computed
+// server-side from existing stores. It is persisted alongside the report so a
+// stored check-in can be re-rendered (and audited against) without recomputing
+// anything — and so the page still has a full readout when no AI provider is
+// configured.
+type CheckinFacts struct {
+	GeneratedAt   time.Time `json:"generated_at"`
+	WeeksIntoPlan int       `json:"weeks_into_plan"`
+	PlanStart     time.Time `json:"plan_start"`
+	PlanEnd       time.Time `json:"plan_end"`
+	JourneyStart  time.Time `json:"journey_start"` // first-ever accepted plan
+
+	StartWeight       float64 `json:"start_weight"`
+	CurrentWeight     float64 `json:"current_weight"`
+	TargetWeight      float64 `json:"target_weight"`
+	ExpectedWeightNow float64 `json:"expected_weight_now"`
+	VarianceLbs       float64 `json:"variance_lbs"` // magnitude; BehindPlan carries the sign's meaning
+	BehindPlan        bool    `json:"behind_plan"`
+	LostLbs           float64 `json:"lost_lbs"`
+	PctBodyWeightLost float64 `json:"pct_body_weight_lost"`
+
+	// The overall-vs-recent split this whole feature exists for. Both are OLS
+	// slopes over daily weights (see utils.PaceLbsPerWeek), reported as
+	// lbs/week LOST — positive means losing, negative means gaining, for both
+	// loss and gain plans, so the sign always means the same thing.
+	//
+	// Overall spans the whole weigh-in record rather than only the current
+	// plan's span: a plan accepted today has no overall pace otherwise, and
+	// pre-plan weigh-ins are still this person's real trend. Progress against
+	// the plan specifically is carried by VarianceLbs/BehindPlan.
+	OverallLbsPerWeek float64 `json:"overall_lbs_per_week"`
+	RecentLbsPerWeek  float64 `json:"recent_lbs_per_week"`
+	RecentWindowDays  int     `json:"recent_window_days"`
+	PlanLbsPerWeek    float64 `json:"plan_lbs_per_week"`
+	Pattern           string  `json:"pattern"`
+
+	// Where the user's own trend (not the plan) says they land.
+	ProjectedGoalDate  time.Time `json:"projected_goal_date"`    // zero when the trend never reaches the goal
+	DaysVsPlanGoalDate int       `json:"days_vs_plan_goal_date"` // + = later than plan, - = earlier
+
+	Adherence      []CheckinWindow         `json:"adherence"`
+	WeeklyVariance []WeightPlanHistoryWeek `json:"weekly_variance"`
+
+	Basis   *PlanEnergyBasis `json:"basis,omitempty"` // nil on an incomplete profile
+	BMI     BMIResult        `json:"bmi"`
+	Profile UserProfile      `json:"profile"`
+}
+
+// CheckinBenchmark is one "how does this compare to people in the same
+// situation" row. The values are supplied by the AI provider, not computed —
+// see the progress-checkin prompt, which requires ranges over false precision.
+type CheckinBenchmark struct {
+	Label        string `json:"label"`
+	UserValue    string `json:"user_value"`
+	TypicalRange string `json:"typical_range"`
+	Verdict      string `json:"verdict"` // "ahead" | "typical" | "behind"
+	Context      string `json:"context"`
+}
+
+// CheckinPoint is a titled observation — used for both "what's working" and
+// "what's slipping" so the client renders them with one component.
+type CheckinPoint struct {
+	Title  string `json:"title"`
+	Detail string `json:"detail"`
+}
+
+// CheckinRecommendation is one concrete change to make, with the reason it
+// tends to work attached — the "why" is what makes this coaching rather than
+// a to-do list.
+type CheckinRecommendation struct {
+	Title      string `json:"title"`
+	Detail     string `json:"detail"`
+	WhyItWorks string `json:"why_it_works"`
+	Effort     string `json:"effort"` // "easy" | "moderate" | "hard"
+}
+
+// CheckinReport is the AI-authored narrative layered over CheckinFacts. The
+// overall and recent assessments are separate fields (not one blob) because
+// the case worth catching — on plan overall, stalled for three weeks — is
+// invisible unless the two are stated independently.
+type CheckinReport struct {
+	Headline           string                  `json:"headline"`
+	OverallAssessment  string                  `json:"overall_assessment"`
+	RecentAssessment   string                  `json:"recent_assessment"`
+	Benchmarks         []CheckinBenchmark      `json:"benchmarks"`
+	WhatsWorking       []CheckinPoint          `json:"whats_working"`
+	WhatsSlipping      []CheckinPoint          `json:"whats_slipping"`
+	Recommendations    []CheckinRecommendation `json:"recommendations"`
+	WhatWorksGenerally []CheckinPoint          `json:"what_works_generally"`
+	Outlook            string                  `json:"outlook"`
+}
+
+// PlanCheckin is one persisted run. FactsJSON/ReportJSON are the raw stored
+// columns (stores stay transport-agnostic); the controller decodes them into
+// Facts/Report for the response. Report is nil when the run happened with no
+// AI provider configured — the client still renders every fact.
+type PlanCheckin struct {
+	ID         int64     `json:"id" db:"id"`
+	UserID     int64     `json:"user_id" db:"user_id"`
+	GoalID     int64     `json:"goal_id" db:"goal_id"`
+	FactsJSON  string    `json:"-" db:"facts"`
+	ReportJSON string    `json:"-" db:"report"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+
+	Facts  *CheckinFacts  `json:"facts" db:"-"`
+	Report *CheckinReport `json:"report" db:"-"`
+}
+
 // GenerateWeightPlanRequest is what the user submits to kick off AI plan
 // generation: just the target weight (and optional timeframe preference) —
 // everything else the model needs is assembled server-side from the profile,

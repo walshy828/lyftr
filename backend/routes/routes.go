@@ -75,6 +75,10 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("weight/plan/goals", h.GetNutritionGoalHistory)
 		protected.GET("weight/plan/adherence", h.GetWeightPlanAdherence)
 		protected.GET("weight/plan/history", h.GetWeightPlanHistory)
+		// Progress check-in: POST generates (a slow, user-triggered AI call),
+		// GET only reads the last stored one — reading must never generate.
+		protected.POST("weight/plan/checkin", h.RunWeightPlanCheckin)
+		protected.GET("weight/plan/checkin", h.GetLatestWeightPlanCheckin)
 
 		protected.GET("weight/:id", h.GetWeightLog)
 		protected.PATCH("weight/:id", h.UpdateWeightLog)

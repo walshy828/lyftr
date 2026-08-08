@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import {
   Target, Sparkles, AlertCircle, Check, TrendingUp, TrendingDown, Flame,
   Utensils, Dumbbell, History, ArrowLeft, ShieldAlert, Gauge, RefreshCw, Info, Calendar,
-  RotateCcw, ListChecks,
+  RotateCcw, ListChecks, Stethoscope, ArrowRight,
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, CartesianGrid,
@@ -17,36 +17,21 @@ import DateInput from '../components/ui/DateInput'
 import PlanDetailSections from '../components/PlanDetailSections'
 import PlanBasis from '../components/PlanBasis'
 import PlanEnergyNarrative from '../components/PlanEnergyNarrative'
+import JourneyRoad from '../components/dashboard/JourneyRoad'
 import { dayToLocalDate } from '../utils/dateUtils'
+import { interpolateAt } from '../utils/planProjection'
+import {
+  PLAN_COLOR, ACTUAL_COLOR, FORECAST_COLOR, ZONE_COLORS, TOOLTIP_STYLE,
+} from '../utils/chartTheme'
 import { profileAPI, weightPlanAPI, weightAPI, userAPI } from '../services/api'
 import { useSettingsStore, weightShort, lbsToDisplay, displayWeight } from '../stores/settings'
 import * as types from '../types'
 
-const PLAN_COLOR = '#10b981'
-const ACTUAL_COLOR = '#6366f1'
-// The forecast is a projection of the *actual* trend, not a new series — same
-// hue as Actual, dashed and dimmer, reads as "this line continues."
-const FORECAST_COLOR = ACTUAL_COLOR
 // The original plan is historical context, not a live series — deliberately
 // desaturated so it recedes behind Plan/Actual rather than competing with them.
+// Local because it's the only consumer; everything else comes from chartTheme
+// so this page and the dashboard cards can't drift apart on colour.
 const ORIGINAL_COLOR = '#94a3b8'
-
-const TOOLTIP_STYLE = {
-  background: 'var(--surface-raised)',
-  border: '1px solid var(--surface-border)',
-  borderRadius: 8,
-  fontSize: 11,
-  color: 'var(--tx-primary)',
-}
-
-// BMI zone band colors (distinct from PLAN_COLOR/ACTUAL_COLOR so they read
-// as background context, not additional series).
-const ZONE_COLORS = {
-  underweight: '#0ea5e9',
-  healthy: '#10b981',
-  overweight: '#f59e0b',
-  obese: '#ef4444',
-}
 
 interface ChartRow {
   date: string
@@ -150,26 +135,6 @@ function targetsError(t: DraftTargets): string | null {
     if (!Number.isFinite(v) || v < 0) return `${f.label} must be 0 or more`
   }
   return null
-}
-
-// Linear interpolation across a sorted set of known points — used to fill in
-// a sensible plan/forecast value on chart rows that fall between two known
-// trajectory points (never extrapolated past the first/last known point).
-function interpolateAt(points: { ts: number; val: number }[], ts: number): number | undefined {
-  if (points.length === 0) return undefined
-  if (ts <= points[0].ts) return ts === points[0].ts ? points[0].val : undefined
-  const last = points[points.length - 1]
-  if (ts >= last.ts) return ts === last.ts ? last.val : undefined
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i]
-    const b = points[i + 1]
-    if (ts >= a.ts && ts <= b.ts) {
-      if (b.ts === a.ts) return a.val
-      const frac = (ts - a.ts) / (b.ts - a.ts)
-      return a.val + (b.val - a.val) * frac
-    }
-  }
-  return undefined
 }
 
 export default function WeightPlan() {
@@ -667,6 +632,10 @@ export default function WeightPlan() {
         </div>
       )}
 
+      {/* The road ahead — the same journey view as the dashboard, placed
+          before the chart so the motivating frame comes ahead of the data. */}
+      {current && <JourneyRoad plan={current} weightLogs={actualLogs} settings={settings} />}
+
       {/* Actual vs plan chart */}
       {current && (
         <div className="card p-5">
@@ -846,6 +815,19 @@ export default function WeightPlan() {
               <span>{adherence.motivational_note}</span>
             </div>
           )}
+
+          {/* Adherence is a 7-day snapshot. The check-in is the deeper review:
+              whole journey vs. recent weeks, peer comparison, what to change. */}
+          <Link to="/weight/checkin" className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-surface-border p-3 hover:bg-surface-overlay/60 transition-colors">
+            <div className="flex items-center gap-2 min-w-0">
+              <Stethoscope className="w-4 h-4 text-brand-400 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-tx-primary">Run a progress check-in</p>
+                <p className="text-[11px] text-tx-muted">How the whole plan is going, how the last few weeks compare, and what to change</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
+          </Link>
         </div>
       )}
 

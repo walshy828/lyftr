@@ -239,6 +239,42 @@ func (p *geminiProvider) GenerateWeightPlan(ctx context.Context, req GenerateWei
 	return out, nil
 }
 
+func (p *geminiProvider) GenerateProgressCheckin(ctx context.Context, req ProgressCheckinRequest) (ProgressCheckinReport, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return ProgressCheckinReport{}, fmt.Errorf("gemini client: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromText(progressCheckinPrompt(req)),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: progressCheckinJSONSchema(),
+		},
+	)
+	if err != nil {
+		return ProgressCheckinReport{}, fmt.Errorf("gemini progress checkin call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return ProgressCheckinReport{}, fmt.Errorf("gemini progress checkin call: empty response text")
+	}
+
+	var out ProgressCheckinReport
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return ProgressCheckinReport{}, fmt.Errorf("gemini progress checkin call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}
+
 func (p *geminiProvider) GenerateMotivationNote(ctx context.Context, req MotivationNoteRequest) (string, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  p.apiKey,

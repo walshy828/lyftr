@@ -136,7 +136,10 @@ CREATE INDEX IF NOT EXISTS idx_pat_hash ON personal_access_tokens(token_hash);`)
 	// generation, an append-only nutrition-goal history (never UPDATEd — the
 	// "current" goal is the latest row by effective_at), the AI-projected
 	// weekly trajectory tied to the goal that produced it, and a weekly-cached
-	// AI motivational note (at most one AI call per user per calendar week).
+	// AI motivational note (at most one AI call per user per calendar week),
+	// plus the persisted progress check-in reports (bounded history — the store
+	// prunes to the newest few per user; a report is frozen once generated so
+	// the narrative a user read yesterday doesn't silently change today).
 	if _, err := DB.Exec(`
 CREATE TABLE IF NOT EXISTS user_profile (
   user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -178,6 +181,16 @@ CREATE TABLE IF NOT EXISTS motivation_notes (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_motivation_notes_user_week ON motivation_notes(user_id, week_start);
+
+CREATE TABLE IF NOT EXISTS plan_checkins (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  goal_id    INTEGER NOT NULL REFERENCES nutrition_goals(id) ON DELETE CASCADE,
+  facts      TEXT     NOT NULL,
+  report     TEXT     NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_plan_checkins_user ON plan_checkins(user_id, created_at DESC);
 `); err != nil {
 		log.Fatalf("create weight-plan tables: %v", err)
 	}

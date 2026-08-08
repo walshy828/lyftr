@@ -118,3 +118,90 @@ func TestForecastActualWeight_horizonNotInFuture(t *testing.T) {
 		t.Fatalf("expected nil when horizon is in the past, got %v", got)
 	}
 }
+
+// PaceLbsPerWeek is what the progress check-in's overall-vs-recent split is
+// built on, so its sign convention and its refusal to fit too little data are
+// both pinned here.
+func TestPaceLbsPerWeek_reportsLossAsPositive(t *testing.T) {
+	base := time.Date(2026, 1, 29, 12, 0, 0, 0, time.UTC)
+	// 1 lb lost per day = 7 lbs/week.
+	logs := []models.WeightLog{
+		mkLog(3, 203, base), mkLog(2, 202, base), mkLog(1, 201, base), mkLog(0, 200, base),
+	}
+
+	pace, days, ok := PaceLbsPerWeek(logs, base.AddDate(0, 0, -30), base)
+	if !ok {
+		t.Fatal("expected a fit with 4 distinct days")
+	}
+	if days != 4 {
+		t.Fatalf("expected 4 days used, got %d", days)
+	}
+	if math.Abs(pace-7) > 0.01 {
+		t.Fatalf("expected +7 lbs/week for a steady loss, got %v", pace)
+	}
+}
+
+func TestPaceLbsPerWeek_reportsGainAsNegative(t *testing.T) {
+	base := time.Date(2026, 1, 29, 12, 0, 0, 0, time.UTC)
+	logs := []models.WeightLog{
+		mkLog(3, 200, base), mkLog(2, 201, base), mkLog(1, 202, base), mkLog(0, 203, base),
+	}
+
+	pace, _, ok := PaceLbsPerWeek(logs, base.AddDate(0, 0, -30), base)
+	if !ok {
+		t.Fatal("expected a fit")
+	}
+	if pace >= 0 {
+		t.Fatalf("expected a negative pace for a gain, got %v", pace)
+	}
+}
+
+// Unlike the forecast, the observed pace is deliberately NOT clamped to a safe
+// band — a check-in reporting a fast losing streak as "2 lbs/week" would hide
+// the very thing worth flagging.
+func TestPaceLbsPerWeek_doesNotClampToSafeRate(t *testing.T) {
+	base := time.Date(2026, 1, 29, 12, 0, 0, 0, time.UTC)
+	logs := []models.WeightLog{
+		mkLog(3, 209, base), mkLog(2, 206, base), mkLog(1, 203, base), mkLog(0, 200, base),
+	}
+
+	pace, _, ok := PaceLbsPerWeek(logs, base.AddDate(0, 0, -30), base)
+	if !ok {
+		t.Fatal("expected a fit")
+	}
+	if pace < 10 {
+		t.Fatalf("expected the raw ~21 lbs/week rate, got %v", pace)
+	}
+}
+
+func TestPaceLbsPerWeek_windowExcludesOutsideLogs(t *testing.T) {
+	base := time.Date(2026, 1, 29, 12, 0, 0, 0, time.UTC)
+	// Steep loss long ago, flat inside the window.
+	logs := []models.WeightLog{
+		mkLog(60, 260, base), mkLog(59, 250, base), mkLog(58, 240, base),
+		mkLog(3, 200, base), mkLog(2, 200, base), mkLog(1, 200, base), mkLog(0, 200, base),
+	}
+
+	pace, days, ok := PaceLbsPerWeek(logs, base.AddDate(0, 0, -28), base)
+	if !ok {
+		t.Fatal("expected a fit inside the window")
+	}
+	if days != 4 {
+		t.Fatalf("expected only the 4 in-window days, got %d", days)
+	}
+	if math.Abs(pace) > 0.01 {
+		t.Fatalf("expected a flat pace inside the window, got %v", pace)
+	}
+}
+
+func TestPaceLbsPerWeek_refusesTooFewDays(t *testing.T) {
+	base := time.Date(2026, 1, 29, 12, 0, 0, 0, time.UTC)
+	logs := []models.WeightLog{mkLog(1, 201, base), mkLog(0, 200, base)}
+
+	if _, _, ok := PaceLbsPerWeek(logs, base.AddDate(0, 0, -30), base); ok {
+		t.Fatal("two points always fit a line perfectly; expected no fit")
+	}
+	if _, _, ok := PaceLbsPerWeek(nil, base.AddDate(0, 0, -30), base); ok {
+		t.Fatal("expected no fit with no logs")
+	}
+}

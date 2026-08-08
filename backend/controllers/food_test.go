@@ -1366,6 +1366,10 @@ type fakeVisionProvider struct {
 	motivationNote string
 	motivationErr  error
 	motivationReq  vision.MotivationNoteRequest
+
+	checkinReport vision.ProgressCheckinReport
+	checkinErr    error
+	checkinReq    vision.ProgressCheckinRequest
 }
 
 func (f *fakeVisionProvider) GenerateProgram(_ context.Context, req vision.GenerateProgramRequest) ([]vision.DraftProgram, error) {
@@ -1399,6 +1403,11 @@ func (f *fakeVisionProvider) GenerateWeightPlan(_ context.Context, req vision.Ge
 func (f *fakeVisionProvider) GenerateMotivationNote(_ context.Context, req vision.MotivationNoteRequest) (string, error) {
 	f.motivationReq = req
 	return f.motivationNote, f.motivationErr
+}
+
+func (f *fakeVisionProvider) GenerateProgressCheckin(_ context.Context, req vision.ProgressCheckinRequest) (vision.ProgressCheckinReport, error) {
+	f.checkinReq = req
+	return f.checkinReport, f.checkinErr
 }
 
 func TestAnalyzeFoodLabel_success(t *testing.T) {
