@@ -59,6 +59,23 @@ describe('JourneyRoad', () => {
     }
   })
 
+  it('paces the early-year road with month waypoints instead of leaving it bare', () => {
+    // A plan starting Jan 1 crosses the emptiest stretch of the calendar. Easter
+    // and the month-start fillers are what keep it from running five months
+    // between markers.
+    const base = new Date(2026, 0, 1)
+    const points = Array.from({ length: 31 }, (_, w) => ({
+      week: w,
+      expected_weight: 220 - w,
+      expected_date: new Date(base.getTime() + w * 7 * 86400000).toISOString(),
+    } as types.WeightPlanProjectionPoint))
+
+    const { text } = renderRoad(plan(points))
+    for (const name of ["New Year's Day", 'March', 'Easter', 'Memorial Day']) {
+      expect(text).toContain(name)
+    }
+  })
+
   it('excludes holidays outside the plan window', () => {
     // Only 8 weeks: Jun 1 -> late July, so July 4th but nothing after it.
     const { text } = renderRoad(plan(timeline(8)))

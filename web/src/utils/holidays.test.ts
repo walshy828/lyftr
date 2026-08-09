@@ -32,6 +32,18 @@ describe('usHolidaysInYear', () => {
     expect(iso(find(2027, 'thanksgiving').date)).toBe('2027-11-25')
   })
 
+  // Easter can't be expressed as "nth weekday of month" — it wanders across
+  // five weeks, so the computus is pinned against the real calendar, including
+  // both extremes of its range.
+  it('computes Western Easter Sunday', () => {
+    expect(iso(find(2024, 'easter').date)).toBe('2024-03-31')
+    expect(iso(find(2025, 'easter').date)).toBe('2025-04-20')
+    expect(iso(find(2026, 'easter').date)).toBe('2026-04-05')
+    expect(iso(find(2027, 'easter').date)).toBe('2027-03-28')
+    expect(iso(find(2028, 'easter').date)).toBe('2028-04-16')
+    expect(iso(find(2038, 'easter').date)).toBe('2038-04-25') // latest it can fall
+  })
+
   it('returns holidays in chronological order', () => {
     const dates = usHolidaysInYear(2026).map(h => h.date.getTime())
     expect(dates).toEqual([...dates].sort((a, b) => a - b))
@@ -78,5 +90,67 @@ describe('usHolidaysBetween', () => {
   it('gives every milestone a unique key across years', () => {
     const keys = usHolidaysBetween(new Date(2025, 0, 1), new Date(2027, 11, 31)).map(h => h.key)
     expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+describe('usHolidaysBetween month-start fillers', () => {
+  // The motivating case: the tracked holidays bunch into the back half of the
+  // year, so a plan starting in January used to run five empty months before
+  // its first marker.
+  it('fills the long run between New Year\'s and Easter', () => {
+    const got = usHolidaysBetween(new Date(2026, 0, 1), new Date(2026, 11, 31))
+    expect(got.map(h => `${iso(h.date)} ${h.name}`)).toEqual([
+      '2026-01-01 New Year\'s Day',
+      '2026-03-01 March',
+      '2026-04-05 Easter',
+      '2026-05-25 Memorial Day',
+      '2026-07-04 July 4th',
+      '2026-09-07 Labor Day',
+      '2026-10-31 Halloween',
+      '2026-11-26 Thanksgiving',
+      '2026-12-25 Christmas',
+    ])
+  })
+
+  it('lands fillers on the 1st, every other month', () => {
+    // Nothing tracked falls between New Year's and Easter 2027 (Mar 28), and
+    // the window start pushes the cadence out from January.
+    const got = usHolidaysBetween(new Date(2027, 0, 1), new Date(2027, 5, 1))
+    const fillers = got.filter(h => h.key.startsWith('month-'))
+    expect(fillers.map(h => iso(h.date))).toEqual(['2027-03-01', '2027-05-01'])
+    expect(fillers.every(h => h.date.getDate() === 1)).toBe(true)
+  })
+
+  it('leaves gaps of two months or less alone', () => {
+    // Memorial Day (May 25) → July 4th is under two months; no waypoint belongs
+    // between them.
+    const got = usHolidaysBetween(new Date(2026, 4, 25), new Date(2026, 6, 4))
+    expect(got.map(h => h.name)).toEqual(['Memorial Day', 'July 4th'])
+  })
+
+  it('skips a filler that would crowd the milestone it separates', () => {
+    // July 4th → Labor Day (Sep 7, 2026) clears two months, but the candidate
+    // 1st lands Sep 1 — six days off Labor Day, which reads as a duplicate pin.
+    const got = usHolidaysBetween(new Date(2026, 6, 4), new Date(2026, 8, 7))
+    expect(got.map(h => h.name)).toEqual(['July 4th', 'Labor Day'])
+  })
+
+  it('treats the window ends as anchors, so a plan starting mid-gap gets waypoints', () => {
+    const got = usHolidaysBetween(new Date(2026, 0, 10), new Date(2026, 6, 1))
+    expect(got.map(h => `${iso(h.date)} ${h.name}`)).toEqual([
+      '2026-03-01 March',
+      '2026-04-05 Easter',
+      '2026-05-25 Memorial Day',
+    ])
+  })
+
+  it('keeps fillers chronological and uniquely keyed alongside the holidays', () => {
+    const got = usHolidaysBetween(new Date(2025, 0, 1), new Date(2027, 11, 31))
+    const ts = got.map(h => h.date.getTime())
+    expect(ts).toEqual([...ts].sort((a, b) => a - b))
+    expect(new Set(got.map(h => h.key)).size).toBe(got.length)
+    // Every gap on a three-year road is now at most ~2 months of empty calendar.
+    const maxGapDays = Math.max(...ts.slice(1).map((t, i) => (t - ts[i]) / 86_400_000))
+    expect(maxGapDays).toBeLessThan(70)
   })
 })
