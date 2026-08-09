@@ -292,6 +292,98 @@ describe('LogFood portions', () => {
     expect(payload.servings).toBe(2)
     expect(payload.calories).toBe(400)
   })
+
+  it('lets a hand-entered food name its own serving and logs it under that name', async () => {
+    // The motivating case for the serving editor: a manual entry opens on the
+    // placeholder "1 serving" with nothing else in the dropdown. Naming the
+    // serving is the only way the stored entry says what was actually eaten.
+    renderLogFood()
+    fireEvent.change(await screen.findByPlaceholderText(/search your foods/i), { target: { value: 'Granola' } })
+    fireEvent.click(await screen.findByText(/enter "granola" manually/i))
+
+    await screen.findByPlaceholderText('Food name')
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '120' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit serving/i }))
+    fireEvent.change(await screen.findByLabelText('Serving size'), { target: { value: '1/4 cup' } })
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('Unit') as HTMLSelectElement).selectedOptions[0].text).toBe('1/4 cup'),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /log food/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    expect(payload.servings).toBe(1)
+    expect(payload.serving_size).toBe('1/4 cup')
+    expect(payload.calories).toBe(120)
+  })
+
+  it('unlocks g and oz once the serving has a weight, without restating the macros', async () => {
+    renderLogFood()
+    fireEvent.change(await screen.findByPlaceholderText(/search your foods/i), { target: { value: 'Granola' } })
+    fireEvent.click(await screen.findByText(/enter "granola" manually/i))
+
+    await screen.findByPlaceholderText('Food name')
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '120' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit serving/i }))
+    fireEvent.change(await screen.findByLabelText('Serving size'), { target: { value: '1/4 cup' } })
+    fireEvent.change(screen.getByLabelText('Serving weight in grams'), { target: { value: '30' } })
+
+    // The weight only adds units — the serving option's own mass *is* the basis,
+    // so the multiplier stays 1 and the calorie total must not move.
+    const unitSelect = await screen.findByLabelText('Unit')
+    await waitFor(() => expect(unitSelect.querySelectorAll('option')).toHaveLength(3))
+    expect([...unitSelect.querySelectorAll('option')].map(o => o.textContent)).toEqual(['1/4 cup', 'g', 'oz'])
+    expect((screen.getAllByRole('spinbutton')[0] as HTMLInputElement).value).toBe('120')
+
+    fireEvent.change(unitSelect, { target: { value: 'g' } })
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '60' } })
+    fireEvent.click(screen.getByRole('button', { name: /log food/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    expect(payload.servings).toBe(60)          // 60 of the chosen unit (g)
+    expect(payload.serving_size).toBe('g')
+    expect(payload.serving_size_grams).toBe(1)
+    expect(payload.calories).toBe(240)         // 120 per 30 g × 60 g
+  })
+
+  it('falls back to the serving when the weight that unlocked g is cleared', async () => {
+    renderLogFood()
+    fireEvent.change(await screen.findByPlaceholderText(/search your foods/i), { target: { value: 'Granola' } })
+    fireEvent.click(await screen.findByText(/enter "granola" manually/i))
+
+    await screen.findByPlaceholderText('Food name')
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '120' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /edit serving/i }))
+    fireEvent.change(await screen.findByLabelText('Serving size'), { target: { value: '1/4 cup' } })
+    const gramsInput = screen.getByLabelText('Serving weight in grams')
+    fireEvent.change(gramsInput, { target: { value: '30' } })
+
+    const unitSelect = await screen.findByLabelText('Unit')
+    await waitFor(() => expect(unitSelect.querySelectorAll('option')).toHaveLength(3))
+    fireEvent.change(unitSelect, { target: { value: 'g' } })
+
+    // Clearing the weight destroys the g option the picker is sitting on; the
+    // selection has to land back on the serving rather than a dead id.
+    fireEvent.change(gramsInput, { target: { value: '' } })
+    await waitFor(() => expect(unitSelect.querySelectorAll('option')).toHaveLength(1))
+    expect((unitSelect as HTMLSelectElement).selectedOptions[0].text).toBe('1/4 cup')
+
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: /log food/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    expect(payload.servings).toBe(2)
+    expect(payload.serving_size).toBe('1/4 cup')
+    expect(payload.serving_size_grams).toBe(0)
+    expect(payload.calories).toBe(240)
+  })
 })
 
 describe('LogFood photo review flow', () => {

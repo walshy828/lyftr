@@ -21,6 +21,7 @@ import EditSavedFoodSheet from '../components/EditSavedFoodSheet'
 import MealItemEditCard, { type EditableMealItem } from '../components/MealItemEditCard'
 import FoodCaptureBar from '../components/food/FoodCaptureBar'
 import PortionPicker from '../components/food/PortionPicker'
+import ServingEditor from '../components/food/ServingEditor'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import DateInput from '../components/ui/DateInput'
 import AuthedImg from '../components/ui/AuthedImg'
@@ -479,6 +480,14 @@ export default function LogFood() {
     [selected],
   )
 
+  // Clearing the serving's weight collapses the list back to the serving alone,
+  // which can strand `unitId` on a g/oz/portion option that no longer exists.
+  // `findUnit` falls back for display, but the state has to follow or the next
+  // change re-selects the dead id.
+  useEffect(() => {
+    if (!unitOptions.some(o => o.id === unitId)) setUnitId(SERVING_UNIT_ID)
+  }, [unitOptions, unitId])
+
   if (phase === 'scan') {
     return (
       <BarcodeScanner
@@ -514,6 +523,10 @@ export default function LogFood() {
   const setPortion = (nextAmount: number, nextUnitId: string) => {
     setAmount(nextAmount)
     setUnitId(nextUnitId)
+  }
+
+  const setServing = (serving_size: string, serving_size_grams: number) => {
+    setSelected(s => s && ({ ...s, serving_size, serving_size_grams }))
   }
 
   const cal = selected ? Math.round(selected.calories * servings) : 0
@@ -828,25 +841,11 @@ export default function LogFood() {
                     />
                     <span className="text-sm text-tx-muted">kcal</span>
                   </div>
-                  {/* With a gram basis the amount picker owns the portion, so
-                      state it as chosen — showing the raw multiplier ("per
-                      0.138 × per 100g") exposes bookkeeping the user never
-                      typed. Without one, serving_size is still free text they
-                      need to be able to write. */}
-                  {unitOptions.length > 1 ? (
-                    <p className="text-xs text-tx-muted mt-1">for {formatServingLabel(amount, unit)}</p>
-                  ) : (
-                    <p className="text-xs text-tx-muted mt-1">
-                      per {servings === 1 ? '' : `${servings} × `}
-                      <input
-                        type="text"
-                        value={selected.serving_size ?? ''}
-                        onChange={e => setSelected(s => s && ({ ...s, serving_size: e.target.value }))}
-                        placeholder="1 serving"
-                        className="inline-block bg-transparent border-0 border-b border-transparent hover:border-surface-border focus:border-brand-500 outline-none w-28 px-0"
-                      />
-                    </p>
-                  )}
+                  {/* The amount picker owns the portion, so state it as chosen
+                      rather than as a raw multiplier ("per 0.138 × per 100g"),
+                      which exposes bookkeeping the user never typed. Naming the
+                      serving itself lives in the Amount card's serving editor. */}
+                  <p className="text-xs text-tx-muted mt-1">for {formatServingLabel(amount, unit)}</p>
                 </div>
                 {/* Macro composition mini-bars */}
                 {(pro + carb + fat_) > 0 && (
@@ -908,6 +907,12 @@ export default function LogFood() {
               amount={amount}
               unitId={unitId}
               onChange={setPortion}
+              size="lg"
+            />
+            <ServingEditor
+              servingSize={selected.serving_size ?? ''}
+              servingSizeGrams={selected.serving_size_grams ?? 0}
+              onChange={setServing}
               size="lg"
             />
           </div>
@@ -1010,6 +1015,12 @@ export default function LogFood() {
               amount={amount}
               unitId={unitId}
               onChange={setPortion}
+              size="md"
+            />
+            <ServingEditor
+              servingSize={selected.serving_size ?? ''}
+              servingSizeGrams={selected.serving_size_grams ?? 0}
+              onChange={setServing}
               size="md"
             />
           </div>

@@ -65,7 +65,8 @@ test.describe('Food', () => {
     const list = await request.get(`${API}/food?date=${today}`, { headers: h })
     const lb = await list.json()
     const toDelete = (lb.data ?? []).filter((e: any) =>
-      e.name.startsWith('E2ELog-') || e.name.startsWith('E2ESave-') || e.name.startsWith('E2EEdit-')
+      e.name.startsWith('E2ELog-') || e.name.startsWith('E2ESave-') || e.name.startsWith('E2EEdit-') ||
+      e.name.startsWith('E2EServing-')
     )
     for (const e of toDelete) {
       await request.delete(`${API}/food/${e.id}`, { headers: h })
@@ -210,6 +211,50 @@ test.describe('Food', () => {
     await page.getByRole('button', { name: 'Increase amount' }).click()
     await page.getByRole('button', { name: 'Increase amount' }).click()
     await expect(page.getByText('400').first()).toBeVisible()
+  })
+
+  // @mobile: naming your own serving is a phone-first manual-entry step.
+  test('manual entry: naming the serving unlocks exact units and is stored with the log', { tag: '@mobile' }, async ({ page }) => {
+    const name = `E2EServing-${Date.now()}`
+
+    await page.route('**/api/v1/food/search**', route =>
+      route.fulfill({ json: { data: [] } })
+    )
+    await page.goto(`/food/log?meal=breakfast&date=${today}`)
+    await page.fill('input[placeholder^="Search your foods"]', name)
+    await page.getByRole('button').filter({ hasText: /manually/ }).click()
+
+    await expect(page.getByPlaceholder('Food name')).toBeVisible()
+    // A hand-entered food starts with no gram basis, so the unit dropdown has
+    // only the placeholder serving in it.
+    await expect(page.getByLabel('Unit').locator('option')).toHaveCount(1)
+
+    await page.getByRole('button', { name: 'Edit serving' }).click()
+    await page.getByLabel('Serving size').fill('1/4 cup')
+    await page.getByLabel('Serving weight in grams').fill('30')
+
+    // The weight is what earns the exact mass units.
+    await expect(page.getByLabel('Unit').locator('option')).toHaveCount(3)
+    await expect(page.getByText('1/4 cup = 30 g')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Log Food' }).click()
+    await page.waitForURL('/food', { timeout: 5000 })
+    await expect(page.getByText(name)).toBeVisible()
+
+    // The serving has to survive the round-trip, or reopening the entry
+    // restates it against the placeholder basis it was entered to replace.
+    const r = await page.request.get(`${API}/food?date=${today}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+    const { data } = await r.json()
+    const entry = data.find((e: any) => e.name === name)
+    expect(entry.serving_size).toBe('1/4 cup')
+    expect(entry.serving_size_grams).toBe(30)
+    seedFoodIds.push(entry.id)
+
+    await page.goto(`/food/log?edit=${entry.id}`)
+    await expect(page.getByLabel('Unit')).toHaveValue('serving')
+    await expect(page.getByText('1/4 cup = 30 g')).toBeVisible()
   })
 
   // @mobile: the capture bar must stay on one row at a phone width.
