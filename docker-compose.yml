@@ -41,8 +41,12 @@ services:
       # then set it back.
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
       - REGISTRATION_INVITE_CODE=${REGISTRATION_INVITE_CODE:-}
-      # Refresh-token lifetime, hours.
-      - REFRESH_EXPIRY=${REFRESH_EXPIRY:-168}
+      # Session length. REFRESH_EXPIRY (hours) covers a browser the user did not
+      # tick "Keep me signed in" for; remembered devices use the per-user
+      # preference, bounded by MAX_SESSION_DAYS and SESSION_ABSOLUTE_DAYS (days).
+      - REFRESH_EXPIRY=${REFRESH_EXPIRY:-12}
+      - MAX_SESSION_DAYS=${MAX_SESSION_DAYS:-90}
+      - SESSION_ABSOLUTE_DAYS=${SESSION_ABSOLUTE_DAYS:-180}
       # Seeds the demo account (demo@lyftr.local, publicly documented password).
       # Never enable this on an instance holding real data.
       - SEED_DEMO=${SEED_DEMO:-false}

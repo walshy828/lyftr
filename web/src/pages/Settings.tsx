@@ -11,11 +11,20 @@ import { HelpTip } from '../components/Tooltip'
 import PageHeader from '../components/ui/PageHeader'
 import DateInput from '../components/ui/DateInput'
 import ServerSettings from '../components/ServerSettings'
+import SignedInDevices from '../components/SignedInDevices'
 import { todayStr } from '../utils/dateUtils'
 import {
   User, Shield, Target, Moon, Sun, Server, LogOut, Trash2, ChevronRight, Check, AlertCircle, Loader,
   Dumbbell, RefreshCw, Pencil, Clock, Minus, Plus, KeyRound, HeartPulse,
 } from 'lucide-react'
+
+// Offered session lengths. A server with a lower MAX_SESSION_DAYS rejects the
+// longer ones with a message, which is clearer than silently hiding them.
+const SESSION_LENGTHS = [
+  { label: '7 days', days: 7 },
+  { label: '30 days', days: 30 },
+  { label: '90 days', days: 90 },
+]
 
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
@@ -87,6 +96,25 @@ export default function Settings() {
       setError(apiErrorMessage(err, 'Could not save that preference.'))
     } finally {
       setAiConsentSaving(false)
+    }
+  }
+
+  // How long a remembered device stays signed in. The server enforces its own
+  // MAX_SESSION_DAYS ceiling and answers 400 when a choice exceeds it, so the
+  // error is surfaced rather than the options being filtered — the client has
+  // no way to know the ceiling in advance.
+  const [sessionLenSaving, setSessionLenSaving] = useState(false)
+  const sessionDays = storedSettings.session_max_days ?? 30
+
+  const handleSessionLength = async (days: number) => {
+    if (days === sessionDays) return
+    setSessionLenSaving(true)
+    try {
+      await updateSettings({ session_max_days: days })
+    } catch (err: any) {
+      setError(apiErrorMessage(err, 'Could not save that session length.'))
+    } finally {
+      setSessionLenSaving(false)
     }
   }
 
@@ -376,6 +404,35 @@ export default function Settings() {
             <KeyRound className="w-3.5 h-3.5" /> Manage
           </button>
         </SettingRow>
+      </Section>
+
+      {/* Sessions */}
+      <Section title="Sessions">
+        <SettingRow
+          label="Stay signed in for"
+          description="How long a device you chose to remember stays signed in. Each time you use the app the clock restarts, so a device you open regularly never asks again."
+        >
+          <div className="flex gap-1 bg-surface-overlay rounded-lg p-1 border border-surface-border">
+            {SESSION_LENGTHS.map(({ label, days }) => (
+              <button
+                key={days}
+                onClick={() => handleSessionLength(days)}
+                disabled={sessionLenSaving}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                  sessionDays === days
+                    ? 'bg-surface-raised border border-surface-border text-tx-primary shadow-sm'
+                    : 'text-tx-muted hover:text-tx-primary'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </SettingRow>
+        <div>
+          <p className="text-sm font-medium text-tx-primary pt-4">Signed-in devices</p>
+          <SignedInDevices />
+        </div>
       </Section>
 
       {/* Privacy */}

@@ -23,6 +23,7 @@ type Stores struct {
 	Workout       *WorkoutStore
 	Program       *ProgramStore
 	Token         *TokenStore
+	DeviceSession *DeviceSessionStore
 	Profile       *ProfileStore
 	NutritionGoal *NutritionGoalStore
 	Motivation    *MotivationStore
@@ -41,6 +42,7 @@ func New(db *sql.DB) *Stores {
 		Workout:       NewWorkoutStore(db),
 		Program:       NewProgramStore(db),
 		Token:         NewTokenStore(db),
+		DeviceSession: NewDeviceSessionStore(db),
 		Profile:       NewProfileStore(db),
 		NutritionGoal: NewNutritionGoalStore(db),
 		Motivation:    NewMotivationStore(db),

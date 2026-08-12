@@ -361,6 +361,25 @@ export const tokenAPI = {
   revoke: (id: number) => api.delete(`/tokens/${id}`),
 }
 
+// One signed-in device. The id is a revocation handle, not a credential —
+// there is no token material here.
+export interface DeviceSession {
+  id: string
+  label: string
+  user_agent: string
+  remembered: boolean
+  created_at: string
+  last_seen_at: string
+  expires_at: string
+  /** The session making the request, so the UI can warn before signing itself out. */
+  current: boolean
+}
+
+export const sessionAPI = {
+  list: () => api.get<{ data: DeviceSession[] }>('/sessions').then(res => unwrap(res)),
+  revoke: (id: string) => api.delete(`/sessions/${id}`),
+}
+
 export const activeSessionAPI = {
   get: () => api.get<{ data: { data: string | null; updated_at?: string } | null }>('/active-session').then(res => unwrap(res)),
   put: (data: types.ActiveSession) => api.put('/active-session', { data: JSON.stringify(data) }),

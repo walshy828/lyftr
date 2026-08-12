@@ -24,6 +24,10 @@ export default function Login() {
 
   const [email, setEmail]           = useState('')
   const [password, setPassword]     = useState('')
+  // Defaults on: this is a self-hosted tracker you open several times a day,
+  // and the alternative is re-typing a password before every workout. Unticking
+  // it is the deliberate choice, for a borrowed or shared browser.
+  const [remember, setRemember]     = useState(true)
   const [error, setError]           = useState('')
   const [isLoading, setLoading]     = useState(false)
 
@@ -32,7 +36,7 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      await login(email, password)
+      await login(email, password, remember)
       navigate('/')
     } catch (err: any) {
       setError(apiErrorMessage(err, 'Invalid email or password.'))
@@ -171,6 +175,22 @@ export default function Login() {
                 required
               />
             </div>
+
+            {/* Keep this device signed in */}
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={e => setRemember(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-brand-500 flex-shrink-0"
+              />
+              <span className="text-sm text-tx-muted">
+                Keep me signed in on this device
+                <span className="block text-xs mt-0.5">
+                  Uncheck on a shared or public computer.
+                </span>
+              </span>
+            </label>
 
             {/* Error */}
             {error && (

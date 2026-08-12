@@ -23,6 +23,8 @@ export interface UserSettings {
   plan_history_start: string
   /** Consent to send health data (BP history, body metrics) to the configured third-party LLM. */
   ai_health_insights_opt_in: boolean
+  /** How long a device the user chose to remember stays signed in. Bounded server-side by MAX_SESSION_DAYS. */
+  session_max_days: number
   workout_layout?: 'list' | 'gym'
   // Client-only (localStorage, not persisted server-side):
   rest_enabled?: boolean        // master rest-timer on/off
@@ -830,6 +832,12 @@ export interface ExerciseHistoryPoint {
 export interface LoginRequest {
   email: string
   password: string
+  /**
+   * Opt this device into the account's configured session length instead of
+   * the server's short default. Omitted is the safe reading — a shared browser
+   * should get the short session unless somebody deliberately asked otherwise.
+   */
+  remember?: boolean
 }
 
 export interface ChangePasswordRequest {

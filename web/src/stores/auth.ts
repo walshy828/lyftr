@@ -17,7 +17,7 @@ interface AuthStore {
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
-  login:     (email: string, password: string) => Promise<void>
+  login:     (email: string, password: string, remember?: boolean) => Promise<void>
   register:  (email: string, password: string, inviteCode?: string) => Promise<void>
   logout:    () => void
   clearError: () => void
@@ -49,10 +49,10 @@ export const useAuthStore = create<AuthStore>((set) => {
     isLoading: false,
     error: null,
 
-    login: async (email, password) => {
+    login: async (email, password, remember = true) => {
       set({ isLoading: true, error: null })
       try {
-        const data = await authAPI.login({ email, password })
+        const data = await authAPI.login({ email, password, remember })
         localStorage.setItem('access_token', data.token)
         localStorage.setItem('refresh_token', data.refresh_token)
         localStorage.setItem('user', JSON.stringify(data.user))

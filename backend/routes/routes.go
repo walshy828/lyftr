@@ -50,6 +50,11 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.PUT("me/password", h.ChangePassword)
 		// Logout is authenticated: it needs the access token it is revoking.
 		protected.POST("auth/logout", h.Logout)
+		// Signed-in devices. Like the token routes below, JWT-only (enforced in
+		// the handlers) — a PAT must not be able to enumerate or sign out the
+		// interactive sessions of the account it belongs to.
+		protected.GET("sessions", h.ListSessions)
+		protected.DELETE("sessions/:id", h.RevokeSession)
 		protected.GET("profile", h.GetProfile)
 		protected.PUT("profile", h.UpdateProfile)
 

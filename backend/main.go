@@ -79,6 +79,13 @@ func main() {
 			} else if n > 0 {
 				log.Printf("revocation purge: removed %d expired entries", n)
 			}
+			// Same reasoning for device sessions: once the refresh token has
+			// expired the chain can't be resumed, so the row is only clutter.
+			if n, err := s.DeviceSession.PurgeExpired(); err != nil {
+				log.Printf("device session purge: %v", err)
+			} else if n > 0 {
+				log.Printf("device session purge: removed %d expired sessions", n)
+			}
 			time.Sleep(time.Hour)
 		}
 	}()

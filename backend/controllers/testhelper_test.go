@@ -86,7 +86,19 @@ CREATE TABLE IF NOT EXISTS user_settings (
   food_dislikes      TEXT    NOT NULL DEFAULT '',
   food_likes         TEXT    NOT NULL DEFAULT '',
   plan_history_start TEXT    NOT NULL DEFAULT '',
-  ai_health_insights_opt_in INTEGER NOT NULL DEFAULT 0
+  ai_health_insights_opt_in INTEGER NOT NULL DEFAULT 0,
+  session_max_days   INTEGER NOT NULL DEFAULT 30
+);
+CREATE TABLE IF NOT EXISTS device_sessions (
+  id           TEXT     PRIMARY KEY,
+  user_id      INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label        TEXT     NOT NULL DEFAULT '',
+  user_agent   TEXT     NOT NULL DEFAULT '',
+  remembered   INTEGER  NOT NULL DEFAULT 0,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at   DATETIME NOT NULL,
+  revoked_at   DATETIME
 );
 CREATE TABLE IF NOT EXISTS exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -42,6 +42,7 @@ const DEFAULTS: types.UserSettings = {
   food_dislikes: '',
   food_likes: '',
   plan_history_start: '',
+  session_max_days: 30,
   ...clientPrefs(),
 }
 
