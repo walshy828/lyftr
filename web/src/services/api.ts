@@ -199,6 +199,19 @@ export const weightAPI = {
   stats:  () => api.get<{ data: types.WeightStats }>('/weight/stats').then(res => unwrap(res)),
 }
 
+// Blood pressure (#bloodPressure). No unit conversion anywhere: mmHg is
+// universal, so unlike weight there is no display/storage split to bridge.
+export const bloodPressureAPI = {
+  list:   (params?: { limit?: number; offset?: number; from?: string; to?: string }) =>
+    api.get<{ data: types.BloodPressureLog[] }>('/blood-pressure', { params }).then(res => unwrap(res)),
+  get:    (id: number) => api.get<{ data: types.BloodPressureLog }>(`/blood-pressure/${id}`).then(res => unwrap(res)),
+  log:    (data: types.LogBloodPressureRequest) =>
+    api.post<{ data: types.BloodPressureLog }>('/blood-pressure', data).then(res => unwrap(res)),
+  update: (id: number, data: types.LogBloodPressureRequest) =>
+    api.patch<{ data: types.BloodPressureLog }>(`/blood-pressure/${id}`, data).then(res => unwrap(res)),
+  delete: (id: number) => api.delete(`/blood-pressure/${id}`),
+}
+
 export const profileAPI = {
   get:    () => api.get<{ data: types.ProfileWithBMI }>('/profile').then(res => unwrap(res)),
   update: (data: Partial<types.UserProfile>) => api.put<{ data: types.UserProfile }>('/profile', data).then(res => unwrap(res)),

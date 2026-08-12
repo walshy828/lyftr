@@ -84,6 +84,14 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.PATCH("weight/:id", h.UpdateWeightLog)
 		protected.DELETE("weight/:id", h.DeleteWeightLog)
 
+		// Blood pressure — static sub-paths before blood-pressure/:id
+		protected.GET("blood-pressure", h.ListBloodPressureLogs)
+		protected.POST("blood-pressure", h.LogBloodPressure)
+		protected.GET("blood-pressure/stats", h.GetBloodPressureStats)
+		protected.GET("blood-pressure/:id", h.GetBloodPressureLog)
+		protected.PATCH("blood-pressure/:id", h.UpdateBloodPressureLog)
+		protected.DELETE("blood-pressure/:id", h.DeleteBloodPressureLog)
+
 		// Food — named sub-paths must be registered before food/:id
 		protected.GET("food", h.ListFoodLogs)
 		protected.POST("food", h.LogFood)

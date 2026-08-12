@@ -86,6 +86,45 @@ export interface WeightLog {
   created_at?: string
 }
 
+// Blood pressure (#bloodPressure)
+
+/** ACC/AHA 2017 categories, plus 'low' which is advisory only. */
+export type BPCategory = 'low' | 'normal' | 'elevated' | 'stage1' | 'stage2' | 'crisis'
+
+export type BPContext = 'morning' | 'evening' | 'post_workout' | 'post_meal' | 'stressed' | 'other'
+
+export interface BloodPressureLog {
+  id: number
+  user_id?: number
+  systolic: number
+  diastolic: number
+  pulse?: number
+  context?: BPContext
+  arm?: 'left' | 'right'
+  position?: 'seated' | 'standing' | 'lying'
+  rested: boolean
+  notes?: string
+  /** Minutes east of UTC at capture time — lets the server answer "was this a morning reading?". */
+  tz_offset: number
+  logged_at: string
+  created_at?: string
+  /** Derived server-side, never stored. Authoritative over any client classification. */
+  category: BPCategory
+}
+
+export interface LogBloodPressureRequest {
+  systolic: number
+  diastolic: number
+  pulse?: number
+  context?: BPContext | ''
+  arm?: 'left' | 'right' | ''
+  position?: 'seated' | 'standing' | 'lying' | ''
+  rested?: boolean
+  notes?: string
+  tz_offset?: number
+  logged_at?: string
+}
+
 export interface FoodLog {
   id: number
   user_id?: number

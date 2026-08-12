@@ -108,6 +108,61 @@ type WeightLog struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
+// Blood pressure (#bloodPressure) ------------------------------------------
+
+// Measurement contexts. Free-form on the wire but validated to this set, so the
+// capture-protocol evaluator and the AI prompt can rely on the values.
+const (
+	BPContextMorning     = "morning"
+	BPContextEvening     = "evening"
+	BPContextPostWorkout = "post_workout"
+	BPContextPostMeal    = "post_meal"
+	BPContextStressed    = "stressed"
+	BPContextOther       = "other"
+)
+
+// BloodPressureLog is one reading. Several per day is normal and expected (see
+// the migration comment) — there is no per-day upsert.
+type BloodPressureLog struct {
+	ID        int64  `json:"id" db:"id"`
+	UserID    int64  `json:"user_id" db:"user_id"`
+	Systolic  int    `json:"systolic" db:"systolic"`
+	Diastolic int    `json:"diastolic" db:"diastolic"`
+	Pulse     int    `json:"pulse,omitempty" db:"pulse"` // 0 = not recorded
+	Context   string `json:"context,omitempty" db:"context"`
+	Arm       string `json:"arm,omitempty" db:"arm"`
+	Position  string `json:"position,omitempty" db:"position"`
+	Rested    bool   `json:"rested" db:"rested"` // user confirmed 5 min seated rest
+	Notes     string `json:"notes,omitempty" db:"notes"`
+	// TZOffset is minutes east of UTC at capture time, so local-time questions
+	// ("was this a morning reading?") stay answerable server-side.
+	TZOffset  int       `json:"tz_offset" db:"tz_offset"`
+	LoggedAt  time.Time `json:"logged_at" db:"logged_at"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+
+	// Category is the ACC/AHA read on THIS reading, derived not stored. The
+	// controller stamps it so no client re-implements the thresholds — and so
+	// they can't drift apart between the web app, MCP, and anything later.
+	Category string `json:"category" db:"-"`
+}
+
+// LogBloodPressureRequest bounds are deliberately wider than any plausible
+// human reading: the point is to reject typos and unit confusion, not to
+// second-guess a cuff. Systolic > diastolic is a cross-field rule validate
+// can't express and is checked in the controller.
+type LogBloodPressureRequest struct {
+	Systolic  int       `json:"systolic" validate:"required,gte=50,lte=300"`
+	Diastolic int       `json:"diastolic" validate:"required,gte=30,lte=200"`
+	Pulse     int       `json:"pulse" validate:"omitempty,gte=20,lte=250"`
+	Context   string    `json:"context" validate:"omitempty,oneof=morning evening post_workout post_meal stressed other"`
+	Arm       string    `json:"arm" validate:"omitempty,oneof=left right"`
+	Position  string    `json:"position" validate:"omitempty,oneof=seated standing lying"`
+	Rested    bool      `json:"rested"`
+	Notes     string    `json:"notes" validate:"omitempty,max=200"`
+	TZOffset  int       `json:"tz_offset" validate:"gte=-840,lte=840"`
+	LoggedAt  time.Time `json:"logged_at"`
+}
+
 type FoodLog struct {
 	ID          int64   `json:"id" db:"id"`
 	UserID      int64   `json:"user_id" db:"user_id"`

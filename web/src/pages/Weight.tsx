@@ -8,6 +8,7 @@ import PageHeader from '../components/ui/PageHeader'
 import DateInput from '../components/ui/DateInput'
 import PeriodSelector from '../components/PeriodSelector'
 import WeightInput from '../components/WeightInput'
+import BPQuickCard from '../components/health/BPQuickCard'
 import { useServerInfiniteList } from '../hooks/useServerInfiniteList'
 import { todayStr, dayToIsoNoon, isoToDayInput } from '../utils/dateUtils'
 import { weightAPI } from '../services/api'
@@ -598,6 +599,9 @@ export default function Weight() {
         </>
       )}
 
+      {/* Blood pressure capture. Temporary home: this card moves to the
+          /health hub's BP panel once that page exists. */}
+      <BPQuickCard />
     </div>
   )
 }

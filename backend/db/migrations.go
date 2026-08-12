@@ -195,6 +195,36 @@ CREATE INDEX IF NOT EXISTS idx_plan_checkins_user ON plan_checkins(user_id, crea
 		log.Fatalf("create weight-plan tables: %v", err)
 	}
 
+	// Blood pressure (#bloodPressure). Unlike weight_logs there is deliberately
+	// no one-row-per-day constraint: AHA guidance is to take two or three
+	// readings a minute apart, morning and evening, so multiple rows per day is
+	// the expected shape rather than a duplicate to collapse.
+	//
+	// tz_offset records the client's UTC offset (minutes east) AT CAPTURE TIME.
+	// "Morning reading" is a local-time concept, and logged_at alone can't answer
+	// it — the weight endpoints widen date filters by ±12h precisely because they
+	// have to guess. Storing the offset makes the capture-protocol rules ("no
+	// morning readings this week") decidable server-side with no guessing.
+	if _, err := DB.Exec(`
+CREATE TABLE IF NOT EXISTS blood_pressure_logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  systolic   INTEGER NOT NULL,
+  diastolic  INTEGER NOT NULL,
+  pulse      INTEGER NOT NULL DEFAULT 0,
+  context    TEXT    NOT NULL DEFAULT '',
+  arm        TEXT    NOT NULL DEFAULT '',
+  position   TEXT    NOT NULL DEFAULT '',
+  rested     INTEGER NOT NULL DEFAULT 0,
+  notes      TEXT    NOT NULL DEFAULT '',
+  tz_offset  INTEGER NOT NULL DEFAULT 0,
+  logged_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bp_logs_user ON blood_pressure_logs(user_id, logged_at DESC);`); err != nil {
+		log.Fatalf("create blood_pressure_logs: %v", err)
+	}
+
 	// user_profile originally stored a static "age" column; replaced with
 	// birth_date (#weightPlan) so age can be computed dynamically over time
 	// instead of going stale. The CREATE TABLE above only applies to brand-new
@@ -346,6 +376,24 @@ CREATE TABLE IF NOT EXISTS weight_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_weight_logs_user ON weight_logs(user_id, logged_at DESC);
+
+CREATE TABLE IF NOT EXISTS blood_pressure_logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  systolic   INTEGER NOT NULL,
+  diastolic  INTEGER NOT NULL,
+  pulse      INTEGER NOT NULL DEFAULT 0,
+  context    TEXT    NOT NULL DEFAULT '',
+  arm        TEXT    NOT NULL DEFAULT '',
+  position   TEXT    NOT NULL DEFAULT '',
+  rested     INTEGER NOT NULL DEFAULT 0,
+  notes      TEXT    NOT NULL DEFAULT '',
+  tz_offset  INTEGER NOT NULL DEFAULT 0,
+  logged_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bp_logs_user ON blood_pressure_logs(user_id, logged_at DESC);
 
 CREATE TABLE IF NOT EXISTS food_logs (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
