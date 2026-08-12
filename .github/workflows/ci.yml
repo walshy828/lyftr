@@ -49,6 +49,10 @@ jobs:
         run: |
           echo "JWT_SECRET=ci-test-secret-$(openssl rand -hex 16)" >> .env
           echo "PORT=80" >> .env
+          # The suite registers a throwaway account per worker, so signup has to
+          # be open here. Registration is closed by default on a real
+          # deployment — see ALLOW_REGISTRATION in the README.
+          echo "ALLOW_REGISTRATION=true" >> .env
 
       - uses: docker/setup-buildx-action@v3
 

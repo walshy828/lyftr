@@ -155,19 +155,13 @@ The seed runs async so the server is immediately available. Exercises appear in 
 
 Two changes need a moment of your attention:
 
-**1. The backend now runs as a non-root user (uid 10001).** If your `./data`
-directory was created by an older root-running container, fix its ownership
-once before starting:
-
-```bash
-docker compose down
-sudo chown -R 10001:10001 ./data
-docker compose up -d
-```
-
-**2. Everyone is signed out on first start.** Tokens issued before this release
+**1. Everyone is signed out on first start.** Tokens issued before this release
 carry no revocation ID, so they can't be revoked and are rejected rather than
 trusted indefinitely. Just log in again.
+
+**2. The backend now runs as a non-root user (uid 10001).** No action needed —
+the container fixes ownership of `./data` on startup. If you back up or inspect
+those files from the host, note they are now owned by uid 10001 and mode `0600`.
 
 Also check that `JWT_SECRET` is at least 32 characters — production now refuses
 to start with a weak or placeholder secret rather than quietly accepting one.

@@ -7,13 +7,22 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/app/data
-    # The API needs no privileges beyond writing its own data directory.
-    # no-new-privileges blocks setuid escalation; dropping all capabilities
-    # costs nothing because it binds an unprivileged port as a non-root user.
+    # The API itself runs unprivileged (see backend/entrypoint.sh). Drop every
+    # capability, then add back only the four the entrypoint needs to chown a
+    # freshly created bind mount and step down to the lyftr user. Notably absent:
+    # NET_RAW, NET_BIND_SERVICE, SYS_ADMIN, MKNOD.
+    #
+    # no-new-privileges still applies: it blocks *gaining* privileges through a
+    # setuid binary, which is unrelated to root voluntarily dropping them.
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
     environment:
       # Controls Gin's debug/release mode and demo-data seeding (see backend/config/config.go).
       # Defaults to production for self-host deployments; override in .env only for local debugging.
