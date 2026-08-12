@@ -12,6 +12,7 @@ import PageHeader from '../components/ui/PageHeader'
 import DateInput from '../components/ui/DateInput'
 import ServerSettings from '../components/ServerSettings'
 import SignedInDevices from '../components/SignedInDevices'
+import PasskeyManager from '../components/PasskeyManager'
 import { todayStr } from '../utils/dateUtils'
 import {
   User, Shield, Target, Moon, Sun, Server, LogOut, Trash2, ChevronRight, Check, AlertCircle, Loader,
@@ -429,6 +430,10 @@ export default function Settings() {
             ))}
           </div>
         </SettingRow>
+        <div>
+          <p className="text-sm font-medium text-tx-primary pt-4">Passkeys</p>
+          <PasskeyManager />
+        </div>
         <div>
           <p className="text-sm font-medium text-tx-primary pt-4">Signed-in devices</p>
           <SignedInDevices />

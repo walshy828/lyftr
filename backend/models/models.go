@@ -448,6 +448,21 @@ type LoginRequest struct {
 	Remember bool `json:"remember"`
 }
 
+// Passkey is one enrolled WebAuthn credential as the account screen shows it —
+// metadata only, never the credential blob or public key.
+type Passkey struct {
+	ID         int64      `json:"id"`
+	Name       string     `json:"name"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+}
+
+// CreatePasskeyRequest names a passkey at enrolment, so a user with several can
+// tell them apart ("iPhone", "YubiKey").
+type CreatePasskeyRequest struct {
+	Name string `json:"name" validate:"max=100"`
+}
+
 // DeviceSession is one signed-in device as the account screen shows it. There
 // is no token material here — the session id is a revocation handle, not a
 // credential, and knowing it grants nothing.

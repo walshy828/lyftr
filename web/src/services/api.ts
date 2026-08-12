@@ -43,6 +43,12 @@ export const apiErrorMessage = (err: any, fallback: string): string => {
 export interface ServerInfo {
   name: string
   version: string
+  /**
+   * Whether the server has a WebAuthn Relying Party configured. Needed before
+   * anyone is authenticated, to decide whether to offer passkey sign-in at all.
+   * Absent on servers older than the feature, which reads as false.
+   */
+  passkeys_enabled?: boolean
 }
 
 // Probes a server's public /info endpoint to confirm it's reachable and is a
@@ -359,6 +365,34 @@ export const tokenAPI = {
       name, expires_in_days: expiresInDays,
     }).then(res => unwrap(res)),
   revoke: (id: number) => api.delete(`/tokens/${id}`),
+}
+
+export interface Passkey {
+  id: number
+  name: string
+  created_at: string
+  last_used_at: string | null
+}
+
+// The two-step ceremonies. `begin` returns the options the browser needs;
+// `finish` posts the authenticator's response verbatim, which is why the
+// passkey name and challenge id travel as query parameters rather than in a
+// wrapper object — the server hands the body straight to its WebAuthn library.
+export const passkeyAPI = {
+  list:   () => api.get<{ data: Passkey[] }>('/passkeys').then(res => unwrap(res)),
+  delete: (id: number) => api.delete(`/passkeys/${id}`),
+
+  registerBegin: () =>
+    api.post<{ data: { publicKey: any } }>('/passkeys/register/begin').then(res => unwrap(res)),
+  registerFinish: (name: string, attestation: unknown) =>
+    api.post(`/passkeys/register/finish?name=${encodeURIComponent(name)}`, attestation),
+
+  loginBegin: () =>
+    api.post<{ data: { publicKey: any; challenge_id: string } }>('/auth/webauthn/login/begin').then(res => unwrap(res)),
+  loginFinish: (challengeID: string, assertion: unknown) =>
+    api.post<{ data: types.AuthResponse }>(
+      `/auth/webauthn/login/finish?challenge_id=${encodeURIComponent(challengeID)}`, assertion,
+    ).then(res => unwrap(res)),
 }
 
 // One signed-in device. The id is a revocation handle, not a credential —

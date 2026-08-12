@@ -73,6 +73,24 @@ type Config struct {
 	// Empty means trust nothing and use the direct peer address.
 	TrustedProxies []string
 
+	// Passkey (WebAuthn) sign-in. Optional and off unless WEBAUTHN_RP_ID is set,
+	// because it cannot be guessed safely: WebAuthn binds every credential to a
+	// fixed Relying Party ID, and getting it wrong doesn't degrade — it makes
+	// enrolled passkeys permanently unusable.
+	//
+	// WebAuthnRPID must be the registrable domain the app is served from
+	// ("lyftr.example.com"). An IP address is not a valid RP ID, so an instance
+	// reached by bare LAN IP cannot use passkeys at all.
+	WebAuthnRPID string
+	// WebAuthnRPOrigins are the full origins allowed to complete a ceremony
+	// ("https://lyftr.example.com"). Defaults to https:// + the RP ID.
+	// Browsers require a secure context, so plain HTTP will not work off
+	// localhost however this is set.
+	WebAuthnRPOrigins []string
+	// WebAuthnRPName is what the passkey is labelled as in the user's password
+	// manager or keychain.
+	WebAuthnRPName string
+
 	// Nutrition label photo import (optional). VisionProvider selects which
 	// of the three keys below is used; leave it unset to disable the feature.
 	// The *Model fields are optional overrides — each provider falls back to
@@ -166,6 +184,16 @@ func Load() {
 	C.RegistrationInviteCode = []byte(getEnv("REGISTRATION_INVITE_CODE", ""))
 	C.TrustedProxies = splitList(getEnv("TRUSTED_PROXIES", ""))
 	C.AIHealthInsightsEnabled = getEnv("AI_HEALTH_INSIGHTS_ENABLED", "") == "true"
+
+	C.WebAuthnRPID = strings.TrimSpace(getEnv("WEBAUTHN_RP_ID", ""))
+	C.WebAuthnRPName = getEnv("WEBAUTHN_RP_NAME", "Lyftr")
+	C.WebAuthnRPOrigins = splitList(getEnv("WEBAUTHN_RP_ORIGINS", ""))
+	if len(C.WebAuthnRPOrigins) == 0 && C.WebAuthnRPID != "" {
+		// The overwhelmingly common case is one origin that is simply the RP ID
+		// over TLS. Deriving it means the feature needs one env var, not two,
+		// and the two can't drift apart.
+		C.WebAuthnRPOrigins = []string{"https://" + C.WebAuthnRPID}
+	}
 
 	if err := C.resolveJWTSecret(); err != nil {
 		log.Fatalf("config: %v", err)

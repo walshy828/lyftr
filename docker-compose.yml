@@ -47,6 +47,11 @@ services:
       - REFRESH_EXPIRY=${REFRESH_EXPIRY:-12}
       - MAX_SESSION_DAYS=${MAX_SESSION_DAYS:-90}
       - SESSION_ABSOLUTE_DAYS=${SESSION_ABSOLUTE_DAYS:-180}
+      # Passkey sign-in. Off unless WEBAUTHN_RP_ID is set to the HTTPS hostname
+      # you reach Lyftr at; a bare LAN IP is not a valid RP ID.
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-}
+      - WEBAUTHN_RP_ORIGINS=${WEBAUTHN_RP_ORIGINS:-}
+      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Lyftr}
       # Seeds the demo account (demo@lyftr.local, publicly documented password).
       # Never enable this on an instance holding real data.
       - SEED_DEMO=${SEED_DEMO:-false}

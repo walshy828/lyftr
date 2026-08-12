@@ -327,6 +327,31 @@ CREATE INDEX IF NOT EXISTS idx_device_sessions_expires ON device_sessions(expire
 		log.Fatalf("create device_sessions: %v", err)
 	}
 
+	// Passkeys (WebAuthn). The credential itself is stored as the library's own
+	// JSON rather than exploded into columns: it is an opaque record we only
+	// ever hand back to that library, the shape gains fields between releases,
+	// and nothing in Lyftr has any business querying its internals.
+	//
+	// credential_id is lifted out because it's the lookup key, and user_handle
+	// because a usernameless ("discoverable") login arrives with nothing else
+	// to identify the account by.
+	passkeys := `
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credential_id TEXT     NOT NULL UNIQUE,
+  user_handle   TEXT     NOT NULL,
+  name          TEXT     NOT NULL DEFAULT '',
+  credential    TEXT     NOT NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_used_at  DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON webauthn_credentials(user_id);
+CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_handle ON webauthn_credentials(user_handle);`
+	if _, err := DB.Exec(passkeys); err != nil {
+		log.Fatalf("create webauthn_credentials: %v", err)
+	}
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a

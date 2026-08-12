@@ -89,6 +89,16 @@ CREATE TABLE IF NOT EXISTS user_settings (
   ai_health_insights_opt_in INTEGER NOT NULL DEFAULT 0,
   session_max_days   INTEGER NOT NULL DEFAULT 30
 );
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credential_id TEXT     NOT NULL UNIQUE,
+  user_handle   TEXT     NOT NULL,
+  name          TEXT     NOT NULL DEFAULT '',
+  credential    TEXT     NOT NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_used_at  DATETIME
+);
 CREATE TABLE IF NOT EXISTS device_sessions (
   id           TEXT     PRIMARY KEY,
   user_id      INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,

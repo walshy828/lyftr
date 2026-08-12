@@ -18,6 +18,9 @@ interface AuthStore {
   isLoading: boolean
   error: string | null
   login:     (email: string, password: string, remember?: boolean) => Promise<void>
+  // Establishes a session from a passkey. Separate from login() because there
+  // are no credentials to pass — the ceremony has already happened.
+  adoptSession: (data: types.AuthResponse) => void
   register:  (email: string, password: string, inviteCode?: string) => Promise<void>
   logout:    () => void
   clearError: () => void
@@ -101,6 +104,14 @@ export const useAuthStore = create<AuthStore>((set) => {
         caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)))
       }
       set({ user: null, isAuthenticated: false, error: null })
+    },
+
+    adoptSession: (data) => {
+      localStorage.setItem('access_token', data.token)
+      localStorage.setItem('refresh_token', data.refresh_token)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      requestPersistentStorage()
+      set({ user: data.user, isAuthenticated: true, isLoading: false, error: null })
     },
 
     clearError: () => set({ error: null }),

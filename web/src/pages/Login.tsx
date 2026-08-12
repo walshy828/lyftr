@@ -7,6 +7,7 @@ import { useServerInfo } from '../hooks/useServerInfo'
 import { formatVersion } from '../utils/version'
 import Logo from '../components/Logo'
 import ServerSettings from '../components/ServerSettings'
+import PasskeySignIn from '../components/PasskeySignIn'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -210,24 +211,28 @@ export default function Login() {
               {isLoading ? 'Signing in…' : 'Sign in'}
             </button>
 
-            {/* Divider */}
-            <div className="relative flex items-center my-6">
-              <div className="flex-1 h-px bg-surface-border" />
-              <span className="px-3 text-xs text-tx-muted uppercase tracking-wider">or</span>
-              <div className="flex-1 h-px bg-surface-border" />
-            </div>
+            {/* Passkey sign-in — renders only when the server and browser both support it */}
+            <PasskeySignIn onError={setError} />
 
-            {/* Demo button — dev only */}
+            {/* Demo button — dev only. The divider is scoped with it; on its own
+                it left a stray "or" above nothing in production builds. */}
             {import.meta.env.DEV && (
-              <button
-                type="button"
-                onClick={handleDemoLogin}
-                disabled={isLoading}
-                className="btn-secondary btn-lg w-full flex items-center justify-center gap-2"
-              >
-                <Zap className="w-4 h-4 text-warning-400" />
-                Try demo account
-              </button>
+              <>
+                <div className="relative flex items-center my-6">
+                  <div className="flex-1 h-px bg-surface-border" />
+                  <span className="px-3 text-xs text-tx-muted uppercase tracking-wider">or</span>
+                  <div className="flex-1 h-px bg-surface-border" />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDemoLogin}
+                  disabled={isLoading}
+                  className="btn-secondary btn-lg w-full flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-4 h-4 text-warning-400" />
+                  Try demo account
+                </button>
+              </>
             )}
           </form>
 

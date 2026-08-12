@@ -29,6 +29,18 @@ func (s *UserStore) GetByEmail(email string) (models.User, error) {
 
 // TokenVersion returns the user's current revocation epoch. Auth compares this
 // against the tv claim on every JWT request, so it is the hot path.
+// GetByID loads a user including token_version, for the sign-in paths that
+// identify the account by id rather than email (passkeys). GetMe deliberately
+// omits token_version, and minting a session against a stale one produces a
+// pair that Auth rejects on the next request.
+func (s *UserStore) GetByID(uid int64) (models.User, error) {
+	var u models.User
+	err := s.db.QueryRow(
+		`SELECT id, email, name, token_version, created_at, updated_at FROM users WHERE id = ?`, uid,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.TokenVersion, &u.CreatedAt, &u.UpdatedAt)
+	return u, err
+}
+
 func (s *UserStore) TokenVersion(uid int64) (int64, error) {
 	var v int64
 	err := s.db.QueryRow(`SELECT token_version FROM users WHERE id = ?`, uid).Scan(&v)
