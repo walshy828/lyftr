@@ -24,7 +24,7 @@ services:
       - SETUID
       - SETGID
     environment:
-      # Controls Gin's debug/release mode and demo-data seeding (see backend/config/config.go).
+      # Controls Gin's debug/release mode (see backend/config/config.go).
       # Defaults to production for self-host deployments; override in .env only for local debugging.
       - ENV=${ENV:-production}
       - PORT=3000
@@ -41,6 +41,27 @@ services:
       # then set it back.
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
       - REGISTRATION_INVITE_CODE=${REGISTRATION_INVITE_CODE:-}
+      # Refresh-token lifetime, hours.
+      - REFRESH_EXPIRY=${REFRESH_EXPIRY:-168}
+      # Seeds the demo account (demo@lyftr.local, publicly documented password).
+      # Never enable this on an instance holding real data.
+      - SEED_DEMO=${SEED_DEMO:-false}
+      # Optional AI features. Leave VISION_PROVIDER empty to disable them
+      # entirely, in which case nothing is sent to any provider. Set it to
+      # anthropic/openai/gemini and supply the matching key.
+      - VISION_PROVIDER=${VISION_PROVIDER:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-}
+      # Second food-search source (USDA FoodData Central). Optional.
+      - FDC_API_KEY=${FDC_API_KEY:-}
+      # Sending health data to a third-party LLM. Off unless BOTH this and the
+      # per-user opt-in under Settings > Privacy are set. Separate from
+      # VISION_PROVIDER on purpose — see the README's Privacy section.
+      - AI_HEALTH_INSIGHTS_ENABLED=${AI_HEALTH_INSIGHTS_ENABLED:-false}
     expose:
       - "3000"
     healthcheck:
