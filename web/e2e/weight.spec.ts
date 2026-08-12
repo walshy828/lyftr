@@ -49,7 +49,7 @@ test.describe('Weight', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/weight')
+    await page.goto('/health?tab=weight')
   })
 
   test('page loads with log form and history', async ({ page }) => {

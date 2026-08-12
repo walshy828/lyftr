@@ -200,7 +200,7 @@ func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, err
 	rows, err := s.db.Query(
 		`SELECT substr(logged_at, 1, 10) as d,
 		        COALESCE(SUM(calories),0), COALESCE(SUM(protein),0),
-		        COALESCE(SUM(carbs),0), COALESCE(SUM(fat),0)
+		        COALESCE(SUM(carbs),0), COALESCE(SUM(fat),0), COALESCE(SUM(sodium),0)
 		 FROM food_logs
 		 WHERE user_id = ? AND logged_at >= date('now', ?)
 		 GROUP BY d ORDER BY d ASC`,
@@ -213,7 +213,7 @@ func (s *FoodStore) History(uid int64, days int) ([]models.FoodHistoryPoint, err
 	points := []models.FoodHistoryPoint{}
 	for rows.Next() {
 		var p models.FoodHistoryPoint
-		if err := rows.Scan(&p.Date, &p.Calories, &p.Protein, &p.Carbs, &p.Fat); err != nil {
+		if err := rows.Scan(&p.Date, &p.Calories, &p.Protein, &p.Carbs, &p.Fat, &p.Sodium); err != nil {
 			return nil, err
 		}
 		points = append(points, p)

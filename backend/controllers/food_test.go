@@ -1370,6 +1370,12 @@ type fakeVisionProvider struct {
 	checkinReport vision.ProgressCheckinReport
 	checkinErr    error
 	checkinReq    vision.ProgressCheckinRequest
+
+	bpReport vision.BPInsightReport
+	bpErr    error
+	// bpReq captures what the handler built, so tests can assert the
+	// deterministic figures were threaded through rather than recomputed.
+	bpReq vision.BPInsightRequest
 }
 
 func (f *fakeVisionProvider) GenerateProgram(_ context.Context, req vision.GenerateProgramRequest) ([]vision.DraftProgram, error) {
@@ -1403,6 +1409,14 @@ func (f *fakeVisionProvider) GenerateWeightPlan(_ context.Context, req vision.Ge
 func (f *fakeVisionProvider) GenerateMotivationNote(_ context.Context, req vision.MotivationNoteRequest) (string, error) {
 	f.motivationReq = req
 	return f.motivationNote, f.motivationErr
+}
+
+func (f *fakeVisionProvider) GenerateBPInsight(_ context.Context, req vision.BPInsightRequest) (vision.BPInsightReport, error) {
+	f.bpReq = req
+	if f.bpErr != nil {
+		return vision.BPInsightReport{}, f.bpErr
+	}
+	return f.bpReport, nil
 }
 
 func (f *fakeVisionProvider) GenerateProgressCheckin(_ context.Context, req vision.ProgressCheckinRequest) (vision.ProgressCheckinReport, error) {

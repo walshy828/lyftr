@@ -116,6 +116,7 @@ func DemoData(db *sql.DB) {
 		log.Printf("seed: workouts: %v", err)
 	}
 	seedWeightLogs(db, userID)
+	seedBloodPressureLogs(db, userID)
 	seedFoodLogs(db, userID)
 	log.Println("seed: demo data complete")
 }
@@ -315,6 +316,56 @@ func seedFoodLogs(db *sql.DB, userID int64) {
 				userID, m.name, m.meal, m.calories, m.protein, m.carbs, m.fat,
 				loggedAt.Format("2006-01-02T15:04:05Z"),
 			)
+		}
+	}
+}
+
+// seedBloodPressureLogs writes ~90 days of readings that make the feature
+// demoable: a morning-and-evening habit, two readings a minute apart on most
+// occasions (so session grouping visibly does something), and a drift from
+// stage 1 down toward normal that mirrors the weight trend — which is exactly
+// the association the AI insight is built to notice.
+func seedBloodPressureLogs(db *sql.DB, userID int64) {
+	rng := rand.New(rand.NewSource(1701))
+	now := time.Now()
+	startSys, endSys := 138.0, 124.0
+	startDia, endDia := 88.0, 79.0
+
+	insert := func(day time.Time, hour, minute int, sys, dia, pulse int, context string, rested bool) {
+		at := time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, time.UTC)
+		db.Exec(
+			`INSERT INTO blood_pressure_logs
+			 (user_id, systolic, diastolic, pulse, context, arm, position, rested, tz_offset, logged_at)
+			 VALUES (?, ?, ?, ?, ?, 'left', 'seated', ?, 0, ?)`,
+			userID, sys, dia, pulse, context, rested, at.Format("2006-01-02T15:04:05Z"),
+		)
+	}
+
+	for d := 89; d >= 0; d-- {
+		// Skip ~30% of days — a realistic home-monitoring habit, and enough
+		// gaps that the capture-protocol nudges have something to say.
+		if rng.Intn(100) < 30 {
+			continue
+		}
+		day := now.AddDate(0, 0, -d)
+		progress := float64(89-d) / 89.0
+		sysBase := startSys + (endSys-startSys)*progress
+		diaBase := startDia + (endDia-startDia)*progress
+
+		// Morning occasion: usually two readings a minute apart.
+		sys := int(sysBase + rng.Float64()*8 - 4)
+		dia := int(diaBase + rng.Float64()*6 - 3)
+		insert(day, 7, 15, sys, dia, 62+rng.Intn(8), "morning", true)
+		if rng.Intn(100) < 70 {
+			insert(day, 7, 16, sys-1-rng.Intn(3), dia-rng.Intn(3), 60+rng.Intn(8), "morning", true)
+		}
+
+		// Evening occasion on about half of days, running a little higher.
+		if rng.Intn(100) < 55 {
+			insert(day, 20, 30,
+				int(sysBase+3+rng.Float64()*8-4),
+				int(diaBase+2+rng.Float64()*6-3),
+				66+rng.Intn(10), "evening", true)
 		}
 	}
 }

@@ -83,6 +83,22 @@ export const ZONE_COLORS = {
   obese: '#ef4444',
 } as const
 
+// ── Blood pressure ─────────────────────────────────────────────────────
+// Both series share one Y axis deliberately: a second axis would let the lines
+// cross and imply a relationship between systolic and diastolic that isn't there.
+export const BP_SYS_COLOR = '#6366f1' // indigo, same role as ACTUAL_COLOR
+export const BP_DIA_COLOR = '#0891b2' // cyan — distinguishable from indigo in both themes
+
+// ACC/AHA category bands, drawn behind the series against the systolic scale.
+export const BP_ZONE_COLORS = {
+  low: '#0ea5e9',
+  normal: '#10b981',
+  elevated: '#f59e0b',
+  stage1: '#f97316',
+  stage2: '#ef4444',
+  crisis: '#b91c1c',
+} as const
+
 // ── Muscle group donut colors ──────────────────────────────────────────
 const MUSCLE_HEX: Record<string, string> = {
   chest: '#f87171', back: '#60a5fa', shoulders: '#818cf8', biceps: '#f472b6',

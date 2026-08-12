@@ -125,6 +125,135 @@ export interface LogBloodPressureRequest {
   logged_at?: string
 }
 
+/** One rolling window of daily averages (7 / 30 / 90 days). */
+export interface BPWindow {
+  days: number
+  avg_systolic: number
+  avg_diastolic: number
+  avg_pulse?: number
+  /** Empty string when the window has no data — never a false 'normal'. */
+  category: BPCategory | ''
+  readings: number
+  sessions: number
+  days_with_data: number
+  max_systolic: number
+  max_diastolic: number
+  worst_category: BPCategory | ''
+  sys_std_dev: number
+}
+
+/** One local calendar day, averaged across its measurement occasions. */
+export interface BPDay {
+  day: string
+  systolic: number
+  diastolic: number
+  pulse?: number
+  sessions: number
+  readings: number
+  category: BPCategory
+  morning: boolean
+  evening: boolean
+}
+
+export interface BPTrend {
+  sys_per_30d: number
+  dia_per_30d: number
+  /** Empty string when there isn't enough data to fit a slope. */
+  label: 'improving' | 'stable' | 'worsening' | ''
+  points: number
+}
+
+export interface BPNudge {
+  key: string
+  title: string
+  detail: string
+  severity: 'info' | 'warn' | 'urgent'
+}
+
+export interface BPStats {
+  latest: BloodPressureLog | null
+  windows: BPWindow[]
+  daily: BPDay[]
+  trend: BPTrend
+  nudges: BPNudge[]
+  total_readings: number
+  lookback_days: number
+}
+
+export interface BPContributor {
+  factor: string
+  direction: 'helping' | 'hurting' | 'unclear'
+  evidence: string
+  strength: 'strong' | 'moderate' | 'weak'
+}
+
+export interface BPActionStep {
+  title: string
+  detail: string
+  why_it_works: string
+  effort: 'easy' | 'moderate' | 'hard'
+  horizon: 'this week' | 'this month' | 'ongoing'
+}
+
+export interface BPInsightReport {
+  headline: string
+  where_you_stand: string
+  trend_reading: string
+  contributors: BPContributor[]
+  action_plan: BPActionStep[]
+  measurement_tips: { title: string; detail: string }[]
+  /** Empty unless something genuinely warrants escalation. */
+  see_a_doctor: string
+  outlook: string
+}
+
+export interface BPInsightFacts {
+  generated_at: string
+  latest?: BloodPressureLog
+  windows: BPWindow[]
+  daily: BPDay[]
+  category: BPCategory | ''
+  worst_category: BPCategory | ''
+  trend_label: string
+  sys_per_30d: number
+  dia_per_30d: number
+  nudges: BPNudge[]
+  weight: {
+    current_lbs: number
+    change_30d_lbs: number
+    change_90d_lbs: number
+    bmi_category: string
+    entries: number
+  }
+  training: { workout_days_30: number; workout_days_90: number }
+  nutrition: { avg_sodium_mg: number; sodium_target_mg: number; days_logged_30: number }
+  bmi: number
+  other_metrics?: MetricSummary[]
+}
+
+export interface BPInsight {
+  id: number
+  created_at: string
+  facts: BPInsightFacts | null
+  /** Null when no AI provider was configured, or the call failed. */
+  report: BPInsightReport | null
+}
+
+/** Uniform card-level readout of any tracked health metric. */
+export interface MetricSummary {
+  key: string
+  label: string
+  value: string
+  unit: string
+  category: string
+  tone: 'good' | 'watch' | 'bad' | 'neutral'
+  change: number
+  change_window_days: number
+  lower_is_better: boolean
+  last_logged_at: string
+  readings: number
+}
+
 export interface FoodLog {
   id: number
   user_id?: number

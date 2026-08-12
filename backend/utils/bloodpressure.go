@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/models"
@@ -641,4 +642,17 @@ func EvaluateBPProtocol(days []BPDay, sessions []BPSession, now time.Time) []BPN
 	}
 
 	return out
+}
+
+// FormatBPPair writes an averaged reading the conventional way. Rounding
+// happens here, once, so the printed figure always matches the category
+// computed from the same rounded values.
+func FormatBPPair(sys, dia float64) string {
+	return fmt.Sprintf("%.0f/%.0f", math.Round(sys), math.Round(dia))
+}
+
+// FormatFloat renders a value with a fixed number of decimals, for the
+// preformatted MetricSummary.Value field.
+func FormatFloat(v float64, decimals int) string {
+	return strconv.FormatFloat(v, 'f', decimals, 64)
 }

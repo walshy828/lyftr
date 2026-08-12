@@ -351,3 +351,47 @@ func (p *anthropicProvider) RecommendMeals(ctx context.Context, req RecommendReq
 	}
 	return out.Recommendations, nil
 }
+
+func (p *anthropicProvider) GenerateBPInsight(ctx context.Context, req BPInsightRequest) (BPInsightReport, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model: p.model,
+		// Two assessments, a contributor table, an action plan, measurement
+		// tips and an outlook — comparable in size to the progress check-in.
+		MaxTokens: 3072,
+		OutputConfig: anthropic.OutputConfigParam{
+			// Medium, like the check-in: this call has to reason across four
+			// separate data streams (pressure, weight, training, sodium) and
+			// judge which links the data actually supports, rather than
+			// reformatting numbers it was handed.
+			Effort: anthropic.OutputConfigEffortMedium,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: bpInsightJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(bpInsightPrompt(req)),
+			),
+		},
+	})
+	if err != nil {
+		return BPInsightReport{}, fmt.Errorf("anthropic bp insight call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return BPInsightReport{}, fmt.Errorf("anthropic bp insight call: no text content in response")
+	}
+
+	var out BPInsightReport
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return BPInsightReport{}, fmt.Errorf("anthropic bp insight call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}

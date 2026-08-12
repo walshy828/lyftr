@@ -221,7 +221,16 @@ CREATE TABLE IF NOT EXISTS blood_pressure_logs (
   logged_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_bp_logs_user ON blood_pressure_logs(user_id, logged_at DESC);`); err != nil {
+CREATE INDEX IF NOT EXISTS idx_bp_logs_user ON blood_pressure_logs(user_id, logged_at DESC);
+
+CREATE TABLE IF NOT EXISTS bp_insights (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  facts      TEXT     NOT NULL,
+  report     TEXT     NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bp_insights_user ON bp_insights(user_id, created_at DESC);`); err != nil {
 		log.Fatalf("create blood_pressure_logs: %v", err)
 	}
 
@@ -394,6 +403,15 @@ CREATE TABLE IF NOT EXISTS blood_pressure_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bp_logs_user ON blood_pressure_logs(user_id, logged_at DESC);
+
+CREATE TABLE IF NOT EXISTS bp_insights (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  facts      TEXT     NOT NULL,
+  report     TEXT     NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bp_insights_user ON bp_insights(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS food_logs (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,

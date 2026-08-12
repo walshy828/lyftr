@@ -299,3 +299,33 @@ func (p *openAIProvider) RecommendMeals(ctx context.Context, req RecommendReques
 	}
 	return out.Recommendations, nil
 }
+
+func (p *openAIProvider) GenerateBPInsight(ctx context.Context, req BPInsightRequest) (BPInsightReport, error) {
+	resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: p.model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(bpInsightPrompt(req)),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+				JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:   "bp_insight",
+					Schema: bpInsightJSONSchema(),
+					Strict: openai.Bool(true),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return BPInsightReport{}, fmt.Errorf("openai bp insight call: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return BPInsightReport{}, fmt.Errorf("openai bp insight call: no choices in response")
+	}
+
+	var out BPInsightReport
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &out); err != nil {
+		return BPInsightReport{}, fmt.Errorf("openai bp insight call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}

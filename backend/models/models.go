@@ -163,6 +163,152 @@ type LogBloodPressureRequest struct {
 	LoggedAt  time.Time `json:"logged_at"`
 }
 
+// BPInsightFacts is the deterministic picture handed to the AI and stored
+// alongside whatever it wrote. Persisting the facts separately means a report
+// can always be shown next to the numbers it was actually based on, even after
+// those numbers have moved on.
+type BPInsightFacts struct {
+	GeneratedAt time.Time `json:"generated_at"`
+
+	Latest        *BloodPressureLog `json:"latest,omitempty"`
+	Windows       []BPWindowFacts   `json:"windows"`
+	Daily         []BPDayFacts      `json:"daily"`
+	Category      string            `json:"category"`
+	WorstCategory string            `json:"worst_category"`
+	TrendLabel    string            `json:"trend_label"`
+	SysPer30d     float64           `json:"sys_per_30d"`
+	DiaPer30d     float64           `json:"dia_per_30d"`
+	Nudges        []BPNudgeFacts    `json:"nudges"`
+
+	Weight    BPWeightContext    `json:"weight"`
+	Training  BPTrainingContext  `json:"training"`
+	Nutrition BPNutritionContext `json:"nutrition"`
+	Profile   UserProfile        `json:"profile"`
+	BMI       float64            `json:"bmi"`
+
+	// OtherMetrics is the extensibility slot: a future resting-HR or waist
+	// metric appears here and flows into the model's contributing-factor
+	// reasoning with no prompt or schema change.
+	OtherMetrics []MetricSummary `json:"other_metrics,omitempty"`
+}
+
+// These mirror the utils.BP* analytics types. They are redeclared here rather
+// than imported because models must not depend on utils — the same reason the
+// vision package has its own copies of the report types.
+type BPWindowFacts struct {
+	Days          int     `json:"days"`
+	AvgSystolic   float64 `json:"avg_systolic"`
+	AvgDiastolic  float64 `json:"avg_diastolic"`
+	AvgPulse      float64 `json:"avg_pulse,omitempty"`
+	Category      string  `json:"category"`
+	Readings      int     `json:"readings"`
+	Sessions      int     `json:"sessions"`
+	DaysWithData  int     `json:"days_with_data"`
+	MaxSystolic   int     `json:"max_systolic"`
+	MaxDiastolic  int     `json:"max_diastolic"`
+	WorstCategory string  `json:"worst_category"`
+	SysStdDev     float64 `json:"sys_std_dev"`
+}
+
+type BPDayFacts struct {
+	Day       string  `json:"day"`
+	Systolic  float64 `json:"systolic"`
+	Diastolic float64 `json:"diastolic"`
+	Pulse     float64 `json:"pulse,omitempty"`
+	Sessions  int     `json:"sessions"`
+	Readings  int     `json:"readings"`
+	Category  string  `json:"category"`
+	Morning   bool    `json:"morning"`
+	Evening   bool    `json:"evening"`
+}
+
+type BPNudgeFacts struct {
+	Key      string `json:"key"`
+	Title    string `json:"title"`
+	Detail   string `json:"detail"`
+	Severity string `json:"severity"`
+}
+
+type BPWeightContext struct {
+	CurrentLbs   float64 `json:"current_lbs"`
+	Change30dLbs float64 `json:"change_30d_lbs"`
+	Change90dLbs float64 `json:"change_90d_lbs"`
+	BMICategory  string  `json:"bmi_category"`
+	Entries      int     `json:"entries"`
+}
+
+type BPTrainingContext struct {
+	WorkoutDays30 int `json:"workout_days_30"`
+	WorkoutDays90 int `json:"workout_days_90"`
+}
+
+type BPNutritionContext struct {
+	AvgSodiumMg    float64 `json:"avg_sodium_mg"`
+	SodiumTargetMg int     `json:"sodium_target_mg"`
+	DaysLogged30   int     `json:"days_logged_30"`
+}
+
+// BPContributor / BPActionStep / BPInsightReport mirror the vision package's
+// shapes; compile-time assertions in controllers/bp_insight.go keep them in
+// step, so a field added on one side fails the build rather than silently
+// dropping out of the stored report.
+type BPContributor struct {
+	Factor    string `json:"factor"`
+	Direction string `json:"direction"`
+	Evidence  string `json:"evidence"`
+	Strength  string `json:"strength"`
+}
+
+type BPActionStep struct {
+	Title      string `json:"title"`
+	Detail     string `json:"detail"`
+	WhyItWorks string `json:"why_it_works"`
+	Effort     string `json:"effort"`
+	Horizon    string `json:"horizon"`
+}
+
+type BPInsightReport struct {
+	Headline        string          `json:"headline"`
+	WhereYouStand   string          `json:"where_you_stand"`
+	TrendReading    string          `json:"trend_reading"`
+	Contributors    []BPContributor `json:"contributors"`
+	ActionPlan      []BPActionStep  `json:"action_plan"`
+	MeasurementTips []CheckinPoint  `json:"measurement_tips"`
+	SeeADoctor      string          `json:"see_a_doctor"`
+	Outlook         string          `json:"outlook"`
+}
+
+// BPInsight is one stored run. Facts are always present; Report is nil when no
+// AI provider was configured or the call failed — the page renders every fact
+// either way.
+type BPInsight struct {
+	ID         int64     `json:"id" db:"id"`
+	UserID     int64     `json:"user_id" db:"user_id"`
+	FactsJSON  string    `json:"-" db:"facts"`
+	ReportJSON string    `json:"-" db:"report"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+
+	Facts  *BPInsightFacts  `json:"facts" db:"-"`
+	Report *BPInsightReport `json:"report" db:"-"`
+}
+
+// MetricSummary is the uniform card-level readout of any tracked health metric.
+// Every metric store returns one, so the health hub and the BP insight's
+// context can both take a new metric without layout or prompt changes.
+type MetricSummary struct {
+	Key           string    `json:"key"` // "weight" | "blood_pressure" | ...
+	Label         string    `json:"label"`
+	Value         string    `json:"value"` // preformatted: "128/82", "184.2"
+	Unit          string    `json:"unit"`
+	Category      string    `json:"category"` // "" when the metric has no categories
+	Tone          string    `json:"tone"`     // "good" | "watch" | "bad" | "neutral"
+	Change        float64   `json:"change"`
+	ChangeDays    int       `json:"change_window_days"`
+	LowerIsBetter bool      `json:"lower_is_better"`
+	LastLoggedAt  time.Time `json:"last_logged_at"`
+	Readings      int       `json:"readings"`
+}
+
 type FoodLog struct {
 	ID          int64   `json:"id" db:"id"`
 	UserID      int64   `json:"user_id" db:"user_id"`
@@ -254,6 +400,9 @@ type FoodHistoryPoint struct {
 	Protein  float64 `json:"protein"`
 	Carbs    float64 `json:"carbs"`
 	Fat      float64 `json:"fat"`
+	// Sodium (mg) is carried here for the blood-pressure insight: it is the
+	// strongest dietary lever on blood pressure the app already records.
+	Sodium float64 `json:"sodium"`
 }
 
 // Request/Response types

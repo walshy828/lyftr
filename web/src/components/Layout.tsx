@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Home, Dumbbell, Apple, Scale, BookOpen,
+  Home, Dumbbell, Apple, HeartPulse, BookOpen,
   LogOut, Moon, Sun, User,
   Shield, Timer, ChevronRight,
 } from 'lucide-react'
@@ -21,7 +21,7 @@ const NAV = [
   { path: '/workouts',  label: 'Workouts', icon: Dumbbell },
   { path: '/programs',  label: 'Programs', icon: BookOpen },
   { path: '/food',      label: 'Food',     icon: Apple },
-  { path: '/weight',    label: 'Weight',   icon: Scale },
+  { path: '/health',    label: 'Health',   icon: HeartPulse },
 ]
 
 function formatElapsed(seconds: number) {

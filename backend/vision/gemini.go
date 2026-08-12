@@ -356,3 +356,39 @@ func (p *geminiProvider) RecommendMeals(ctx context.Context, req RecommendReques
 	}
 	return out.Recommendations, nil
 }
+
+func (p *geminiProvider) GenerateBPInsight(ctx context.Context, req BPInsightRequest) (BPInsightReport, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return BPInsightReport{}, fmt.Errorf("gemini client: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromText(bpInsightPrompt(req)),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: bpInsightJSONSchema(),
+		},
+	)
+	if err != nil {
+		return BPInsightReport{}, fmt.Errorf("gemini bp insight call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return BPInsightReport{}, fmt.Errorf("gemini bp insight call: empty response text")
+	}
+
+	var out BPInsightReport
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return BPInsightReport{}, fmt.Errorf("gemini bp insight call: unmarshal structured output: %w", err)
+	}
+	return out, nil
+}

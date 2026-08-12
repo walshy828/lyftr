@@ -88,9 +88,16 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("blood-pressure", h.ListBloodPressureLogs)
 		protected.POST("blood-pressure", h.LogBloodPressure)
 		protected.GET("blood-pressure/stats", h.GetBloodPressureStats)
+		// Insight: POST generates (a slow, user-triggered AI call), GET only
+		// reads the last stored one — reading must never generate.
+		protected.POST("blood-pressure/insight", h.RunBPInsight)
+		protected.GET("blood-pressure/insight", h.GetLatestBPInsight)
 		protected.GET("blood-pressure/:id", h.GetBloodPressureLog)
 		protected.PATCH("blood-pressure/:id", h.UpdateBloodPressureLog)
 		protected.DELETE("blood-pressure/:id", h.DeleteBloodPressureLog)
+
+		// Cross-metric hub summary — the seam a future metric plugs into.
+		protected.GET("health/summary", h.GetHealthSummary)
 
 		// Food — named sub-paths must be registered before food/:id
 		protected.GET("food", h.ListFoodLogs)

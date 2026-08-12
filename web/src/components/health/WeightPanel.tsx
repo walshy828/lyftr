@@ -2,18 +2,16 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { TrendingDown, TrendingUp, Minus, Plus, Calendar, Sunrise, AlertCircle, ChevronRight, Scale, Activity, ArrowDown, ArrowUp, X, Sparkles } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { Link } from 'react-router-dom'
-import { HelpTip } from '../components/Tooltip'
-import Loading from '../components/Loading'
-import PageHeader from '../components/ui/PageHeader'
-import DateInput from '../components/ui/DateInput'
-import PeriodSelector from '../components/PeriodSelector'
-import WeightInput from '../components/WeightInput'
-import BPQuickCard from '../components/health/BPQuickCard'
-import { useServerInfiniteList } from '../hooks/useServerInfiniteList'
-import { todayStr, dayToIsoNoon, isoToDayInput } from '../utils/dateUtils'
-import { weightAPI } from '../services/api'
-import { useSettingsStore, weightShort, lbsToDisplay, displayToLbs, displayWeight, round1 , weightError, maxWeight } from '../stores/settings'
-import * as types from '../types'
+import { HelpTip } from '../Tooltip'
+import Loading from '../Loading'
+import DateInput from '../ui/DateInput'
+import PeriodSelector from '../PeriodSelector'
+import WeightInput from '../WeightInput'
+import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
+import { todayStr, dayToIsoNoon, isoToDayInput } from '../../utils/dateUtils'
+import { weightAPI } from '../../services/api'
+import { useSettingsStore, weightShort, lbsToDisplay, displayToLbs, displayWeight, round1 , weightError, maxWeight } from '../../stores/settings'
+import * as types from '../../types'
 
 const PERIODS = ['7d', '30d', '90d', 'All'] as const
 type Period = typeof PERIODS[number]
@@ -206,7 +204,7 @@ function TrendChart({ points, wUnit }: { points: ChartPoint[]; wUnit: string }) 
   )
 }
 
-export default function Weight() {
+export default function WeightPanel() {
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
   const [period, setPeriod] = useState<Period>('30d')
@@ -352,13 +350,7 @@ export default function Weight() {
   const changeWord = change === 0 ? 'no change' : change < 0 ? 'lost' : 'gained'
 
   return (
-    <div className="space-y-5 animate-slide-up">
-      <PageHeader
-        title="Weight"
-        subtitle="Track your body weight over time"
-        action={<span className="badge-brand"><Calendar className="w-3 h-3" /> {wUnit}</span>}
-      />
-
+    <div className="space-y-5">
       {error && (
         <div className="alert-error" role="alert" aria-live="polite">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
@@ -598,10 +590,6 @@ export default function Weight() {
           )}
         </>
       )}
-
-      {/* Blood pressure capture. Temporary home: this card moves to the
-          /health hub's BP panel once that page exists. */}
-      <BPQuickCard />
     </div>
   )
 }

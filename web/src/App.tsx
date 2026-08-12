@@ -25,9 +25,10 @@ const WorkoutDetail = lazy(() => import('./pages/WorkoutDetail'))
 const ProgramDetail = lazy(() => import('./pages/ProgramDetail'))
 const Food = lazy(() => import('./pages/Food'))
 const LogFood = lazy(() => import('./pages/LogFood'))
-const Weight = lazy(() => import('./pages/Weight'))
+const Health = lazy(() => import('./pages/Health'))
 const WeightDetail = lazy(() => import('./pages/WeightDetail'))
 const WeightPlan = lazy(() => import('./pages/WeightPlan'))
+const BPInsight = lazy(() => import('./pages/BPInsight'))
 const PlanCheckin = lazy(() => import('./pages/PlanCheckin'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Tokens = lazy(() => import('./pages/Tokens'))
@@ -74,7 +75,11 @@ function App() {
             <Route path="/exercises/:exerciseId" element={<ExerciseDetail />} />
             <Route path="/food" element={<Food />} />
             <Route path="/food/log" element={<LogFood />} />
-            <Route path="/weight" element={<Weight />} />
+            <Route path="/health" element={<Health />} />
+            {/* Before /health/:something — keep the AI report reachable. */}
+            <Route path="/health/bp/insight" element={<BPInsight />} />
+            {/* Weight moved into the health hub; keep old links working. */}
+            <Route path="/weight" element={<Navigate to="/health?tab=weight" replace />} />
             <Route path="/weight/plan" element={<WeightPlan />} />
             {/* Before /weight/:id — the wildcard would otherwise swallow it. */}
             <Route path="/weight/checkin" element={<PlanCheckin />} />

@@ -18,6 +18,7 @@ func Register(server *mcp.Server, c *client.Client) {
 	registerUser(server, c)
 	registerWorkouts(server, c)
 	registerWeight(server, c)
+	registerBloodPressure(server, c)
 	registerFood(server, c)
 	registerExercises(server, c)
 	registerPrograms(server, c)

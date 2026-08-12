@@ -16,6 +16,7 @@ type Stores struct {
 	ActiveSession *ActiveSessionStore
 	Weight        *WeightStore
 	BloodPressure *BloodPressureStore
+	BPInsight     *BPInsightStore
 	Food          *FoodStore
 	User          *UserStore
 	Exercise      *ExerciseStore
@@ -33,6 +34,7 @@ func New(db *sql.DB) *Stores {
 		ActiveSession: NewActiveSessionStore(db),
 		Weight:        NewWeightStore(db),
 		BloodPressure: NewBloodPressureStore(db),
+		BPInsight:     NewBPInsightStore(db),
 		Food:          NewFoodStore(db),
 		User:          NewUserStore(db),
 		Exercise:      NewExerciseStore(db),

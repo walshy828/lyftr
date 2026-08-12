@@ -380,6 +380,16 @@ type Provider interface {
 	// unmodified: it is what constrains those numbers to honest ranges. This
 	// is user-triggered and slow — callers must not invoke it on page load.
 	GenerateProgressCheckin(ctx context.Context, req ProgressCheckinRequest) (ProgressCheckinReport, error)
+
+	// GenerateBPInsight interprets a precomputed blood-pressure picture: where
+	// the user's averages fall against the ACC/AHA categories, whether the
+	// direction of travel is good, which of their own logged behaviours
+	// (weight change, training frequency, sodium intake) plausibly bear on it,
+	// a concrete plan when averages are out of range, and how to measure
+	// better. Every threshold in req is already decided by the app — the model
+	// interprets and must never state a different category. Slow and
+	// user-triggered; callers must not invoke it on page load.
+	GenerateBPInsight(ctx context.Context, req BPInsightRequest) (BPInsightReport, error)
 }
 
 // Config carries the selected provider, all three providers' API keys — only
@@ -944,6 +954,210 @@ func nutritionJSONSchema() map[string]any {
 			"serving_size": map[string]any{"type": "string"},
 		},
 		"required":             []string{"calories", "protein", "carbs", "fat"},
+		"additionalProperties": false,
+	}
+}
+
+// --- Blood pressure insight (#bloodPressure) ---------------------------------
+
+// BPInsightRequest carries the fully-computed blood-pressure picture. Every
+// threshold decision — the ACC/AHA category, the trend label, the capture
+// nudges — has already been made deterministically in Go, so the model's job is
+// interpretation only. It must never re-derive or contradict a category.
+type BPInsightRequest struct {
+	CurrentDate string
+	Sex         string
+	Age         int
+
+	Avg7Sys, Avg7Dia   float64
+	Avg30Sys, Avg30Dia float64
+	Avg90Sys, Avg90Dia float64
+	// Category is computed from the 30-day average, and is the label the user
+	// is looking at while they read this report.
+	Category      string
+	CategoryLabel string
+	WorstCategory string
+	TrendLabel    string
+	SysPer30d     float64
+	DiaPer30d     float64
+
+	ReadingsLast30     int
+	DaysMeasuredLast30 int
+	SysStdDev30        float64
+
+	// Contributing-factor evidence, all from the user's own logs.
+	CurrentWeightLbs   float64
+	WeightChange30dLbs float64
+	WeightChange90dLbs float64
+	BMICategory        string
+	WorkoutDaysLast30  int
+	AvgSodiumMg        float64
+	SodiumTargetMg     int
+	DaysFoodLogged30   int
+
+	FactsJSON string
+}
+
+// BPContributor is one factor the model believes bears on the readings, with
+// the figure from the user's own data that supports it.
+type BPContributor struct {
+	Factor    string `json:"factor"`
+	Direction string `json:"direction"` // "helping" | "hurting" | "unclear"
+	Evidence  string `json:"evidence"`
+	Strength  string `json:"strength"` // "strong" | "moderate" | "weak"
+}
+
+// BPActionStep is one concrete thing to do about an out-of-range average.
+type BPActionStep struct {
+	Title      string `json:"title"`
+	Detail     string `json:"detail"`
+	WhyItWorks string `json:"why_it_works"`
+	Effort     string `json:"effort"`  // "easy" | "moderate" | "hard"
+	Horizon    string `json:"horizon"` // "this week" | "this month" | "ongoing"
+}
+
+// BPInsightReport is the written half of the blood-pressure page. Every field
+// is optional at render time — the page shows all its computed facts with or
+// without this.
+type BPInsightReport struct {
+	Headline        string          `json:"headline"`
+	WhereYouStand   string          `json:"where_you_stand"`
+	TrendReading    string          `json:"trend_reading"`
+	Contributors    []BPContributor `json:"contributors"`
+	ActionPlan      []BPActionStep  `json:"action_plan"`
+	MeasurementTips []CheckinPoint  `json:"measurement_tips"`
+	// SeeADoctor is empty unless something genuinely warrants escalation. It's a
+	// dedicated field rather than a sentence buried in prose so the escalation
+	// has a fixed, prominent slot the UI can always find.
+	SeeADoctor string `json:"see_a_doctor"`
+	Outlook    string `json:"outlook"`
+}
+
+// bpInsightPrompt builds the shared GenerateBPInsight prompt.
+//
+// The fencing here matters more than in most prompts. Blood pressure is the one
+// place in this app where a confidently-worded wrong sentence could lead
+// someone to do something harmful, so the prompt: (1) hands the model the
+// app-computed category and forbids restating a different one, (2) requires
+// every claimed contributing factor to cite a figure from the user's own data,
+// (3) bars diagnosis and any mention of medication, and (4) reserves a single
+// dedicated field for "talk to a doctor" so escalation can't get lost in prose.
+func bpInsightPrompt(req BPInsightRequest) string {
+	demographics := "unknown age and sex"
+	if req.Age > 0 && req.Sex != "" {
+		demographics = fmt.Sprintf("%d-year-old %s", req.Age, req.Sex)
+	}
+	// A zero average means sodium wasn't recorded, not that they ate none —
+	// plenty of food entries carry no sodium figure at all. Reporting it as
+	// "0 mg" would hand the model a false fact it is explicitly told to trust.
+	sodium := "not enough sodium data logged to judge their intake — do not speculate about it"
+	if req.DaysFoodLogged30 >= 5 && req.AvgSodiumMg > 0 {
+		sodium = fmt.Sprintf("averaging %.0f mg sodium on the %d days they logged food (their target is %d mg)",
+			req.AvgSodiumMg, req.DaysFoodLogged30, req.SodiumTargetMg)
+	}
+
+	return fmt.Sprintf(`You are reviewing a person's home blood-pressure readings alongside the rest of their health log. Today is %s. They are a %s.
+
+THE APP HAS ALREADY DECIDED THESE. Do not recompute or contradict them:
+- Their 30-day average is %.0f/%.0f mmHg, which the app classifies as "%s" using the ACC/AHA 2017 thresholds. Use that classification exactly.
+- Their 7-day average is %.0f/%.0f and their 90-day average is %.0f/%.0f.
+- The worst single measurement occasion in the window classified as "%s".
+- The fitted trend is "%s": systolic %+.1f mmHg and diastolic %+.1f mmHg per 30 days.
+- They measured on %d of the last 30 days, %d readings total, with a day-to-day systolic spread of %.1f mmHg.
+
+THEIR OTHER LOGGED DATA:
+- Currently %.1f lbs, %+.1f lbs over 30 days and %+.1f lbs over 90 days. BMI category: %s.
+- Trained on %d of the last 30 days.
+- %s
+
+Write the review as JSON matching the schema. Requirements:
+
+1. where_you_stand: explain in plain language what a %.0f/%.0f average means, using the app's classification. Two or three sentences.
+
+2. trend_reading: whether the direction of travel is good, and over what span. If the trend is "stable", say so plainly rather than inventing movement.
+
+3. contributors: 2 to 4 factors that plausibly bear on these readings. Every one MUST cite a specific figure from the data above or the JSON below. If the data does not support a link, mark direction "unclear" and say why. Phrase these as association, never causation — "your average fell over the same period you lost 9 lbs", not "losing weight lowered your blood pressure". One person's log cannot establish cause.
+
+4. action_plan: 2 to 5 concrete steps, most impactful first. If the 30-day average is Elevated or worse, at least one step must directly target lowering it. Stay strictly inside the levers this app tracks: sodium, body weight, aerobic activity, alcohol, sleep, stress. NEVER suggest starting, stopping, changing, or timing any medication.
+
+5. measurement_tips: 2 to 4 tips on when and how to measure. Prioritise the gaps in the nudges array of the JSON below. Draw on standard guidance: five minutes seated rest, feet flat, back supported, arm at heart level, no caffeine/exercise/smoking for 30 minutes beforehand, two readings a minute apart, the same arm each time, morning and evening.
+
+6. see_a_doctor: if the worst category is "crisis", OPEN by stating that a reading above 180/120 warrants prompt medical attention and this app is no substitute for it. If any average is in the Stage 2 range, recommend discussing these readings with a clinician. Otherwise leave this an empty string.
+
+7. outlook: one short paragraph on what to expect if they keep doing what they are doing.
+
+HARD RULES:
+- Never diagnose. Hypertension is diagnosed by a clinician from repeated in-office measurements; you are describing the category these home readings fall into, which is not the same thing.
+- Never mention medication in any form.
+- Never give a cardiovascular risk percentage, life-expectancy claim, or invented citation.
+- Never invent a number. Every figure you state must appear in the data above or the JSON below.
+- Plain prose, no markdown, no bullet characters. Speak to them as "you".
+
+FULL DATA:
+%s`,
+		req.CurrentDate, demographics,
+		req.Avg30Sys, req.Avg30Dia, req.CategoryLabel,
+		req.Avg7Sys, req.Avg7Dia, req.Avg90Sys, req.Avg90Dia,
+		req.WorstCategory,
+		req.TrendLabel, req.SysPer30d, req.DiaPer30d,
+		req.DaysMeasuredLast30, req.ReadingsLast30, req.SysStdDev30,
+		req.CurrentWeightLbs, req.WeightChange30dLbs, req.WeightChange90dLbs, req.BMICategory,
+		req.WorkoutDaysLast30,
+		sodium,
+		req.Avg30Sys, req.Avg30Dia,
+		req.FactsJSON,
+	)
+}
+
+// bpInsightJSONSchema is the structured-output schema every provider's
+// GenerateBPInsight request targets.
+func bpInsightJSONSchema() map[string]any {
+	contributorSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"factor":    map[string]any{"type": "string"},
+			"direction": map[string]any{"type": "string", "enum": []string{"helping", "hurting", "unclear"}},
+			"evidence":  map[string]any{"type": "string"},
+			"strength":  map[string]any{"type": "string", "enum": []string{"strong", "moderate", "weak"}},
+		},
+		"required":             []string{"factor", "direction", "evidence", "strength"},
+		"additionalProperties": false,
+	}
+	actionSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"title":        map[string]any{"type": "string"},
+			"detail":       map[string]any{"type": "string"},
+			"why_it_works": map[string]any{"type": "string"},
+			"effort":       map[string]any{"type": "string", "enum": []string{"easy", "moderate", "hard"}},
+			"horizon":      map[string]any{"type": "string", "enum": []string{"this week", "this month", "ongoing"}},
+		},
+		"required":             []string{"title", "detail", "why_it_works", "effort", "horizon"},
+		"additionalProperties": false,
+	}
+	tipSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"title":  map[string]any{"type": "string"},
+			"detail": map[string]any{"type": "string"},
+		},
+		"required":             []string{"title", "detail"},
+		"additionalProperties": false,
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"headline":         map[string]any{"type": "string"},
+			"where_you_stand":  map[string]any{"type": "string"},
+			"trend_reading":    map[string]any{"type": "string"},
+			"contributors":     map[string]any{"type": "array", "items": contributorSchema},
+			"action_plan":      map[string]any{"type": "array", "items": actionSchema},
+			"measurement_tips": map[string]any{"type": "array", "items": tipSchema},
+			"see_a_doctor":     map[string]any{"type": "string"},
+			"outlook":          map[string]any{"type": "string"},
+		},
+		"required": []string{"headline", "where_you_stand", "trend_reading", "contributors",
+			"action_plan", "measurement_tips", "see_a_doctor", "outlook"},
 		"additionalProperties": false,
 	}
 }

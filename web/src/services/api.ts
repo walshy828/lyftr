@@ -210,6 +210,16 @@ export const bloodPressureAPI = {
   update: (id: number, data: types.LogBloodPressureRequest) =>
     api.patch<{ data: types.BloodPressureLog }>(`/blood-pressure/${id}`, data).then(res => unwrap(res)),
   delete: (id: number) => api.delete(`/blood-pressure/${id}`),
+  stats:  () => api.get<{ data: types.BPStats }>('/blood-pressure/stats').then(res => unwrap(res)),
+  // Reading never spends an AI call; resolves null when none has been run yet.
+  insight: () => api.get<{ data: types.BPInsight }>('/blood-pressure/insight')
+    .then(res => unwrap(res))
+    .catch(err => { if (err?.response?.status === 404) return null; throw err }),
+  runInsight: () => api.post<{ data: types.BPInsight }>('/blood-pressure/insight').then(res => unwrap(res)),
+}
+
+export const healthAPI = {
+  summary: () => api.get<{ data: types.MetricSummary[] }>('/health/summary').then(res => unwrap(res)),
 }
 
 export const profileAPI = {
