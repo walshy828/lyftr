@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { AlertCircle, Zap, Dumbbell, Apple, TrendingUp, LogIn } from 'lucide-react'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
+import { AlertCircle, Clock, Zap, Dumbbell, Apple, TrendingUp, LogIn } from 'lucide-react'
 import { useAuthStore } from '../stores/auth'
 import { apiErrorMessage } from '../services/api'
 import { useServerInfo } from '../hooks/useServerInfo'
@@ -12,6 +12,15 @@ export default function Login() {
   const navigate = useNavigate()
   const { login } = useAuthStore()
   const serverInfo = useServerInfo()
+  const [searchParams] = useSearchParams()
+
+  // Set by endSessionAndRedirect when a refresh fails. Without it, being bounced
+  // here mid-task is indistinguishable from the app losing your work.
+  const reason = searchParams.get('reason')
+  const notice =
+    reason === 'expired' ? 'Your session expired. Please sign in again.' :
+    reason === 'revoked' ? 'This device was signed out. Please sign in again.' :
+    ''
 
   const [email, setEmail]           = useState('')
   const [password, setPassword]     = useState('')
@@ -120,6 +129,14 @@ export default function Login() {
 
           {/* Server selector */}
           <ServerSettings />
+
+          {/* Why you're back here */}
+          {notice && !error && (
+            <div className="alert-info mb-4">
+              <Clock className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>{notice}</span>
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">

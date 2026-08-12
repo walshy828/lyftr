@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios'
 import * as types from '../types'
 import { normalizeServerUrl } from '../stores/server'
+import { isExpired, isExpiringSoon } from '../utils/token'
 
 // Every API call lives under this versioned path. `origin` is an absolute server
 // origin for a cross-origin backend, or '' for the same-origin reverse proxy.
@@ -66,8 +67,17 @@ const api: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   config.baseURL = resolveAPIBase()
+  // Renew before the request rather than after a 401. The reactive path still
+  // exists as a backstop, but on its own it means every cold start of the PWA
+  // pays a wasted round-trip, and a request that fires mid-set gets retried at
+  // exactly the moment gym wifi is least willing to cooperate.
+  // Auth endpoints are skipped: /auth/refresh is what we'd be calling, and
+  // login/register have no session to keep fresh.
+  if (!(config.url || '').includes('/auth/')) {
+    await ensureFreshToken()
+  }
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
@@ -97,6 +107,40 @@ export const refreshAccessToken = (): Promise<string> => {
   return _refreshPromise
 }
 
+// Refresh only if the access token is close enough to expiry to be worth it,
+// collapsing onto the same in-flight promise as the 401 path. Never rejects:
+// a failed pre-emptive refresh should let the request proceed and be judged by
+// the server, not blow up a call that might have succeeded anyway.
+export const ensureFreshToken = async (): Promise<void> => {
+  if (!localStorage.getItem('refresh_token')) return
+  if (!isExpiringSoon(localStorage.getItem('access_token'))) return
+  try {
+    await refreshAccessToken()
+  } catch {
+    /* fall through to the reactive 401 handler */
+  }
+}
+
+// True when this browser holds a refresh token that could still be redeemed.
+// Used at boot so an obviously dead session renders the login page directly
+// instead of flashing the app shell and bouncing a moment later.
+export const hasRedeemableSession = (): boolean => {
+  const refresh = localStorage.getItem('refresh_token')
+  return !!refresh && !isExpired(refresh)
+}
+
+// Ends the session locally and sends the user to the login page with an
+// explanation. The bare redirect this replaces dropped people on a blank login
+// form with no hint that anything had expired, which reads as a bug.
+export const endSessionAndRedirect = (reason: 'expired' | 'revoked' = 'expired') => {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+  localStorage.removeItem('user')
+  if (window.location.pathname !== '/login') {
+    window.location.href = `/login?reason=${reason}`
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -112,10 +156,7 @@ api.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newToken}`
         return api(original)
       } catch {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-        localStorage.removeItem('user')
-        window.location.href = '/login'
+        endSessionAndRedirect('expired')
       }
     }
     return Promise.reject(error)
