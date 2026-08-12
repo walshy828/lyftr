@@ -15,6 +15,10 @@ const UserEmailKey = "user_email"
 // that must stay JWT-only (e.g. token management itself) check this.
 const AuthMethodKey = "auth_method"
 
+// SessionIDKey is the device session (`sid` claim) the caller's JWT belongs to.
+// Empty for PAT callers and for JWTs minted before device sessions existed.
+const SessionIDKey = "session_id"
+
 const patTokenPrefix = "lyftr_pat_"
 
 // Auth accepts either a JWT access token (the SPA's login flow) or a personal
@@ -62,6 +66,10 @@ func Auth(s *stores.Stores) gin.HandlerFunc {
 		c.Set(UserIDKey, claims.UserID)
 		c.Set(UserEmailKey, claims.Email)
 		c.Set(AuthMethodKey, "jwt")
+		// Note that the session is deliberately NOT verified as live here —
+		// see DeviceSessionStore.IsLive for why that check belongs on the
+		// refresh path only. This value is for identification, not authority.
+		c.Set(SessionIDKey, claims.SessionID)
 		c.Next()
 	}
 }
@@ -96,6 +104,13 @@ func TokenStillValid(s *stores.Stores, claims *utils.Claims) bool {
 		return false
 	}
 	return version == claims.TokenVersion
+}
+
+// SessionID returns the device session the caller's token belongs to, or "".
+func SessionID(c *gin.Context) string {
+	v, _ := c.Get(SessionIDKey)
+	s, _ := v.(string)
+	return s
 }
 
 func UserID(c *gin.Context) int64 {

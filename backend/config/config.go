@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -23,12 +24,21 @@ type Config struct {
 	DBPassword string
 	JWTSecret  string
 	JWTExpiry  string
-	// RefreshExpiryHours is the refresh-token lifetime (REFRESH_EXPIRY, hours).
-	// Defaults to 7 days — see utils.RefreshTTL.
+	// RefreshExpiryHours is the refresh-token lifetime for a session the user
+	// did not ask to be remembered (REFRESH_EXPIRY, hours) — see
+	// utils.RefreshTTL. Short by design; long sessions are opt-in per device.
 	RefreshExpiryHours string
-	CORSOrigin         string
-	Env                string
-	Version            string
+	// MaxSessionDaysRaw caps the per-user session-length preference
+	// (MAX_SESSION_DAYS). The preference is user-editable, so the operator
+	// needs a bound the user cannot raise. Read via MaxSessionDays().
+	MaxSessionDaysRaw string
+	// AbsoluteSessionDaysRaw caps how long one chain of refresh rotations may
+	// live regardless of activity (SESSION_ABSOLUTE_DAYS). Read via
+	// AbsoluteSessionDays().
+	AbsoluteSessionDaysRaw string
+	CORSOrigin             string
+	Env                    string
+	Version                string
 
 	// SeedDemo controls the demo user + demo workout/food data. Opt-in
 	// everywhere: only SEED_DEMO=true enables it. The demo account has a
@@ -62,6 +72,24 @@ type Config struct {
 	// client forge its own source IP and so mint unlimited rate-limit buckets.
 	// Empty means trust nothing and use the direct peer address.
 	TrustedProxies []string
+
+	// Passkey (WebAuthn) sign-in. Optional and off unless WEBAUTHN_RP_ID is set,
+	// because it cannot be guessed safely: WebAuthn binds every credential to a
+	// fixed Relying Party ID, and getting it wrong doesn't degrade — it makes
+	// enrolled passkeys permanently unusable.
+	//
+	// WebAuthnRPID must be the registrable domain the app is served from
+	// ("lyftr.example.com"). An IP address is not a valid RP ID, so an instance
+	// reached by bare LAN IP cannot use passkeys at all.
+	WebAuthnRPID string
+	// WebAuthnRPOrigins are the full origins allowed to complete a ceremony
+	// ("https://lyftr.example.com"). Defaults to https:// + the RP ID.
+	// Browsers require a secure context, so plain HTTP will not work off
+	// localhost however this is set.
+	WebAuthnRPOrigins []string
+	// WebAuthnRPName is what the passkey is labelled as in the user's password
+	// manager or keychain.
+	WebAuthnRPName string
 
 	// Nutrition label photo import (optional). VisionProvider selects which
 	// of the three keys below is used; leave it unset to disable the feature.
@@ -127,10 +155,12 @@ func Load() {
 		JWTSecret:  getEnv("JWT_SECRET", ""),
 		JWTExpiry:  getEnv("JWT_EXPIRY", "3600"),
 
-		RefreshExpiryHours: getEnv("REFRESH_EXPIRY", "168"),
-		CORSOrigin:         getEnv("CORS_ORIGIN", "http://localhost:5173"),
-		Env:                getEnv("ENV", "development"),
-		Version:            buildVersion,
+		RefreshExpiryHours:     getEnv("REFRESH_EXPIRY", "12"),
+		MaxSessionDaysRaw:      getEnv("MAX_SESSION_DAYS", ""),
+		AbsoluteSessionDaysRaw: getEnv("SESSION_ABSOLUTE_DAYS", ""),
+		CORSOrigin:             getEnv("CORS_ORIGIN", "http://localhost:5173"),
+		Env:                    getEnv("ENV", "development"),
+		Version:                buildVersion,
 
 		VisionProvider:  getEnv("VISION_PROVIDER", ""),
 		AnthropicAPIKey: getEnv("ANTHROPIC_API_KEY", ""),
@@ -154,6 +184,16 @@ func Load() {
 	C.RegistrationInviteCode = []byte(getEnv("REGISTRATION_INVITE_CODE", ""))
 	C.TrustedProxies = splitList(getEnv("TRUSTED_PROXIES", ""))
 	C.AIHealthInsightsEnabled = getEnv("AI_HEALTH_INSIGHTS_ENABLED", "") == "true"
+
+	C.WebAuthnRPID = strings.TrimSpace(getEnv("WEBAUTHN_RP_ID", ""))
+	C.WebAuthnRPName = getEnv("WEBAUTHN_RP_NAME", "Lyftr")
+	C.WebAuthnRPOrigins = splitList(getEnv("WEBAUTHN_RP_ORIGINS", ""))
+	if len(C.WebAuthnRPOrigins) == 0 && C.WebAuthnRPID != "" {
+		// The overwhelmingly common case is one origin that is simply the RP ID
+		// over TLS. Deriving it means the feature needs one env var, not two,
+		// and the two can't drift apart.
+		C.WebAuthnRPOrigins = []string{"https://" + C.WebAuthnRPID}
+	}
 
 	if err := C.resolveJWTSecret(); err != nil {
 		log.Fatalf("config: %v", err)
@@ -213,6 +253,45 @@ func splitList(raw string) []string {
 		}
 	}
 	return out
+}
+
+// Session-length defaults. Lyftr's self-host path is a LAN/VPN instance used
+// several times a day, so a remembered device defaults to a month: the threat
+// a short refresh TTL defends against (a stolen localStorage token) is not
+// meaningfully mitigated by re-prompting a user who will just re-enter the same
+// password on the same device. The ceilings exist so an operator can tighten
+// this for an exposed instance without touching code.
+const (
+	DefaultSessionDays         = 30
+	defaultMaxSessionDays      = 90
+	defaultAbsoluteSessionDays = 180
+)
+
+// MaxSessionDays is the operator's ceiling on the per-user session-length
+// preference. Falls back to the default on a missing or nonsensical value
+// rather than to "unlimited" — a typo in the env must not remove the bound.
+func MaxSessionDays() int {
+	return positiveDays(C.MaxSessionDaysRaw, defaultMaxSessionDays)
+}
+
+// AbsoluteSessionDays is the ceiling on a session chain's total age. Clamped to
+// at least MaxSessionDays: an absolute cap below the sliding window would expire
+// sessions before their stated lifetime, which reads as a bug rather than a
+// policy.
+func AbsoluteSessionDays() int {
+	d := positiveDays(C.AbsoluteSessionDaysRaw, defaultAbsoluteSessionDays)
+	if m := MaxSessionDays(); d < m {
+		return m
+	}
+	return d
+}
+
+func positiveDays(raw string, fallback int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }
 
 func getEnv(key, fallback string) string {

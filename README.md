@@ -126,7 +126,12 @@ All variables live in `.env` at the project root.
 | `REGISTRATION_INVITE_CODE` | *(none)* | When set, registration additionally requires this code. Lets you onboard household members without leaving signup open |
 | `TRUSTED_PROXIES` | *(none)* | Comma-separated CIDRs allowed to set `X-Forwarded-For`. Empty means trust no proxy. The compose file sets the Docker bridge range so the auth rate limiter sees real client IPs. Never widen this to a range you don't control — anything inside it can forge its source IP and bypass rate limiting |
 | `AI_HEALTH_INSIGHTS_ENABLED` | `false` | Allows blood-pressure history and body metrics to be sent to your configured AI provider for written insights. Separate from `VISION_PROVIDER` on purpose, so enabling meal-photo scanning doesn't also export health records. Each user must additionally opt in under **Settings → Privacy** |
-| `REFRESH_EXPIRY` | `168` | Refresh-token lifetime in hours (7 days) |
+| `REFRESH_EXPIRY` | `12` | Refresh-token lifetime in hours for a session the user did **not** tick "Keep me signed in" for — a shared or borrowed browser |
+| `MAX_SESSION_DAYS` | `90` | Ceiling on the per-user "stay signed in for" preference (**Settings → Sessions**). The preference is user-editable, so this is the bound they can't raise |
+| `WEBAUTHN_RP_ID` | *(none)* | Enables passkey (Face ID / Touch ID / security key) sign-in. Must be the hostname you reach Lyftr at, served over **HTTPS** — a bare LAN IP is not a valid RP ID and passkeys can't be used at all in that case. Every credential is bound to this value, so changing it later makes enrolled passkeys permanently unusable |
+| `WEBAUTHN_RP_ORIGINS` | `https://` + RP ID | Comma-separated origins allowed to complete a passkey ceremony. Only needed if you serve one instance on several hostnames |
+| `WEBAUTHN_RP_NAME` | `Lyftr` | What the passkey is labelled as in the user's keychain |
+| `SESSION_ABSOLUTE_DAYS` | `180` | Hard cap on a single session's total life, however actively it's used. Each use slides the refresh window forward, so without this a device opened daily would never sign out. Raised to `MAX_SESSION_DAYS` if set lower |
 | `SEED_DEMO` | `false` | Seeds the demo account. Opt-in everywhere; never enable it on an instance holding real data |
 | `CORS_ORIGIN` | `http://localhost` | Comma-separated allow-list of client origins. Use `*` to allow any (the API is Bearer-token based, no cookies) |
 | `PORT` | `80` | Host port for the web interface |

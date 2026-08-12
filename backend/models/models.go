@@ -3,6 +3,8 @@ package models
 import (
 	"strings"
 	"time"
+
+	"github.com/Cawlumm/lyftr-backend/config"
 )
 
 type User struct {
@@ -39,6 +41,11 @@ type UserSettings struct {
 	// configured a provider — consent to analyse a photo of dinner is not
 	// consent to ship a blood-pressure record off the machine.
 	AIHealthInsightsOptIn bool `json:"ai_health_insights_opt_in" db:"ai_health_insights_opt_in"`
+	// SessionMaxDays is how long a device the user chose to remember stays
+	// signed in. Clamped server-side to the operator's MAX_SESSION_DAYS on
+	// every use, so a value stored before the ceiling was lowered can't
+	// outlive it.
+	SessionMaxDays int `json:"session_max_days" db:"session_max_days"`
 }
 
 // DefaultUserSettings is the single source of truth for a brand-new user's
@@ -54,6 +61,7 @@ func DefaultUserSettings(uid int64) UserSettings {
 		FatTarget:         65,
 		CholesterolTarget: 300,
 		SodiumTarget:      2300,
+		SessionMaxDays:    config.DefaultSessionDays,
 	}
 }
 
@@ -433,6 +441,42 @@ type ChangePasswordRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
+	// Remember opts this device into the user's configured session length
+	// instead of the short default. Absent (false) is the safe reading for any
+	// client that doesn't know about the flag — a shared browser gets the
+	// short session unless somebody deliberately asked otherwise.
+	Remember bool `json:"remember"`
+}
+
+// Passkey is one enrolled WebAuthn credential as the account screen shows it —
+// metadata only, never the credential blob or public key.
+type Passkey struct {
+	ID         int64      `json:"id"`
+	Name       string     `json:"name"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+}
+
+// CreatePasskeyRequest names a passkey at enrolment, so a user with several can
+// tell them apart ("iPhone", "YubiKey").
+type CreatePasskeyRequest struct {
+	Name string `json:"name" validate:"max=100"`
+}
+
+// DeviceSession is one signed-in device as the account screen shows it. There
+// is no token material here — the session id is a revocation handle, not a
+// credential, and knowing it grants nothing.
+type DeviceSession struct {
+	ID         string    `json:"id"`
+	Label      string    `json:"label"`
+	UserAgent  string    `json:"user_agent"`
+	Remembered bool      `json:"remembered"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	// Current marks the session making the request, so the UI can label it and
+	// warn before signing itself out.
+	Current bool `json:"current"`
 }
 
 type AuthResponse struct {
@@ -1036,6 +1080,10 @@ type UpdateSettingsRequest struct {
 	// AIHealthInsightsOptIn is the user's consent to send health data to the
 	// configured third-party LLM. Nil leaves the stored value untouched.
 	AIHealthInsightsOptIn *bool `json:"ai_health_insights_opt_in"`
+	// SessionMaxDays is how long a remembered device stays signed in. The
+	// upper bound is enforced in the controller against the operator's
+	// MAX_SESSION_DAYS rather than as a tag, since the ceiling is configurable.
+	SessionMaxDays *int `json:"session_max_days" validate:"omitempty,gte=1"`
 }
 
 type Program struct {

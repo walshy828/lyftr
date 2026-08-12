@@ -1,20 +1,34 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { AlertCircle, Zap, Dumbbell, Apple, TrendingUp, LogIn } from 'lucide-react'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
+import { AlertCircle, Clock, Zap, Dumbbell, Apple, TrendingUp, LogIn } from 'lucide-react'
 import { useAuthStore } from '../stores/auth'
 import { apiErrorMessage } from '../services/api'
 import { useServerInfo } from '../hooks/useServerInfo'
 import { formatVersion } from '../utils/version'
 import Logo from '../components/Logo'
 import ServerSettings from '../components/ServerSettings'
+import PasskeySignIn from '../components/PasskeySignIn'
 
 export default function Login() {
   const navigate = useNavigate()
   const { login } = useAuthStore()
   const serverInfo = useServerInfo()
+  const [searchParams] = useSearchParams()
+
+  // Set by endSessionAndRedirect when a refresh fails. Without it, being bounced
+  // here mid-task is indistinguishable from the app losing your work.
+  const reason = searchParams.get('reason')
+  const notice =
+    reason === 'expired' ? 'Your session expired. Please sign in again.' :
+    reason === 'revoked' ? 'This device was signed out. Please sign in again.' :
+    ''
 
   const [email, setEmail]           = useState('')
   const [password, setPassword]     = useState('')
+  // Defaults on: this is a self-hosted tracker you open several times a day,
+  // and the alternative is re-typing a password before every workout. Unticking
+  // it is the deliberate choice, for a borrowed or shared browser.
+  const [remember, setRemember]     = useState(true)
   const [error, setError]           = useState('')
   const [isLoading, setLoading]     = useState(false)
 
@@ -23,7 +37,7 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      await login(email, password)
+      await login(email, password, remember)
       navigate('/')
     } catch (err: any) {
       setError(apiErrorMessage(err, 'Invalid email or password.'))
@@ -121,6 +135,14 @@ export default function Login() {
           {/* Server selector */}
           <ServerSettings />
 
+          {/* Why you're back here */}
+          {notice && !error && (
+            <div className="alert-info mb-4">
+              <Clock className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>{notice}</span>
+            </div>
+          )}
+
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
@@ -155,6 +177,22 @@ export default function Login() {
               />
             </div>
 
+            {/* Keep this device signed in */}
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={e => setRemember(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-brand-500 flex-shrink-0"
+              />
+              <span className="text-sm text-tx-muted">
+                Keep me signed in on this device
+                <span className="block text-xs mt-0.5">
+                  Uncheck on a shared or public computer.
+                </span>
+              </span>
+            </label>
+
             {/* Error */}
             {error && (
               <div className="alert-error">
@@ -173,24 +211,28 @@ export default function Login() {
               {isLoading ? 'Signing in…' : 'Sign in'}
             </button>
 
-            {/* Divider */}
-            <div className="relative flex items-center my-6">
-              <div className="flex-1 h-px bg-surface-border" />
-              <span className="px-3 text-xs text-tx-muted uppercase tracking-wider">or</span>
-              <div className="flex-1 h-px bg-surface-border" />
-            </div>
+            {/* Passkey sign-in — renders only when the server and browser both support it */}
+            <PasskeySignIn onError={setError} />
 
-            {/* Demo button — dev only */}
+            {/* Demo button — dev only. The divider is scoped with it; on its own
+                it left a stray "or" above nothing in production builds. */}
             {import.meta.env.DEV && (
-              <button
-                type="button"
-                onClick={handleDemoLogin}
-                disabled={isLoading}
-                className="btn-secondary btn-lg w-full flex items-center justify-center gap-2"
-              >
-                <Zap className="w-4 h-4 text-warning-400" />
-                Try demo account
-              </button>
+              <>
+                <div className="relative flex items-center my-6">
+                  <div className="flex-1 h-px bg-surface-border" />
+                  <span className="px-3 text-xs text-tx-muted uppercase tracking-wider">or</span>
+                  <div className="flex-1 h-px bg-surface-border" />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDemoLogin}
+                  disabled={isLoading}
+                  className="btn-secondary btn-lg w-full flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-4 h-4 text-warning-400" />
+                  Try demo account
+                </button>
+              </>
             )}
           </form>
 

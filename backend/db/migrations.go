@@ -294,6 +294,64 @@ CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_
 	// enabling a provider.
 	ensureColumn("user_settings", "ai_health_insights_opt_in", `ALTER TABLE user_settings ADD COLUMN ai_health_insights_opt_in INTEGER NOT NULL DEFAULT 0`)
 
+	// How long a device the user chose to remember stays signed in. Stored
+	// per-user rather than as an operator-wide env var because the right answer
+	// differs per device — a phone in your pocket and a shared laptop want
+	// different numbers — and clamped server-side to MAX_SESSION_DAYS so the
+	// setting cannot be used to mint an unbounded credential.
+	ensureColumn("user_settings", "session_max_days", `ALTER TABLE user_settings ADD COLUMN session_max_days INTEGER NOT NULL DEFAULT 30`)
+
+	// Device sessions close the gap between the two revocation levers above:
+	// revoked_tokens kills one token (which rotation replaces a moment later)
+	// and token_version kills every device at once. A row here tracks one chain
+	// of refresh rotations, so "sign out my old phone" is possible without
+	// signing out the phone in your hand.
+	//
+	// The id is the `sid` JWT claim, not an autoincrement — it has to be
+	// derivable from a presented token without a lookup.
+	deviceSessions := `
+CREATE TABLE IF NOT EXISTS device_sessions (
+  id           TEXT     PRIMARY KEY,
+  user_id      INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label        TEXT     NOT NULL DEFAULT '',
+  user_agent   TEXT     NOT NULL DEFAULT '',
+  remembered   INTEGER  NOT NULL DEFAULT 0,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at   DATETIME NOT NULL,
+  revoked_at   DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_device_sessions_user ON device_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_device_sessions_expires ON device_sessions(expires_at);`
+	if _, err := DB.Exec(deviceSessions); err != nil {
+		log.Fatalf("create device_sessions: %v", err)
+	}
+
+	// Passkeys (WebAuthn). The credential itself is stored as the library's own
+	// JSON rather than exploded into columns: it is an opaque record we only
+	// ever hand back to that library, the shape gains fields between releases,
+	// and nothing in Lyftr has any business querying its internals.
+	//
+	// credential_id is lifted out because it's the lookup key, and user_handle
+	// because a usernameless ("discoverable") login arrives with nothing else
+	// to identify the account by.
+	passkeys := `
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credential_id TEXT     NOT NULL UNIQUE,
+  user_handle   TEXT     NOT NULL,
+  name          TEXT     NOT NULL DEFAULT '',
+  credential    TEXT     NOT NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_used_at  DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON webauthn_credentials(user_id);
+CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_handle ON webauthn_credentials(user_handle);`
+	if _, err := DB.Exec(passkeys); err != nil {
+		log.Fatalf("create webauthn_credentials: %v", err)
+	}
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a

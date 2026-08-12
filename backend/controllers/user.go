@@ -2,9 +2,12 @@ package controllers
 
 import (
 	"database/sql"
+	"fmt"
+	"log"
 	"strings"
 	"time"
 
+	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
 	"github.com/Cawlumm/lyftr-backend/utils"
@@ -61,6 +64,14 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 			utils.BadRequest(c, "plan_history_start must be a YYYY-MM-DD date")
 			return
 		}
+	}
+	// The session-length ceiling is configurable, so it can't be a validator
+	// tag. Reject rather than silently clamping: a user who asks for 365 days
+	// and is quietly given 90 has no way to find out, and would reasonably
+	// conclude the setting is broken when they're signed out in three months.
+	if req.SessionMaxDays != nil && *req.SessionMaxDays > config.MaxSessionDays() {
+		utils.BadRequest(c, fmt.Sprintf("session_max_days may not exceed %d on this server", config.MaxSessionDays()))
+		return
 	}
 	s, err := h.s.User.UpsertSettings(uid, req)
 	if utils.DBError(c, err) {
@@ -146,7 +157,19 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
-	access, refresh, err := utils.GenerateTokenPair(uid, user.Email, version)
+	// The version bump above killed every session — retire the rows too, so the
+	// account screen doesn't go on advertising
+	// devices whose tokens are already dead.
+	if err := h.s.DeviceSession.RevokeAllForUser(uid); err != nil {
+		log.Printf("[user/password] revoke device sessions: %v", err)
+	}
+
+	// Issue a replacement session for the device that just changed the
+	// password, so changing it doesn't sign you out of the app you're using.
+	// GetMe doesn't carry token_version, and minting against a stale one would
+	// hand back a pair that Auth rejects on the very next request.
+	user.TokenVersion = version
+	access, refresh, err := h.startSession(c, user, true)
 	if err != nil {
 		utils.InternalError(c)
 		return

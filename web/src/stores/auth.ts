@@ -1,14 +1,26 @@
 import { create } from 'zustand'
 import * as types from '../types'
-import { authAPI } from '../services/api'
+import { authAPI, ensureFreshToken, hasRedeemableSession } from '../services/api'
 import { clearLocalSession } from './workoutSession'
+
+// Ask the browser to exempt our origin from routine storage eviction. On iOS
+// this matters more than anywhere else: Safari's ITP clears script-writable
+// storage for sites unused for ~7 days, which would silently log you out of an
+// installed PWA even while a perfectly good refresh token sits in localStorage.
+// Best-effort and silent — no browser is obliged to say yes.
+const requestPersistentStorage = () => {
+  navigator.storage?.persist?.().catch(() => {})
+}
 
 interface AuthStore {
   user: types.User | null
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
-  login:     (email: string, password: string) => Promise<void>
+  login:     (email: string, password: string, remember?: boolean) => Promise<void>
+  // Establishes a session from a passkey. Separate from login() because there
+  // are no credentials to pass — the ceremony has already happened.
+  adoptSession: (data: types.AuthResponse) => void
   register:  (email: string, password: string, inviteCode?: string) => Promise<void>
   logout:    () => void
   clearError: () => void
@@ -18,7 +30,6 @@ interface AuthStore {
 }
 
 export const useAuthStore = create<AuthStore>((set) => {
-  const token   = localStorage.getItem('access_token')
   // A corrupt stored user must degrade to "logged out", not throw at module
   // load and blank the whole app.
   let user: types.User | null = null
@@ -29,19 +40,26 @@ export const useAuthStore = create<AuthStore>((set) => {
     localStorage.removeItem('user')
   }
 
+  // Presence of an access token is not the question — it expires hourly and is
+  // routinely stale at boot. What decides whether we can show the app is
+  // whether the *refresh* token can still be redeemed; if it can't, render the
+  // login page now instead of flashing the shell and redirecting.
+  const restorable = hasRedeemableSession() && !!user
+
   return {
-    user,
-    isAuthenticated: !!token && !!user,
+    user: restorable ? user : null,
+    isAuthenticated: restorable,
     isLoading: false,
     error: null,
 
-    login: async (email, password) => {
+    login: async (email, password, remember = true) => {
       set({ isLoading: true, error: null })
       try {
-        const data = await authAPI.login({ email, password })
+        const data = await authAPI.login({ email, password, remember })
         localStorage.setItem('access_token', data.token)
         localStorage.setItem('refresh_token', data.refresh_token)
         localStorage.setItem('user', JSON.stringify(data.user))
+        requestPersistentStorage()
         set({ user: data.user, isAuthenticated: true, isLoading: false })
       } catch (err: any) {
         set({ error: err.response?.data?.error || 'Login failed', isLoading: false })
@@ -56,6 +74,7 @@ export const useAuthStore = create<AuthStore>((set) => {
         localStorage.setItem('access_token', data.token)
         localStorage.setItem('refresh_token', data.refresh_token)
         localStorage.setItem('user', JSON.stringify(data.user))
+        requestPersistentStorage()
         set({ user: data.user, isAuthenticated: true, isLoading: false })
       } catch (err: any) {
         set({ error: err.response?.data?.error || 'Registration failed', isLoading: false })
@@ -87,6 +106,14 @@ export const useAuthStore = create<AuthStore>((set) => {
       set({ user: null, isAuthenticated: false, error: null })
     },
 
+    adoptSession: (data) => {
+      localStorage.setItem('access_token', data.token)
+      localStorage.setItem('refresh_token', data.refresh_token)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      requestPersistentStorage()
+      set({ user: data.user, isAuthenticated: true, isLoading: false, error: null })
+    },
+
     clearError: () => set({ error: null }),
 
     setUser: (user) => {
@@ -95,3 +122,38 @@ export const useAuthStore = create<AuthStore>((set) => {
     },
   }
 })
+
+// ─── Cross-tab and resume behaviour ─────────────────────────────────────────
+//
+// Refresh tokens rotate and the spent one is revoked server-side, so two tabs
+// refreshing at once can hand each other a dead token. localStorage `storage`
+// events only fire in *other* tabs, which is exactly the signal needed: adopt
+// whatever the active tab just wrote instead of racing it.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'refresh_token' && e.newValue === null) {
+      // Another tab logged out. Drop this tab's session too rather than leaving
+      // a shell running against tokens that no longer exist.
+      useAuthStore.setState({ user: null, isAuthenticated: false, error: null })
+      return
+    }
+    if (e.key === 'user' && e.newValue) {
+      try {
+        useAuthStore.setState({ user: JSON.parse(e.newValue), isAuthenticated: true })
+      } catch {
+        /* another tab wrote something unparseable; ignore */
+      }
+    }
+  })
+
+  // Coming back to a backgrounded PWA is the moment the access token is most
+  // likely to be stale, and the moment a wasted 401 is most visible. Renew
+  // before the first request rather than after it fails.
+  const renewOnResume = () => {
+    if (document.hidden) return
+    if (!useAuthStore.getState().isAuthenticated) return
+    ensureFreshToken()
+  }
+  document.addEventListener('visibilitychange', renewOnResume)
+  window.addEventListener('focus', renewOnResume)
+}
