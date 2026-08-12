@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/controllers"
@@ -67,6 +68,20 @@ func main() {
 
 	h := controllers.NewHandler(s, visionProvider)
 	routes.Setup(r, h, s)
+
+	// Revocation rows are only needed until the token would have expired on its
+	// own; after that the signature check rejects it anyway. Prune hourly so the
+	// table tracks active sessions rather than growing forever.
+	go func() {
+		for {
+			if n, err := s.Token.PurgeExpiredRevocations(); err != nil {
+				log.Printf("revocation purge: %v", err)
+			} else if n > 0 {
+				log.Printf("revocation purge: removed %d expired entries", n)
+			}
+			time.Sleep(time.Hour)
+		}
+	}()
 
 	addr := ":" + config.C.Port
 	log.Printf("lyftr API listening on %s (env=%s)", addr, config.C.Env)

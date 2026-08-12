@@ -29,8 +29,16 @@ WORKDIR /app
 
 COPY --from=builder /build/lyftr-api .
 
-# Persistent data directory (mount a volume here)
-RUN mkdir -p /app/data
+# Run as a non-root user. The API needs nothing but its own data directory, so
+# a container escape or a file-write bug should not land with uid 0 on a volume
+# that is bind-mounted from the host. The fixed uid/gid keeps ownership stable
+# across rebuilds so an existing ./data volume stays writable.
+RUN addgroup -g 10001 -S lyftr && adduser -u 10001 -S -G lyftr lyftr
+
+# Persistent data directory (mount a volume here), owned by the runtime user.
+RUN mkdir -p /app/data && chown -R lyftr:lyftr /app
+
+USER lyftr
 
 EXPOSE 3000
 

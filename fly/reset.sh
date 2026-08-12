@@ -17,7 +17,27 @@ if [ ! -f "$SEED" ]; then
 fi
 
 echo "[reset] $(date): restoring demo DB..."
-cp "$SEED" "$LIVE"
-# Kill backend so entrypoint restart loop picks up the fresh DB immediately
+
+# Stop the backend BEFORE touching the file. Copying over a live SQLite
+# database while it is open is unsafe: the running process holds its own view
+# of the file, and the write can land mid-transaction.
 pkill lyftr-api 2>/dev/null || true
+
+# Wait for it to actually exit rather than assuming — pkill only sends the
+# signal, and racing the shutdown reintroduces the very problem above.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep lyftr-api >/dev/null 2>&1 || break
+    sleep 1
+done
+
+# Remove the WAL sidecars belonging to the OUTGOING database. Left in place,
+# SQLite would replay a write-ahead log from a different database file on top
+# of the restored snapshot — corrupting it, or resurrecting fragments of the
+# pre-reset data the reset exists to erase.
+rm -f "$LIVE-wal" "$LIVE-shm"
+
+cp "$SEED" "$LIVE"
+# Match the backend's own permissions on the restored file (see db/sqlite.go).
+chmod 600 "$LIVE"
+
 echo "[reset] $(date): done — backend will restart automatically"

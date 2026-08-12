@@ -127,6 +127,9 @@ const unwrap = <T>(res: { data: { data: T } }) => res.data.data
 export const authAPI = {
   login:    (data: types.LoginRequest)    => api.post<{ data: types.AuthResponse }>('/auth/login', data).then(res => unwrap(res)),
   register: (data: types.RegisterRequest) => api.post<{ data: types.AuthResponse }>('/auth/register', data).then(res => unwrap(res)),
+  // Revokes this session's tokens server-side. Clearing localStorage alone left
+  // a stolen refresh token usable for its full lifetime.
+  logout:   (refreshToken: string | null) => api.post('/auth/logout', { refresh_token: refreshToken ?? '' }),
 }
 
 export const userAPI = {
@@ -135,6 +138,10 @@ export const userAPI = {
   getSettings:    ()                             => api.get<{ data: types.UserSettings }>('/settings').then(res => unwrap(res)),
   updateSettings: (data: Partial<types.UserSettings>) => api.put<{ data: types.UserSettings }>('/settings', data).then(res => unwrap(res)),
   deleteAccount:  ()                             => api.delete('/me'),
+  // Returns a fresh token pair: changing the password invalidates every
+  // session, including the one making the request.
+  changePassword: (data: types.ChangePasswordRequest) =>
+    api.put<{ data: types.AuthResponse }>('/me/password', data).then(res => unwrap(res)),
 }
 
 export const workoutAPI = {

@@ -5,7 +5,7 @@ import { useServerStore } from '../stores/server'
 import { useServerInfo } from '../hooks/useServerInfo'
 import { useSettingsStore } from '../stores/settings'
 import { useTheme } from '../hooks/useTheme'
-import { exerciseAPI, profileAPI, userAPI } from '../services/api'
+import { exerciseAPI, profileAPI, userAPI, apiErrorMessage } from '../services/api'
 import * as types from '../types'
 import { HelpTip } from '../components/Tooltip'
 import PageHeader from '../components/ui/PageHeader'
@@ -73,6 +73,23 @@ export default function Settings() {
     }).catch(() => {})
   }, [setUser])
 
+  // Consent to send health data off-machine. Saved immediately rather than
+  // batched behind the page's Save button: a privacy choice should take effect
+  // the moment it's made, not when the user happens to save something else.
+  const [aiConsentSaving, setAiConsentSaving] = useState(false)
+  const aiConsent = storedSettings.ai_health_insights_opt_in ?? false
+
+  const handleToggleAIConsent = async () => {
+    setAiConsentSaving(true)
+    try {
+      await updateSettings({ ai_health_insights_opt_in: !aiConsent })
+    } catch (err: any) {
+      setError(apiErrorMessage(err, 'Could not save that preference.'))
+    } finally {
+      setAiConsentSaving(false)
+    }
+  }
+
   const handleSaveName = async () => {
     setNameSaving(true)
     try {
@@ -84,6 +101,38 @@ export default function Settings() {
       // Non-fatal: leave the field as-is for a retry.
     } finally {
       setNameSaving(false)
+    }
+  }
+
+  // Password change. Succeeding invalidates every session server-side, so the
+  // handler swaps in the fresh token pair the endpoint hands back — otherwise
+  // the user would be bounced to the login screen for doing the right thing.
+  const [pwOpen, setPwOpen] = useState(false)
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwError, setPwError] = useState<string | null>(null)
+  const [pwSaved, setPwSaved] = useState(false)
+
+  const handleChangePassword = async () => {
+    setPwError(null)
+    if (pwNew !== pwConfirm) { setPwError('New passwords do not match'); return }
+    if (pwNew.length < 8)    { setPwError('New password must be at least 8 characters'); return }
+    setPwSaving(true)
+    try {
+      const auth = await userAPI.changePassword({ current_password: pwCurrent, new_password: pwNew })
+      localStorage.setItem('access_token', auth.token)
+      localStorage.setItem('refresh_token', auth.refresh_token)
+      setUser(auth.user)
+      setPwCurrent(''); setPwNew(''); setPwConfirm('')
+      setPwOpen(false)
+      setPwSaved(true)
+      setTimeout(() => setPwSaved(false), 4000)
+    } catch (err: any) {
+      setPwError(apiErrorMessage(err, 'Could not change password.'))
+    } finally {
+      setPwSaving(false)
     }
   }
 
@@ -294,9 +343,55 @@ export default function Settings() {
             {user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '—'}
           </span>
         </SettingRow>
+        <SettingRow label="Password" description="Changing it signs you out on every other device">
+          <button onClick={() => { setPwOpen(o => !o); setPwError(null) }} className="btn-secondary btn-sm">
+            {pwSaved ? <><Check className="w-3.5 h-3.5" /> Changed</> : 'Change'}
+          </button>
+        </SettingRow>
+        {pwOpen && (
+          <div className="px-4 pb-4 space-y-3">
+            <input
+              type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)}
+              placeholder="Current password" autoComplete="current-password" className="input w-full text-sm"
+            />
+            <input
+              type="password" value={pwNew} onChange={e => setPwNew(e.target.value)}
+              placeholder="New password (min 8 characters)" autoComplete="new-password" className="input w-full text-sm"
+            />
+            <input
+              type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)}
+              placeholder="Confirm new password" autoComplete="new-password" className="input w-full text-sm"
+            />
+            {pwError && <p className="text-sm text-red-500">{pwError}</p>}
+            <div className="flex gap-2">
+              <button onClick={handleChangePassword} disabled={pwSaving || !pwCurrent || !pwNew} className="btn-primary btn-sm">
+                {pwSaving ? <Loader className="w-3.5 h-3.5 animate-spin" /> : 'Update password'}
+              </button>
+              <button onClick={() => { setPwOpen(false); setPwError(null) }} className="btn-secondary btn-sm">Cancel</button>
+            </div>
+          </div>
+        )}
         <SettingRow label="Personal access tokens" description="Let external clients, like the MCP server, read and write your data">
           <button onClick={() => navigate('/settings/tokens')} className="btn-secondary btn-sm">
             <KeyRound className="w-3.5 h-3.5" /> Manage
+          </button>
+        </SettingRow>
+      </Section>
+
+      {/* Privacy */}
+      <Section title="Privacy">
+        <SettingRow
+          label="AI health insights"
+          description="Send blood-pressure history and body metrics to the AI provider your server is configured with, to generate written insights. Off by default. Your data never leaves this server otherwise."
+        >
+          <button
+            onClick={handleToggleAIConsent}
+            disabled={aiConsentSaving}
+            className={aiConsent ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}
+          >
+            {aiConsentSaving
+              ? <Loader className="w-3.5 h-3.5 animate-spin" />
+              : aiConsent ? <><Check className="w-3.5 h-3.5" /> Allowed</> : 'Not allowed'}
           </button>
         </SettingRow>
       </Section>

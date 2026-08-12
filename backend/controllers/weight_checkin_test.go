@@ -290,6 +290,9 @@ func TestBuildCheckinFacts_varianceIsUnsignedWhenAheadOfPlan(t *testing.T) {
 func TestRunWeightPlanCheckin_persistsReportAndReadsBack(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)
+	// The check-in prompt carries the same class of health data as the BP
+	// insight, so it sits behind the same consent gates.
+	allowHealthInsights(t, uid)
 	acceptCheckinPlan(t, uid)
 	seedDecliningWeights(t, uid, 230, 0.4, 20)
 

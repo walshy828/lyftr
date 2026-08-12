@@ -368,8 +368,8 @@ func (h *Handler) RunWeightPlanCheckin(c *gin.Context) {
 	}
 
 	reportJSON := ""
-	if h.vision != nil {
-		if report, ok := h.generateCheckinReport(c, facts, goal, string(factsJSON)); ok {
+	if h.vision != nil && h.healthInsightsAllowed(uid) {
+		if report, ok := h.generateCheckinReport(c, facts, goal); ok {
 			b, merr := json.Marshal(report)
 			if merr != nil {
 				log.Printf("[weight/plan/checkin] marshal report: %v", merr)
@@ -391,7 +391,7 @@ func (h *Handler) RunWeightPlanCheckin(c *gin.Context) {
 // models shape. A failure here is logged and swallowed: the facts are worth
 // storing on their own, and a user who just waited a minute should get their
 // numbers rather than an error page.
-func (h *Handler) generateCheckinReport(c *gin.Context, facts models.CheckinFacts, goal models.NutritionGoal, factsJSON string) (models.CheckinReport, bool) {
+func (h *Handler) generateCheckinReport(c *gin.Context, facts models.CheckinFacts, goal models.NutritionGoal) (models.CheckinReport, bool) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), checkinGenerateTimeout)
 	defer cancel()
 
@@ -415,7 +415,7 @@ func (h *Handler) generateCheckinReport(c *gin.Context, facts models.CheckinFact
 		Pattern:           facts.Pattern,
 		CalorieTarget:     goal.CalorieTarget,
 		ProteinTarget:     goal.ProteinTarget,
-		FactsJSON:         factsJSON,
+		FactsJSON:         redactedCheckinFactsJSON(facts),
 	})
 	if err != nil {
 		log.Printf("[weight/plan/checkin] vision error: %v", err)
@@ -497,3 +497,18 @@ var (
 	_ = models.CheckinPoint(vision.CheckinPoint{})
 	_ = models.CheckinRecommendation(vision.CheckinRecommendation{})
 )
+
+// redactedCheckinFactsJSON mirrors redactedFactsJSON in bp_insight.go: the blob
+// sent to the provider drops the raw UserProfile (exact birth date, height),
+// while age and sex — the parts the reasoning needs — travel as plain fields on
+// the request. The unredacted facts are still stored locally for the user.
+func redactedCheckinFactsJSON(facts models.CheckinFacts) string {
+	redacted := facts
+	redacted.Profile = models.UserProfile{}
+	b, err := json.Marshal(redacted)
+	if err != nil {
+		log.Printf("[weight/plan/checkin] redact facts: %v", err)
+		return ""
+	}
+	return string(b)
+}

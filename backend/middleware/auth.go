@@ -50,6 +50,15 @@ func Auth(s *stores.Stores) gin.HandlerFunc {
 			return
 		}
 
+		// A valid signature is no longer sufficient: the token must also not
+		// have been revoked individually (logout) or wholesale (password
+		// change, account deletion). Same generic message either way.
+		if !TokenStillValid(s, claims) {
+			utils.Unauthorized(c, "invalid or expired token")
+			c.Abort()
+			return
+		}
+
 		c.Set(UserIDKey, claims.UserID)
 		c.Set(UserEmailKey, claims.Email)
 		c.Set(AuthMethodKey, "jwt")
@@ -71,6 +80,22 @@ func authenticatePAT(c *gin.Context, s *stores.Stores, token string) {
 	c.Set(UserIDKey, userID)
 	c.Set(AuthMethodKey, "pat")
 	c.Next()
+}
+
+// TokenStillValid reports whether a signature-valid JWT has since been revoked.
+// Fails closed: any error looking up the user or the denial list is treated as
+// "not valid", because the alternative is honouring a token we cannot confirm.
+// Shared with the refresh endpoint so both paths apply the identical rule.
+func TokenStillValid(s *stores.Stores, claims *utils.Claims) bool {
+	revoked, err := s.Token.IsJWTRevoked(claims.ID)
+	if err != nil || revoked {
+		return false
+	}
+	version, err := s.User.TokenVersion(claims.UserID)
+	if err != nil {
+		return false
+	}
+	return version == claims.TokenVersion
 }
 
 func UserID(c *gin.Context) int64 {

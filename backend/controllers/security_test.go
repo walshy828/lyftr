@@ -2,12 +2,17 @@ package controllers
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/config"
+	"github.com/Cawlumm/lyftr-backend/db"
 	"github.com/Cawlumm/lyftr-backend/middleware"
+	"github.com/Cawlumm/lyftr-backend/stores"
+	"github.com/Cawlumm/lyftr-backend/utils"
+	"github.com/gin-gonic/gin"
 )
 
 func TestUpsertActiveSessionSizeCap(t *testing.T) {
@@ -216,5 +221,228 @@ func TestRegistrationInviteCode(t *testing.T) {
 	th.Register(c)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("correct invite code: got %d, want 201 (%s)", w.Code, w.Body.String())
+	}
+}
+
+// ─── Token revocation ──────────────────────────────────────────────────────
+//
+// Before this, access and refresh tokens were stateless JWTs with no jti and no
+// denial list: a stolen token stayed valid for its full lifetime, there was no
+// logout endpoint and no password-change endpoint, and the only remedy was
+// rotating JWT_SECRET — which signs out every user on the instance.
+
+// registerUser creates a real account through the handler so the returned
+// tokens carry genuine jti/tv claims.
+func registerUser(t *testing.T, email, password string) (uid int64, access, refresh string) {
+	t.Helper()
+	c, w := newContext(0, http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"email": email, "password": password})
+	th.Register(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register: got %d, want 201 (%s)", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].(map[string]any)
+	user := data["user"].(map[string]any)
+	return int64(user["id"].(float64)), data["token"].(string), data["refresh_token"].(string)
+}
+
+// authedContext builds a request carrying a real bearer token, for the handlers
+// that read the Authorization header directly (Logout).
+func authedContext(uid int64, access, method, path string, body any) (*gin.Context, *httptest.ResponseRecorder) {
+	c, w := newContext(uid, method, path, body)
+	c.Request.Header.Set("Authorization", "Bearer "+access)
+	return c, w
+}
+
+func TestLogoutRevokesTokens(t *testing.T) {
+	setupTestDB(t)
+	uid, access, refresh := registerUser(t, "logout@example.com", "password123")
+
+	accessClaims, err := utils.ValidateToken(access)
+	if err != nil {
+		t.Fatalf("parse access token: %v", err)
+	}
+	if accessClaims.ID == "" {
+		t.Fatal("access token has no jti — it could never be revoked individually")
+	}
+
+	// Valid before logout.
+	if !middleware.TokenStillValid(stores.New(db.DB), accessClaims) {
+		t.Fatal("token rejected before logout")
+	}
+
+	c, w := authedContext(uid, access, http.MethodPost, "/api/v1/auth/logout",
+		map[string]string{"refresh_token": refresh})
+	th.Logout(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("logout: got %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+
+	// The access token is dead even though its signature and expiry are fine.
+	if middleware.TokenStillValid(stores.New(db.DB), accessClaims) {
+		t.Error("access token still valid after logout")
+	}
+
+	// And the refresh token can no longer mint a new pair.
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/refresh",
+		map[string]string{"refresh_token": refresh})
+	th.RefreshToken(c)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("refresh after logout: got %d, want 401 (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestRefreshTokenRotationDetectsReplay(t *testing.T) {
+	setupTestDB(t)
+	_, _, refresh := registerUser(t, "rotate@example.com", "password123")
+
+	c, w := newContext(0, http.MethodPost, "/api/v1/auth/refresh",
+		map[string]string{"refresh_token": refresh})
+	th.RefreshToken(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first refresh: got %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+	rotated := decodeResponse(t, w)["data"].(map[string]any)["refresh_token"].(string)
+	if rotated == refresh {
+		t.Fatal("refresh did not rotate the token")
+	}
+
+	// Replaying the spent token fails — which is also the signal it leaked.
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/refresh",
+		map[string]string{"refresh_token": refresh})
+	th.RefreshToken(c)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("replayed refresh token: got %d, want 401 (%s)", w.Code, w.Body.String())
+	}
+
+	// The rotated one still works.
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/refresh",
+		map[string]string{"refresh_token": rotated})
+	th.RefreshToken(c)
+	if w.Code != http.StatusOK {
+		t.Errorf("rotated refresh token: got %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestChangePasswordInvalidatesAllSessions(t *testing.T) {
+	setupTestDB(t)
+	uid, access, refresh := registerUser(t, "pw@example.com", "password123")
+
+	// A second, independent session — a phone, say. It must die too.
+	c, w := newContext(0, http.MethodPost, "/api/v1/auth/login",
+		map[string]string{"email": "pw@example.com", "password": "password123"})
+	th.Login(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("second login: got %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+	otherAccess := decodeResponse(t, w)["data"].(map[string]any)["token"].(string)
+
+	// Wrong current password is refused.
+	c, w = newContext(uid, http.MethodPut, "/api/v1/me/password",
+		map[string]string{"current_password": "not-it", "new_password": "brand-new-password"})
+	th.ChangePassword(c)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong current password: got %d, want 401", w.Code)
+	}
+
+	c, w = newContext(uid, http.MethodPut, "/api/v1/me/password",
+		map[string]string{"current_password": "password123", "new_password": "brand-new-password"})
+	th.ChangePassword(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("change password: got %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+	fresh := decodeResponse(t, w)["data"].(map[string]any)["token"].(string)
+
+	s := stores.New(db.DB)
+	for name, tok := range map[string]string{"original access": access, "other device": otherAccess} {
+		claims, err := utils.ValidateToken(tok)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		if middleware.TokenStillValid(s, claims) {
+			t.Errorf("%s token survived the password change", name)
+		}
+	}
+
+	// The old refresh token can't be used to climb back in either.
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/refresh",
+		map[string]string{"refresh_token": refresh})
+	th.RefreshToken(c)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("refresh after password change: got %d, want 401", w.Code)
+	}
+
+	// The caller isn't logged out of the session they changed it from.
+	freshClaims, err := utils.ValidateToken(fresh)
+	if err != nil {
+		t.Fatalf("parse fresh token: %v", err)
+	}
+	if !middleware.TokenStillValid(s, freshClaims) {
+		t.Error("the replacement token handed back by ChangePassword is not valid")
+	}
+
+	// The new password works; the old one doesn't.
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/login",
+		map[string]string{"email": "pw@example.com", "password": "password123"})
+	th.Login(c)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("login with old password: got %d, want 401", w.Code)
+	}
+}
+
+// TestPreRevocationTokensAreRejected: tokens minted before this feature existed
+// carry no jti, so they can never be revoked. Honouring them would leave a
+// population of permanently unrevocable credentials in circulation, so an
+// upgrade invalidates them instead.
+func TestPreRevocationTokensAreRejected(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	legacy := &utils.Claims{UserID: uid, Email: "test@example.com", Type: "access"}
+	if middleware.TokenStillValid(stores.New(db.DB), legacy) {
+		t.Error("a token with no jti was accepted")
+	}
+}
+
+func TestDeleteAccountKillsTokens(t *testing.T) {
+	setupTestDB(t)
+	uid, access, _ := registerUser(t, "gone@example.com", "password123")
+	claims, err := utils.ValidateToken(access)
+	if err != nil {
+		t.Fatalf("parse token: %v", err)
+	}
+
+	c, w := newContext(uid, http.MethodDelete, "/api/v1/me", nil)
+	th.DeleteAccount(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete account: got %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+	if middleware.TokenStillValid(stores.New(db.DB), claims) {
+		t.Error("token still valid after the account was deleted")
+	}
+}
+
+func TestPurgeExpiredRevocations(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	s := stores.New(db.DB)
+
+	if err := s.Token.RevokeJWT("expired-jti", uid, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatalf("revoke expired: %v", err)
+	}
+	if err := s.Token.RevokeJWT("live-jti", uid, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("revoke live: %v", err)
+	}
+
+	n, err := s.Token.PurgeExpiredRevocations()
+	if err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("purged %d rows, want 1", n)
+	}
+	// The still-live denial must survive, or purging would resurrect a
+	// logged-out token.
+	if revoked, _ := s.Token.IsJWTRevoked("live-jti"); !revoked {
+		t.Error("purge removed a denial for a token that has not expired yet")
 	}
 }

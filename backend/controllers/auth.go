@@ -3,8 +3,11 @@ package controllers
 import (
 	"crypto/subtle"
 	"database/sql"
+	"log"
+	"strings"
 
 	"github.com/Cawlumm/lyftr-backend/config"
+	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/models"
 	"github.com/Cawlumm/lyftr-backend/utils"
 	"github.com/gin-gonic/gin"
@@ -66,7 +69,8 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	access, refresh, err := utils.GenerateTokenPair(userID, req.Email)
+	// A fresh user starts at token_version 0.
+	access, refresh, err := utils.GenerateTokenPair(userID, req.Email, 0)
 	if err != nil {
 		utils.InternalError(c)
 		return
@@ -109,7 +113,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	access, refresh, err := utils.GenerateTokenPair(user.ID, user.Email)
+	access, refresh, err := utils.GenerateTokenPair(user.ID, user.Email, user.TokenVersion)
 	if err != nil {
 		utils.InternalError(c)
 		return
@@ -132,11 +136,61 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	access, refresh, err := utils.GenerateTokenPair(claims.UserID, claims.Email)
+	// Revoked individually (logout) or wholesale (password change)?
+	if !middleware.TokenStillValid(h.s, claims) {
+		utils.Unauthorized(c, "invalid refresh token")
+		return
+	}
+
+	version, err := h.s.User.TokenVersion(claims.UserID)
+	if utils.DBError(c, err) {
+		return
+	}
+
+	access, refresh, err := utils.GenerateTokenPair(claims.UserID, claims.Email, version)
 	if err != nil {
 		utils.InternalError(c)
 		return
 	}
 
+	// Rotation: the presented refresh token is spent. Without this a single
+	// stolen token is usable for its whole lifetime; with it, a replay lands on
+	// an already-revoked jti and fails, which is also the signal that the token
+	// leaked. Revoked after minting so a failure here can't strand the caller
+	// with no working credentials.
+	if claims.ExpiresAt != nil {
+		if err := h.s.Token.RevokeJWT(claims.ID, claims.UserID, claims.ExpiresAt.Time); err != nil {
+			log.Printf("[auth/refresh] revoke spent token: %v", err)
+		}
+	}
+
 	utils.OK(c, gin.H{"token": access, "refresh_token": refresh})
+}
+
+// Logout revokes the caller's tokens. The access token comes from the
+// Authorization header (this route is authenticated) and the refresh token from
+// the body; both are denied by jti so other devices keep their sessions.
+// Best-effort by design: a client that has already discarded its tokens should
+// still get a 200 rather than an error it can do nothing about.
+func (h *Handler) Logout(c *gin.Context) {
+	uid := middleware.UserID(c)
+
+	revoke := func(tokenStr string) {
+		claims, err := utils.ValidateToken(tokenStr)
+		if err != nil || claims.UserID != uid || claims.ExpiresAt == nil {
+			return
+		}
+		if err := h.s.Token.RevokeJWT(claims.ID, uid, claims.ExpiresAt.Time); err != nil {
+			log.Printf("[auth/logout] revoke: %v", err)
+		}
+	}
+
+	revoke(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
+
+	var req models.RefreshRequest
+	if err := c.ShouldBindJSON(&req); err == nil && req.RefreshToken != "" {
+		revoke(req.RefreshToken)
+	}
+
+	utils.OK(c, gin.H{"logged_out": true})
 }

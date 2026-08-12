@@ -63,8 +63,15 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL DEFAULT '',
   password_hash TEXT NOT NULL,
+  token_version INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+  jti        TEXT     PRIMARY KEY,
+  user_id    INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at DATETIME NOT NULL,
+  revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -78,7 +85,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   food_allergies     TEXT    NOT NULL DEFAULT '',
   food_dislikes      TEXT    NOT NULL DEFAULT '',
   food_likes         TEXT    NOT NULL DEFAULT '',
-  plan_history_start TEXT    NOT NULL DEFAULT ''
+  plan_history_start TEXT    NOT NULL DEFAULT '',
+  ai_health_insights_opt_in INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

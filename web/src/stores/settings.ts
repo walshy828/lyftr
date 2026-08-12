@@ -29,6 +29,8 @@ interface SettingsStore {
 
 const DEFAULTS: types.UserSettings = {
   user_id: 0,
+  // Sending health data to a third party is off until the user says otherwise.
+  ai_health_insights_opt_in: false,
   weight_unit: 'lbs',
   calorie_target: 2000,
   protein_target: 150,

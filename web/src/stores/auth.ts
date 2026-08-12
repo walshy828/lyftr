@@ -64,6 +64,13 @@ export const useAuthStore = create<AuthStore>((set) => {
     },
 
     logout: () => {
+      // Fire-and-forget: revoke server-side so the tokens are dead even if a
+      // copy was exfiltrated. Local state is cleared regardless of the result —
+      // a user clicking "log out" must always end up logged out locally, even
+      // offline or with an already-expired token.
+      const refreshToken = localStorage.getItem('refresh_token')
+      authAPI.logout(refreshToken).catch(() => {})
+
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user')

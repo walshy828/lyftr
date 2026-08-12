@@ -21,14 +21,17 @@ var photoFilenamePattern = regexp.MustCompile(`^[a-f0-9-]+\.jpg$`)
 // SavePhoto writes jpegBytes under baseDir/{userID}/{uuid}.jpg and returns
 // the path relative to baseDir (e.g. "42/abc-123.jpg").
 func SavePhoto(baseDir string, userID int64, jpegBytes []byte) (string, error) {
+	// 0700/0600 below: meal photos are personal data sitting next to the
+	// database on the same volume, and nothing outside this process reads them
+	// — they are served back through an authenticated handler, not by nginx.
 	userDir := filepath.Join(baseDir, fmt.Sprintf("%d", userID))
-	if err := os.MkdirAll(userDir, 0755); err != nil {
+	if err := os.MkdirAll(userDir, 0700); err != nil {
 		return "", fmt.Errorf("create meal photo dir: %w", err)
 	}
 
 	filename := uuid.NewString() + ".jpg"
 	absPath := filepath.Join(userDir, filename)
-	if err := os.WriteFile(absPath, jpegBytes, 0644); err != nil {
+	if err := os.WriteFile(absPath, jpegBytes, 0600); err != nil {
 		return "", fmt.Errorf("write meal photo: %w", err)
 	}
 

@@ -2,9 +2,11 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/db"
 	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/Cawlumm/lyftr-backend/vision"
@@ -96,6 +98,7 @@ func TestRunBPInsight_storesFactsWhenProviderFails(t *testing.T) {
 func TestRunBPInsight_threadsDeterministicFiguresToProvider(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)
+	allowHealthInsights(t, uid)
 	seedBPWeek(t, uid, 10, 145) // stage 2 territory
 
 	// Give the run some contributing-factor context to carry.
@@ -151,7 +154,7 @@ func TestRunBPInsight_threadsDeterministicFiguresToProvider(t *testing.T) {
 		t.Error("CurrentWeightLbs should carry the user's latest weight")
 	}
 	if fake.bpReq.FactsJSON == "" {
-		t.Error("FactsJSON must be passed through verbatim")
+		t.Error("FactsJSON must carry the (redacted) facts blob")
 	}
 
 	// And the written report must round-trip through storage.
@@ -168,6 +171,7 @@ func TestRunBPInsight_threadsDeterministicFiguresToProvider(t *testing.T) {
 func TestGetLatestBPInsight_readsStoredReportAndNeverGenerates(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)
+	allowHealthInsights(t, uid)
 	seedBPWeek(t, uid, 7, 128)
 
 	fake := &fakeVisionProvider{bpReport: vision.BPInsightReport{Headline: "original"}}
@@ -277,5 +281,121 @@ func TestGetHealthSummary_skipsMetricsWithNoData(t *testing.T) {
 	}
 	if rows := decodeResponse(t, w)["data"].([]any); len(rows) != 0 {
 		t.Errorf("expected no metrics for an empty account, got %v", rows)
+	}
+}
+
+// ─── Health-data export consent ────────────────────────────────────────────
+//
+// The BP insight prompt carries a full personal health record. Before this it
+// went to whichever third-party LLM the operator had configured, with no user
+// consent and no redaction, gated only by VISION_PROVIDER — so turning on
+// meal-photo scanning silently also started exporting blood pressure history.
+
+// allowHealthInsights opens both gates: the operator flag and the user opt-in.
+func allowHealthInsights(t *testing.T, uid int64) {
+	t.Helper()
+	config.C.AIHealthInsightsEnabled = true
+	if _, err := db.DB.Exec(
+		`INSERT INTO user_settings (user_id, ai_health_insights_opt_in) VALUES (?, 1)
+		 ON CONFLICT(user_id) DO UPDATE SET ai_health_insights_opt_in = 1`, uid,
+	); err != nil {
+		t.Fatalf("set opt-in: %v", err)
+	}
+}
+
+func TestBPInsight_noHealthDataLeavesWithoutConsent(t *testing.T) {
+	cases := []struct {
+		name             string
+		operatorFlag     bool
+		userOptIn        bool
+		wantProviderCall bool
+	}{
+		{"both gates closed", false, false, false},
+		{"operator enabled, user has not opted in", true, false, false},
+		{"user opted in, operator has not enabled", false, true, false},
+		{"both gates open", true, true, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupTestDB(t)
+			uid := createTestUser(t)
+			seedBPWeek(t, uid, 10, 145)
+
+			config.C.AIHealthInsightsEnabled = tc.operatorFlag
+			optIn := 0
+			if tc.userOptIn {
+				optIn = 1
+			}
+			if _, err := db.DB.Exec(
+				`INSERT INTO user_settings (user_id, ai_health_insights_opt_in) VALUES (?, ?)
+				 ON CONFLICT(user_id) DO UPDATE SET ai_health_insights_opt_in = ?`, uid, optIn, optIn,
+			); err != nil {
+				t.Fatalf("seed settings: %v", err)
+			}
+
+			fake := &fakeVisionProvider{bpReport: vision.BPInsightReport{Headline: "hi"}}
+			h := NewHandler(stores.New(db.DB), fake)
+
+			c, w := newContext(uid, "POST", "/blood-pressure/insight", nil)
+			h.RunBPInsight(c)
+			// The user's own facts are computed and returned either way — the
+			// gate withholds the third-party call, not the feature.
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+
+			called := fake.bpReq.CurrentDate != ""
+			if called != tc.wantProviderCall {
+				t.Fatalf("provider called = %v, want %v — health data %s",
+					called, tc.wantProviderCall,
+					map[bool]string{true: "left the machine without consent", false: "was withheld despite consent"}[called])
+			}
+		})
+	}
+}
+
+// TestBPInsight_redactsBirthDateFromPrompt: age is what the clinical reasoning
+// needs, and it already travels as an integer. An exact date of birth is a
+// strong identifier that adds nothing, so it must not appear in the blob pasted
+// into the prompt — even though the full record is still stored locally.
+func TestBPInsight_redactsBirthDateFromPrompt(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	allowHealthInsights(t, uid)
+	seedBPWeek(t, uid, 10, 145)
+
+	if _, err := db.DB.Exec(
+		`INSERT INTO user_profile (user_id, birth_date, sex, height_inches) VALUES (?, '1985-03-17', 'male', 70)`, uid,
+	); err != nil {
+		t.Fatalf("seed profile: %v", err)
+	}
+
+	fake := &fakeVisionProvider{bpReport: vision.BPInsightReport{Headline: "hi"}}
+	h := NewHandler(stores.New(db.DB), fake)
+
+	c, w := newContext(uid, "POST", "/blood-pressure/insight", nil)
+	h.RunBPInsight(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if strings.Contains(fake.bpReq.FactsJSON, "1985-03-17") {
+		t.Error("birth date was sent to the provider in FactsJSON")
+	}
+	if fake.bpReq.Age == 0 {
+		t.Error("age should still be derived and sent — redaction must not cost the model context it needs")
+	}
+	if fake.bpReq.Sex != "male" {
+		t.Errorf("Sex = %q, want male (clinically relevant, sent as a plain field)", fake.bpReq.Sex)
+	}
+
+	// The full record is still kept locally for the user.
+	var stored string
+	if err := db.DB.QueryRow(`SELECT facts FROM bp_insights WHERE user_id = ?`, uid).Scan(&stored); err != nil {
+		t.Fatalf("read stored facts: %v", err)
+	}
+	if !strings.Contains(stored, "1985-03-17") {
+		t.Error("redaction leaked into local storage — the user's own copy should be complete")
 	}
 }

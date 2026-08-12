@@ -23,14 +23,17 @@ type Config struct {
 	DBPassword string
 	JWTSecret  string
 	JWTExpiry  string
-	CORSOrigin string
-	Env        string
-	Version    string
+	// RefreshExpiryHours is the refresh-token lifetime (REFRESH_EXPIRY, hours).
+	// Defaults to 7 days — see utils.RefreshTTL.
+	RefreshExpiryHours string
+	CORSOrigin         string
+	Env                string
+	Version            string
 
-	// SeedDemo controls the demo user + demo workout/food data. Defaults to
-	// on in development and off in production; ENV var SEED_DEMO=true/false
-	// overrides either way. The exercise library seed is unaffected (it's
-	// reference data, not credentials).
+	// SeedDemo controls the demo user + demo workout/food data. Opt-in
+	// everywhere: only SEED_DEMO=true enables it. The demo account has a
+	// publicly documented password, so it must never appear by default. The
+	// exercise library seed is unaffected (reference data, not credentials).
 	SeedDemo bool
 
 	// AdminEmails is the comma-separated allow-list (ADMIN_EMAILS) of user
@@ -71,6 +74,13 @@ type Config struct {
 	AnthropicModel  string
 	OpenAIModel     string
 	GeminiModel     string
+
+	// AIHealthInsightsEnabled governs the features that send health data — blood
+	// pressure history, body metrics — to a third-party LLM. Deliberately
+	// separate from VisionProvider: enabling meal-photo scanning must not
+	// silently also start exporting the household's health records. Off by
+	// default, and a per-user opt-in is required on top of it.
+	AIHealthInsightsEnabled bool
 
 	// FDCAPIKey enables USDA FoodData Central as a second food-search source
 	// alongside Open Food Facts (optional). OFF is packaged-goods heavy; FDC
@@ -116,9 +126,11 @@ func Load() {
 		DBPassword: getEnv("DB_PASSWORD", ""),
 		JWTSecret:  getEnv("JWT_SECRET", ""),
 		JWTExpiry:  getEnv("JWT_EXPIRY", "3600"),
-		CORSOrigin: getEnv("CORS_ORIGIN", "http://localhost:5173"),
-		Env:        getEnv("ENV", "development"),
-		Version:    buildVersion,
+
+		RefreshExpiryHours: getEnv("REFRESH_EXPIRY", "168"),
+		CORSOrigin:         getEnv("CORS_ORIGIN", "http://localhost:5173"),
+		Env:                getEnv("ENV", "development"),
+		Version:            buildVersion,
 
 		VisionProvider:  getEnv("VISION_PROVIDER", ""),
 		AnthropicAPIKey: getEnv("ANTHROPIC_API_KEY", ""),
@@ -141,6 +153,7 @@ func Load() {
 	C.AllowRegistration = getEnv("ALLOW_REGISTRATION", "") == "true"
 	C.RegistrationInviteCode = []byte(getEnv("REGISTRATION_INVITE_CODE", ""))
 	C.TrustedProxies = splitList(getEnv("TRUSTED_PROXIES", ""))
+	C.AIHealthInsightsEnabled = getEnv("AI_HEALTH_INSIGHTS_ENABLED", "") == "true"
 
 	if err := C.resolveJWTSecret(); err != nil {
 		log.Fatalf("config: %v", err)
