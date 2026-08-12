@@ -85,13 +85,17 @@ curl -o docker-compose.yml https://raw.githubusercontent.com/Cawlumm/lyftr/main/
 curl -o .env https://raw.githubusercontent.com/Cawlumm/lyftr/main/.env.example
 ```
 
-Edit `.env` and set a strong `JWT_SECRET` (32+ characters), then:
+Edit `.env` and set a strong `JWT_SECRET` (`openssl rand -hex 32`), then:
 
 ```bash
 docker compose up -d
 ```
 
-Open `http://localhost` in your browser and create your account. If running on a VPS, replace `localhost` with your server IP or domain.
+Open `http://localhost` in your browser and create your account. Registration is
+closed by default, but a brand-new instance always allows the *first* account to
+be created — so just sign up. To add more people later, set
+`ALLOW_REGISTRATION=true` (optionally with `REGISTRATION_INVITE_CODE`), create
+the accounts, then set it back to `false`. If running on a VPS, replace `localhost` with your server IP or domain.
 
 ---
 
@@ -117,7 +121,13 @@ All variables live in `.env` at the project root.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JWT_SECRET` | *required* | Min 32-char secret for signing tokens |
+| `JWT_SECRET` | *required* | Min 32-char secret for signing tokens. Generate with `openssl rand -hex 32`. Production refuses to start without one; outside production a random ephemeral secret is generated per boot. Rotating it logs everyone out |
+| `ALLOW_REGISTRATION` | `false` | Opens `POST /auth/register`. Closed by default — a self-hosted instance has a fixed set of accounts, so open signup is attack surface with no upside. A brand-new instance with no accounts can always create its first user |
+| `REGISTRATION_INVITE_CODE` | *(none)* | When set, registration additionally requires this code. Lets you onboard household members without leaving signup open |
+| `TRUSTED_PROXIES` | *(none)* | Comma-separated CIDRs allowed to set `X-Forwarded-For`. Empty means trust no proxy. The compose file sets the Docker bridge range so the auth rate limiter sees real client IPs. Never widen this to a range you don't control — anything inside it can forge its source IP and bypass rate limiting |
+| `AI_HEALTH_INSIGHTS_ENABLED` | `false` | Allows blood-pressure history and body metrics to be sent to your configured AI provider for written insights. Separate from `VISION_PROVIDER` on purpose, so enabling meal-photo scanning doesn't also export health records. Each user must additionally opt in under **Settings → Privacy** |
+| `REFRESH_EXPIRY` | `168` | Refresh-token lifetime in hours (7 days) |
+| `SEED_DEMO` | `false` | Seeds the demo account. Opt-in everywhere; never enable it on an instance holding real data |
 | `CORS_ORIGIN` | `http://localhost` | Comma-separated allow-list of client origins. Use `*` to allow any (the API is Bearer-token based, no cookies) |
 | `PORT` | `80` | Host port for the web interface |
 | `BACKEND_ORIGIN` | `backend:3000` | Docker **service name**:port the frontend proxies `/api` to — not a host IP. Only change the port, to match a custom backend `PORT` |
@@ -141,17 +151,82 @@ The seed runs async so the server is immediately available. Exercises appear in 
 
 ---
 
+## Upgrading from an earlier version
+
+Two changes need a moment of your attention:
+
+**1. Everyone is signed out on first start.** Tokens issued before this release
+carry no revocation ID, so they can't be revoked and are rejected rather than
+trusted indefinitely. Just log in again.
+
+**2. The backend now runs as a non-root user (uid 10001).** No action needed —
+the container fixes ownership of `./data` on startup. If you back up or inspect
+those files from the host, note they are now owned by uid 10001 and mode `0600`.
+
+Also check that `JWT_SECRET` is at least 32 characters — production now refuses
+to start with a weak or placeholder secret rather than quietly accepting one.
+Registration is closed by default; existing accounts are unaffected.
+
+---
+
 ## Data & Backups
 
-All workout data is stored in `./data/lyftr.db` (SQLite). Back this up regularly. It's one file. You have no excuse.
+All your data lives in `./data/lyftr.db` (SQLite). Back it up regularly. It's one file. You have no excuse.
 
 ```bash
-# Backup
-cp ./data/lyftr.db ./data/lyftr.db.backup
+# Backup. Use .backup, not cp: it takes a consistent snapshot of a database
+# that may be mid-write, and it captures the WAL. A plain cp of a live SQLite
+# file can produce a torn copy that only fails when you try to restore it.
+sqlite3 ./data/lyftr.db ".backup './data/lyftr-$(date +%F).db'"
 
 # Update to latest
 docker compose pull && docker compose up -d
 ```
+
+**Encrypt the volume.** Lyftr stores blood-pressure readings, weight history,
+body composition and food logs. SQLite does not encrypt anything at rest, and
+neither would PostgreSQL — the file is only as private as the disk it sits on.
+Put `./data` on an encrypted filesystem (LUKS on Linux, FileVault on macOS, an
+encrypted ZFS dataset on a NAS). That single step covers the database, its
+`-wal`/`-shm` sidecars, your meal photos, and every backup you take from it.
+
+Lyftr sets `0700` on the data directory and `0600` on the database so other
+accounts on the host can't read it, and the containers run as a non-root user.
+Neither of those helps if someone gets the disk — encryption is what does.
+
+## Privacy: what leaves your server
+
+Self-hosted doesn't mean nothing goes out. Everything Lyftr sends externally:
+
+| Feature | Goes to | What is sent |
+|---------|---------|--------------|
+| Exercise library seed | `raw.githubusercontent.com` | Nothing — an outbound fetch on first boot |
+| Food search | Open Food Facts (+ USDA FDC if `FDC_API_KEY` is set) | Your search terms |
+| Barcode scan | Open Food Facts | The scanned barcode |
+| Meal photo / label scan | Your configured AI provider | The photo |
+| **AI health insights** | Your configured AI provider | Blood-pressure history, weight, BMI, age, sex |
+
+The last row is the sensitive one, so it is **off by default and gated twice**:
+the operator sets `AI_HEALTH_INSIGHTS_ENABLED=true`, *and* each user opts in
+under **Settings → Privacy**. Your exact date of birth is never sent — age is
+derived and sent as a number. Leave `VISION_PROVIDER` unset and no health data
+leaves the machine at all.
+
+## Security
+
+- **Registration is closed by default.** A fresh instance lets you create the
+  first account, then closes. Use `ALLOW_REGISTRATION` + `REGISTRATION_INVITE_CODE`
+  to add people.
+- **Sessions are revocable.** Logging out, changing your password, or deleting
+  your account invalidates tokens server-side immediately. A password change
+  signs you out everywhere else.
+- **`JWT_SECRET` must be strong.** Production won't boot without a 32+ character
+  secret. Generate one with `openssl rand -hex 32`.
+- **Set `TRUSTED_PROXIES`** if you run behind a reverse proxy, or the login rate
+  limiter can't see real client IPs. Never list a range you don't control.
+- **Put TLS in front of it.** Lyftr speaks plain HTTP; a reverse proxy
+  (Caddy, nginx, Cloudflare Tunnel) terminates TLS. Don't expose it to the
+  internet without one.
 
 ---
 

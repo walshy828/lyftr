@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -20,25 +21,42 @@ var photoFilenamePattern = regexp.MustCompile(`^[a-f0-9-]+\.jpg$`)
 // SavePhoto writes jpegBytes under baseDir/{userID}/{uuid}.jpg and returns
 // the path relative to baseDir (e.g. "42/abc-123.jpg").
 func SavePhoto(baseDir string, userID int64, jpegBytes []byte) (string, error) {
+	// 0700/0600 below: meal photos are personal data sitting next to the
+	// database on the same volume, and nothing outside this process reads them
+	// — they are served back through an authenticated handler, not by nginx.
 	userDir := filepath.Join(baseDir, fmt.Sprintf("%d", userID))
-	if err := os.MkdirAll(userDir, 0755); err != nil {
+	if err := os.MkdirAll(userDir, 0700); err != nil {
 		return "", fmt.Errorf("create meal photo dir: %w", err)
 	}
 
 	filename := uuid.NewString() + ".jpg"
 	absPath := filepath.Join(userDir, filename)
-	if err := os.WriteFile(absPath, jpegBytes, 0644); err != nil {
+	if err := os.WriteFile(absPath, jpegBytes, 0600); err != nil {
 		return "", fmt.Errorf("write meal photo: %w", err)
 	}
 
 	return filepath.Join(fmt.Sprintf("%d", userID), filename), nil
 }
 
-// DeletePhoto removes the file at baseDir/relPath. It is a no-op, not an
+// DeleteUserPhoto removes the photo at the "{userID}/{filename}" relative path
+// produced by SavePhoto, but only if it really belongs to userID. relPath comes
+// from a FoodLog.ImageURL, which is a client-supplied string, so it is resolved
+// through AbsPath rather than joined directly — an unvalidated join here would
+// let "../../lyftr.db" unlink an arbitrary file, and a mismatched leading
+// segment would let one user delete another's photo. It is a no-op, not an
 // error, if the file is already missing.
-func DeletePhoto(baseDir, relPath string) error {
-	err := os.Remove(filepath.Join(baseDir, relPath))
-	if err != nil && !os.IsNotExist(err) {
+func DeleteUserPhoto(baseDir string, userID int64, relPath string) error {
+	owner, filename, ok := strings.Cut(relPath, "/")
+	if !ok || owner != fmt.Sprintf("%d", userID) {
+		return fmt.Errorf("photo does not belong to user %d", userID)
+	}
+
+	absPath, err := AbsPath(baseDir, userID, filename)
+	if err != nil {
+		return err
+	}
+
+	if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("delete meal photo: %w", err)
 	}
 	return nil

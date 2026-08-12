@@ -45,6 +45,11 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("settings", h.GetSettings)
 		protected.PUT("settings", h.UpdateSettings)
 		protected.DELETE("me", h.DeleteAccount)
+		// Password change invalidates every session, so it lives behind Auth
+		// (the caller must already be logged in) rather than under /auth.
+		protected.PUT("me/password", h.ChangePassword)
+		// Logout is authenticated: it needs the access token it is revoking.
+		protected.POST("auth/logout", h.Logout)
 		protected.GET("profile", h.GetProfile)
 		protected.PUT("profile", h.UpdateProfile)
 

@@ -210,7 +210,7 @@ func (h *Handler) DeleteFoodLog(c *gin.Context) {
 
 	if strings.HasPrefix(f.ImageURL, mealPhotoURLPrefix) {
 		relPath := strings.TrimPrefix(f.ImageURL, mealPhotoURLPrefix) // "{userID}/{filename}"
-		if err := storage.DeletePhoto(config.C.MealPhotoDir, relPath); err != nil {
+		if err := storage.DeleteUserPhoto(config.C.MealPhotoDir, uid, relPath); err != nil {
 			log.Printf("[food/:id delete] photo cleanup error: %v", err)
 		}
 	}
@@ -484,7 +484,10 @@ func searchOFF(ctx context.Context, q string, limit int) ([]models.FoodSearchRes
 		"https://search.openfoodfacts.org/search?q=%s&lang=en&cc=world&page_size=%d&page=1&fields=product_name,brands,nutriments,serving_size,image_url",
 		url.QueryEscape(q), limit,
 	)
-	log.Printf("[food/search] OFF request: q=%q limit=%d", q, limit)
+	// The query itself is not logged: it's a record of what the user eats, and
+	// container logs are routinely shipped to aggregators. Length is enough to
+	// correlate a request with its response for debugging.
+	log.Printf("[food/search] OFF request: qlen=%d limit=%d", len(q), limit)
 
 	body, status, err := doOFFRequest(ctx, searchURL)
 	elapsed := time.Since(start)
@@ -602,7 +605,9 @@ func (h *Handler) LookupBarcode(c *gin.Context) {
 
 	start := time.Now()
 	lookupURL := fmt.Sprintf("https://world.openfoodfacts.org/api/v3/product/%s.json", url.PathEscape(code))
-	log.Printf("[food/barcode] OFF request: code=%q", code)
+	// The scanned barcode identifies a specific product the user is eating —
+	// dietary data, not diagnostics. See the note in the search handler.
+	log.Printf("[food/barcode] OFF request")
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()

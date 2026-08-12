@@ -7,8 +7,24 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/app/data
+    # The API itself runs unprivileged (see backend/entrypoint.sh). Drop every
+    # capability, then add back only the four the entrypoint needs to chown a
+    # freshly created bind mount and step down to the lyftr user. Notably absent:
+    # NET_RAW, NET_BIND_SERVICE, SYS_ADMIN, MKNOD.
+    #
+    # no-new-privileges still applies: it blocks *gaining* privileges through a
+    # setuid binary, which is unrelated to root voluntarily dropping them.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
     environment:
-      # Controls Gin's debug/release mode and demo-data seeding (see backend/config/config.go).
+      # Controls Gin's debug/release mode (see backend/config/config.go).
       # Defaults to production for self-host deployments; override in .env only for local debugging.
       - ENV=${ENV:-production}
       - PORT=3000
@@ -16,6 +32,36 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - DB_TYPE=sqlite
       - DB_PATH=/app/data/lyftr.db
+      # The frontend's nginx is the only hop in front of the backend, and it
+      # sits on the Docker bridge network. Trusting exactly that range lets the
+      # rate limiter see real client IPs without letting a client forge one.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-172.16.0.0/12}
+      # Registration is closed by default. Set ALLOW_REGISTRATION=true (and
+      # optionally REGISTRATION_INVITE_CODE) long enough to create accounts,
+      # then set it back.
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
+      - REGISTRATION_INVITE_CODE=${REGISTRATION_INVITE_CODE:-}
+      # Refresh-token lifetime, hours.
+      - REFRESH_EXPIRY=${REFRESH_EXPIRY:-168}
+      # Seeds the demo account (demo@lyftr.local, publicly documented password).
+      # Never enable this on an instance holding real data.
+      - SEED_DEMO=${SEED_DEMO:-false}
+      # Optional AI features. Leave VISION_PROVIDER empty to disable them
+      # entirely, in which case nothing is sent to any provider. Set it to
+      # anthropic/openai/gemini and supply the matching key.
+      - VISION_PROVIDER=${VISION_PROVIDER:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-}
+      # Second food-search source (USDA FoodData Central). Optional.
+      - FDC_API_KEY=${FDC_API_KEY:-}
+      # Sending health data to a third-party LLM. Off unless BOTH this and the
+      # per-user opt-in under Settings > Privacy are set. Separate from
+      # VISION_PROVIDER on purpose — see the README's Privacy section.
+      - AI_HEALTH_INSIGHTS_ENABLED=${AI_HEALTH_INSIGHTS_ENABLED:-false}
     expose:
       - "3000"
     healthcheck:
@@ -44,8 +90,17 @@ services:
       # Create this in the web app under Settings > Personal access tokens,
       # then set it in your .env file.
       - LYFTR_TOKEN=${LYFTR_MCP_TOKEN}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Bound to loopback, not 0.0.0.0. This endpoint carries a long-lived
+    # personal access token over plain HTTP, so exposing it on the LAN puts
+    # that token on the wire in cleartext for anything sniffing the network.
+    # For a remote MCP client, tunnel over SSH/Tailscale or put TLS in front —
+    # or set MCP_BIND=0.0.0.0 if you have accepted that trade-off.
     ports:
-      - "${MCP_PORT:-8811}:8811"
+      - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-8811}:8811"
     depends_on:
       backend:
         condition: service_healthy
@@ -54,6 +109,8 @@ services:
     image: cwlumm/lyftr-frontend:latest
     build: ./web
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       # host:port the frontend nginx proxies /api to. Must match the backend's PORT.
       - BACKEND_ORIGIN=${BACKEND_ORIGIN:-backend:3000}

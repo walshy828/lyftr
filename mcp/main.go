@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"log"
 	"net/http"
 	"os"
@@ -78,7 +79,10 @@ func requireBearerToken(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		got, ok := strings.CutPrefix(auth, "Bearer ")
-		if !ok || got != token {
+		// Constant-time: a plain != returns as soon as two bytes differ, which
+		// leaks the length of the matching prefix and lets the token be
+		// recovered a character at a time over enough requests.
+		if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}

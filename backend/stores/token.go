@@ -93,3 +93,53 @@ func (s *TokenStore) TouchLastUsed(id int64) error {
 	_, err := s.db.Exec(`UPDATE personal_access_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
 	return err
 }
+
+// ─── JWT revocation ────────────────────────────────────────────────────────
+//
+// Access and refresh tokens are stateless JWTs, so revoking one means recording
+// a denial. Two levers, chosen so the common path costs nothing extra:
+// token_version invalidates all of a user's tokens at once (it rides along on
+// the users row Auth already reads), while revoked_tokens denies one specific
+// jti so logging out of a phone doesn't sign you out of a laptop.
+
+// RevokeJWT denies a single JWT by its jti until it would have expired anyway.
+// Idempotent: revoking the same token twice is not an error. Distinct from
+// Revoke above, which retires a personal access token by row id.
+func (s *TokenStore) RevokeJWT(jti string, userID int64, expiresAt time.Time) error {
+	// Stored as UTC and compared against an explicit UTC bound below rather
+	// than SQLite's CURRENT_TIMESTAMP: CURRENT_TIMESTAMP is UTC while Go's
+	// time.Now() is local, and mixing the two made the purge delete denials for
+	// tokens that had not expired — silently reviving logged-out sessions.
+	_, err := s.db.Exec(
+		`INSERT INTO revoked_tokens (jti, user_id, expires_at) VALUES (?, ?, ?)
+		 ON CONFLICT(jti) DO NOTHING`,
+		jti, userID, expiresAt.UTC(),
+	)
+	return err
+}
+
+// IsJWTRevoked reports whether a jti has been denied. An empty jti means a token
+// minted before revocation existed; those are treated as revoked so that
+// upgrading the server invalidates pre-upgrade tokens rather than leaving a
+// population of permanently unrevocable credentials in circulation.
+func (s *TokenStore) IsJWTRevoked(jti string) (bool, error) {
+	if jti == "" {
+		return true, nil
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM revoked_tokens WHERE jti = ?`, jti).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// PurgeExpiredRevocations drops denial rows for tokens that have expired on
+// their own — past that point the signature check rejects them anyway, so the
+// row is dead weight. Called periodically from main.
+func (s *TokenStore) PurgeExpiredRevocations() (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM revoked_tokens WHERE expires_at < ?`, time.Now().UTC())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

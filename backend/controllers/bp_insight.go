@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+
+	"github.com/Cawlumm/lyftr-backend/config"
 	"math"
 	"time"
 
@@ -181,7 +183,7 @@ func (h *Handler) RunBPInsight(c *gin.Context) {
 	}
 
 	reportJSON := ""
-	if report, ok := h.generateBPReport(c, facts, string(factsJSON)); ok {
+	if report, ok := h.generateBPReport(c, uid, facts); ok {
 		if b, err := json.Marshal(report); err == nil {
 			reportJSON = string(b)
 		}
@@ -198,8 +200,13 @@ func (h *Handler) RunBPInsight(c *gin.Context) {
 // generateBPReport calls the provider. It reports failure by returning ok=false
 // rather than writing an error response: a missing narrative must never cost
 // the user the facts we already computed.
-func (h *Handler) generateBPReport(c *gin.Context, facts models.BPInsightFacts, factsJSON string) (models.BPInsightReport, bool) {
+func (h *Handler) generateBPReport(c *gin.Context, uid int64, facts models.BPInsightFacts) (models.BPInsightReport, bool) {
 	if h.vision == nil {
+		return models.BPInsightReport{}, false
+	}
+	// Two independent gates before any health data leaves the machine — see
+	// healthInsightsAllowed.
+	if !h.healthInsightsAllowed(uid) {
 		return models.BPInsightReport{}, false
 	}
 
@@ -243,7 +250,7 @@ func (h *Handler) generateBPReport(c *gin.Context, facts models.BPInsightFacts, 
 		SodiumTargetMg:     facts.Nutrition.SodiumTargetMg,
 		DaysFoodLogged30:   facts.Nutrition.DaysLogged30,
 
-		FactsJSON: factsJSON,
+		FactsJSON: redactedFactsJSON(facts),
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), bpInsightGenerateTimeout)
@@ -317,3 +324,44 @@ var (
 	_ = models.BPWindowFacts(utils.BPWindow{})
 	_ = models.BPNudgeFacts(utils.BPNudge{})
 )
+
+// redactedFactsJSON is the blob pasted verbatim into the provider prompt. It is
+// deliberately NOT the same JSON stored in bp_insights: the stored copy is the
+// full record for the user's own use, while this one drops direct identifiers
+// that the model doesn't need to reason about blood pressure.
+//
+// Specifically, the raw UserProfile is removed — it carries an exact birth date
+// and height. Age is already sent as an integer on the request alongside sex,
+// which is what the clinical reasoning actually needs; a date of birth is a
+// strong identifier and adds nothing. On a marshalling failure we send an empty
+// string rather than falling back to the unredacted blob: losing prompt context
+// degrades the narrative, leaking a birth date can't be undone.
+func redactedFactsJSON(facts models.BPInsightFacts) string {
+	redacted := facts
+	redacted.Profile = models.UserProfile{}
+	b, err := json.Marshal(redacted)
+	if err != nil {
+		log.Printf("[blood-pressure/insight] redact facts: %v", err)
+		return ""
+	}
+	return string(b)
+}
+
+// healthInsightsAllowed reports whether this user's health data may be sent to
+// the configured third-party LLM. Both gates must pass: the operator flag
+// (AI_HEALTH_INSIGHTS_ENABLED, deliberately separate from VisionProvider so
+// that enabling meal-photo scanning doesn't silently start exporting blood
+// pressure records) and the user's own opt-in, because consent to send one's
+// own health data can't be given by whoever runs the server. Fails closed on
+// any lookup error — the default answer to "may we export health data?" is no.
+func (h *Handler) healthInsightsAllowed(uid int64) bool {
+	if !config.C.AIHealthInsightsEnabled {
+		return false
+	}
+	settings, err := h.s.User.GetSettings(uid)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("[ai-health-consent] settings lookup: %v", err)
+		return false
+	}
+	return settings.AIHealthInsightsOptIn
+}

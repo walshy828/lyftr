@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/controllers"
@@ -41,6 +42,15 @@ func main() {
 	}
 
 	r := gin.Default()
+	// Gin trusts every proxy by default, so c.ClientIP() would come from a
+	// client-supplied X-Forwarded-For — and the auth rate limiter keys its
+	// buckets on exactly that. Nil (the empty case) means "trust no proxy,
+	// use the direct peer address", which is correct for a directly exposed
+	// backend; set TRUSTED_PROXIES when running behind nginx/Caddy/Cloudflare.
+	if err := r.SetTrustedProxies(config.C.TrustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
+
 	s := stores.New(db.DB)
 
 	visionProvider, err := vision.New(vision.Config{
@@ -58,6 +68,20 @@ func main() {
 
 	h := controllers.NewHandler(s, visionProvider)
 	routes.Setup(r, h, s)
+
+	// Revocation rows are only needed until the token would have expired on its
+	// own; after that the signature check rejects it anyway. Prune hourly so the
+	// table tracks active sessions rather than growing forever.
+	go func() {
+		for {
+			if n, err := s.Token.PurgeExpiredRevocations(); err != nil {
+				log.Printf("revocation purge: %v", err)
+			} else if n > 0 {
+				log.Printf("revocation purge: removed %d expired entries", n)
+			}
+			time.Sleep(time.Hour)
+		}
+	}()
 
 	addr := ":" + config.C.Port
 	log.Printf("lyftr API listening on %s (env=%s)", addr, config.C.Env)

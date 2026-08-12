@@ -16,6 +16,7 @@ export default function Register() {
   const [email, setEmail]                     = useState('')
   const [password, setPassword]               = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
+  const [inviteCode, setInviteCode]           = useState('')
   const [error, setError]                     = useState('')
   const [isLoading, setLoading]               = useState(false)
 
@@ -26,7 +27,7 @@ export default function Register() {
     if (password.length < 8)          { setError('Password must be at least 8 characters'); return }
     setLoading(true)
     try {
-      await register(email, password)
+      await register(email, password, inviteCode.trim() || undefined)
       navigate('/')
     } catch (err: any) {
       setError(apiErrorMessage(err, 'Registration failed.'))
@@ -156,6 +157,23 @@ export default function Register() {
                 placeholder="••••••••"
                 autoComplete="new-password"
                 required
+              />
+            </div>
+
+            {/* Invite code — optional, and only meaningful when the server sets
+                REGISTRATION_INVITE_CODE. Left blank it's omitted from the request. */}
+            <div>
+              <label htmlFor="invite-code" className="label">
+                Invite code <span className="text-tx-muted font-normal">(if your server requires one)</span>
+              </label>
+              <input
+                id="invite-code"
+                type="text"
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value)}
+                className="input mt-2"
+                placeholder="Leave blank if unsure"
+                autoComplete="off"
               />
             </div>
 

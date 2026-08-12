@@ -49,6 +49,17 @@ jobs:
         run: |
           echo "JWT_SECRET=ci-test-secret-$(openssl rand -hex 16)" >> .env
           echo "PORT=80" >> .env
+          # The suite registers a throwaway account per worker, so signup has to
+          # be open here. Registration is closed by default on a real
+          # deployment — see ALLOW_REGISTRATION in the README.
+          echo "ALLOW_REGISTRATION=true" >> .env
+          # The "wait for demo user" step below logs in as demo@lyftr.local, so
+          # the demo data has to actually be seeded. docker-compose runs with
+          # ENV=production, under which seeding has always been off — this step
+          # was timing out before this was made explicit. CI is a throwaway
+          # stack, so the well-known demo credentials are fine here and nowhere
+          # else.
+          echo "SEED_DEMO=true" >> .env
 
       - uses: docker/setup-buildx-action@v3
 

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/db"
 	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/gin-gonic/gin"
@@ -20,8 +21,23 @@ import (
 // the fresh per-test db.DB.
 var th *Handler
 
+// setupTestConfig installs a baseline config.C for handlers that consult it.
+// Registration is enabled here because most tests exercise the happy path; the
+// closed-by-default production behaviour is covered in security_test.go.
+func setupTestConfig(t *testing.T) {
+	t.Helper()
+	orig := config.C
+	config.C = &config.Config{
+		Env:               "test",
+		AllowRegistration: true,
+		MealPhotoDir:      t.TempDir(),
+	}
+	t.Cleanup(func() { config.C = orig })
+}
+
 func setupTestDB(t *testing.T) {
 	t.Helper()
+	setupTestConfig(t)
 	var err error
 	// modernc ignores the mattn-style _foreign_keys=on; use the _pragma form so the
 	// harness actually enforces foreign keys, matching the production DSN.
@@ -47,8 +63,15 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL DEFAULT '',
   password_hash TEXT NOT NULL,
+  token_version INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+  jti        TEXT     PRIMARY KEY,
+  user_id    INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at DATETIME NOT NULL,
+  revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -62,7 +85,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   food_allergies     TEXT    NOT NULL DEFAULT '',
   food_dislikes      TEXT    NOT NULL DEFAULT '',
   food_likes         TEXT    NOT NULL DEFAULT '',
-  plan_history_start TEXT    NOT NULL DEFAULT ''
+  plan_history_start TEXT    NOT NULL DEFAULT '',
+  ai_health_insights_opt_in INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS exercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

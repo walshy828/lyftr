@@ -15,8 +15,10 @@ var DB *sql.DB
 func Connect() {
 	dbPath := config.C.DBPath
 
-	// Ensure the directory exists
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	// 0700, not 0755. This directory holds blood-pressure readings, weight
+	// history and food logs in an unencrypted SQLite file; there is no reason
+	// for any other account on the host to be able to list or read it.
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0700); err != nil {
 		log.Fatalf("failed to create db directory: %v", err)
 	}
 
@@ -47,6 +49,13 @@ func Connect() {
 		log.Fatalf("failed to ping database: %v", err)
 	}
 
+	// The driver creates the database (and its -wal/-shm siblings) with the
+	// process umask, which typically lands 0644 — world-readable health data.
+	// Tighten after Ping, once the files certainly exist. Non-fatal: a
+	// bind-mounted volume may not permit chmod, and refusing to start would be
+	// a worse outcome than a warning.
+	restrictDBFilePerms(dbPath)
+
 	if err = migrate(); err != nil {
 		log.Fatalf("migration failed: %v", err)
 	}
@@ -54,4 +63,18 @@ func Connect() {
 	alterMigrations()
 
 	log.Printf("SQLite database ready at %s", dbPath)
+}
+
+// restrictDBFilePerms narrows the database and its WAL sidecars to owner-only.
+// The -wal and -shm files matter as much as the main file: a WAL holds recently
+// written rows in the clear, so leaving it world-readable leaks the newest data.
+func restrictDBFilePerms(dbPath string) {
+	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		if _, err := os.Stat(p); err != nil {
+			continue // sidecars only exist once WAL has been written to
+		}
+		if err := os.Chmod(p, 0600); err != nil {
+			log.Printf("warning: could not restrict permissions on %s: %v", p, err)
+		}
+	}
 }

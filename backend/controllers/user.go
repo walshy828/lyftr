@@ -93,8 +93,75 @@ func (h *Handler) UpdateMe(c *gin.Context) {
 	utils.OK(c, u)
 }
 
+// ChangePassword rotates the caller's password and invalidates every session
+// they hold, including this one — a password change that left stolen tokens
+// working would defeat the point of changing it. The client is handed a fresh
+// pair so the user isn't bounced to the login screen for doing the right thing.
+//
+// JWT-only: a personal access token is a machine credential and shouldn't be
+// able to change the password protecting it, mirroring the rule in tokens.go.
+func (h *Handler) ChangePassword(c *gin.Context) {
+	uid := middleware.UserID(c)
+	if method, _ := c.Get(middleware.AuthMethodKey); method != "jwt" {
+		utils.Forbidden(c, "password changes require an interactive login")
+		return
+	}
+
+	var req models.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+
+	hash, err := h.s.User.GetPasswordHash(uid)
+	if err == sql.ErrNoRows {
+		utils.Unauthorized(c, "account no longer exists")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	// Confirming the current password stops a borrowed session from locking
+	// the real owner out of their own account.
+	if !utils.CheckPassword(req.CurrentPassword, hash) {
+		utils.Unauthorized(c, "current password is incorrect")
+		return
+	}
+
+	newHash, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		utils.InternalError(c)
+		return
+	}
+	version, err := h.s.User.UpdatePassword(uid, newHash)
+	if utils.DBError(c, err) {
+		return
+	}
+
+	user, err := h.s.User.GetMe(uid)
+	if utils.DBError(c, err) {
+		return
+	}
+	access, refresh, err := utils.GenerateTokenPair(uid, user.Email, version)
+	if err != nil {
+		utils.InternalError(c)
+		return
+	}
+	utils.OK(c, models.AuthResponse{Token: access, RefreshToken: refresh, User: user})
+}
+
 func (h *Handler) DeleteAccount(c *gin.Context) {
 	uid := middleware.UserID(c)
+	// Bump first: if the delete fails partway, the account's tokens are already
+	// dead rather than still usable against a half-removed account.
+	if _, err := h.s.User.BumpTokenVersion(uid); err != nil && err != sql.ErrNoRows {
+		utils.DBError(c, err)
+		return
+	}
 	if utils.DBError(c, h.s.User.Delete(uid)) {
 		return
 	}

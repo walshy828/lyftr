@@ -6,12 +6,14 @@ import (
 )
 
 type User struct {
-	ID        int64     `json:"id" db:"id"`
-	Email     string    `json:"email" db:"email"`
-	Name      string    `json:"name" db:"name"`
-	Password  string    `json:"-" db:"password_hash"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	ID       int64  `json:"id" db:"id"`
+	Email    string `json:"email" db:"email"`
+	Name     string `json:"name" db:"name"`
+	Password string `json:"-" db:"password_hash"`
+	// TokenVersion is the revocation epoch; never serialized to clients.
+	TokenVersion int64     `json:"-" db:"token_version"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type UserSettings struct {
@@ -31,6 +33,12 @@ type UserSettings struct {
 	// accepted goal's effective_at). Stored server-side rather than in the
 	// browser so the chosen vantage point follows the user across devices.
 	PlanHistoryStart string `json:"plan_history_start" db:"plan_history_start"`
+	// AIHealthInsightsOptIn is explicit consent to send this user's health data
+	// (blood pressure history, body metrics) to the configured third-party LLM.
+	// Defaults to false and is never inferred from the operator having
+	// configured a provider — consent to analyse a photo of dinner is not
+	// consent to ship a blood-pressure record off the machine.
+	AIHealthInsightsOptIn bool `json:"ai_health_insights_opt_in" db:"ai_health_insights_opt_in"`
 }
 
 // DefaultUserSettings is the single source of truth for a brand-new user's
@@ -409,7 +417,17 @@ type FoodHistoryPoint struct {
 
 type RegisterRequest struct {
 	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=8"`
+	Password string `json:"password" validate:"required,min=8,max=72"`
+	// InviteCode is required only when the server sets
+	// REGISTRATION_INVITE_CODE; ignored otherwise.
+	InviteCode string `json:"invite_code"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	// max=72 because bcrypt silently truncates there — without the cap a user
+	// picking a longer passphrase gets less security than they think.
+	NewPassword string `json:"new_password" validate:"required,min=8,max=72"`
 }
 
 type LoginRequest struct {
@@ -1015,6 +1033,9 @@ type UpdateSettingsRequest struct {
 	// date, so it can't use `omitempty,datetime=...` — a non-nil pointer to ""
 	// must survive validation. It's checked explicitly in UpdateSettings.
 	PlanHistoryStart *string `json:"plan_history_start"`
+	// AIHealthInsightsOptIn is the user's consent to send health data to the
+	// configured third-party LLM. Nil leaves the stored value untouched.
+	AIHealthInsightsOptIn *bool `json:"ai_health_insights_opt_in"`
 }
 
 type Program struct {

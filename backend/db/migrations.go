@@ -264,6 +264,36 @@ CREATE INDEX IF NOT EXISTS idx_bp_insights_user ON bp_insights(user_id, created_
 	// so a user who never picks a date always sees their whole history.
 	ensureColumn("user_settings", "plan_history_start", `ALTER TABLE user_settings ADD COLUMN plan_history_start TEXT NOT NULL DEFAULT ''`)
 
+	// Token revocation. Access/refresh tokens are stateless JWTs, so before
+	// this there was no way to invalidate one: a stolen refresh token stayed
+	// valid for its full lifetime and the only remedy was rotating JWT_SECRET,
+	// which logs out every user. Two mechanisms, deliberately:
+	//
+	//   - token_version is a per-user epoch. Bumping it invalidates every
+	//     token that user holds at once (password change, account deletion).
+	//     One integer compare on the row we already have — no extra query.
+	//   - revoked_tokens denies a single token by its jti (logout, refresh
+	//     rotation) without disturbing the user's other sessions.
+	//
+	// Rows are pruned once expired — see stores.TokenStore.PurgeExpiredRevocations.
+	ensureColumn("users", "token_version", `ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`)
+	revocation := `
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+  jti        TEXT     PRIMARY KEY,
+  user_id    INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at DATETIME NOT NULL,
+  revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at);`
+	if _, err := DB.Exec(revocation); err != nil {
+		log.Fatalf("create revoked_tokens: %v", err)
+	}
+
+	// Per-user consent for sending health data to a third-party LLM. Defaults
+	// to 0: the export is opt-in, never inherited from the operator merely
+	// enabling a provider.
+	ensureColumn("user_settings", "ai_health_insights_opt_in", `ALTER TABLE user_settings ADD COLUMN ai_health_insights_opt_in INTEGER NOT NULL DEFAULT 0`)
+
 	// Child-table lookup indexes: every workout/program load fetches children
 	// by these foreign keys (and the exercise PR/history analytics join
 	// through workout_exercises.exercise_id) — without them each lookup is a

@@ -21,6 +21,8 @@ export interface UserSettings {
   // Remembered vantage point for the weight-plan progress view — 'YYYY-MM-DD',
   // or '' meaning "start from the journey start" (first accepted plan).
   plan_history_start: string
+  /** Consent to send health data (BP history, body metrics) to the configured third-party LLM. */
+  ai_health_insights_opt_in: boolean
   workout_layout?: 'list' | 'gym'
   // Client-only (localStorage, not persisted server-side):
   rest_enabled?: boolean        // master rest-timer on/off
@@ -830,7 +832,14 @@ export interface LoginRequest {
   password: string
 }
 
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
 export interface RegisterRequest {
   email: string
   password: string
+  // Required only when the server sets REGISTRATION_INVITE_CODE.
+  invite_code?: string
 }

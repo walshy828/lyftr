@@ -22,16 +22,28 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 # Stage 2: Runtime
 FROM alpine:3.19
 
-# ca-certificates for any outbound TLS calls; wget for healthcheck
-RUN apk add --no-cache ca-certificates wget
+# ca-certificates for any outbound TLS calls; wget for healthcheck;
+# su-exec to drop from root to the lyftr user in the entrypoint
+RUN apk add --no-cache ca-certificates wget su-exec
 
 WORKDIR /app
 
 COPY --from=builder /build/lyftr-api .
 
-# Persistent data directory (mount a volume here)
-RUN mkdir -p /app/data
+# The API runs as this user. A container escape or a file-write bug should not
+# land with uid 0 on a volume bind-mounted from the host. The fixed uid/gid
+# keeps ownership stable across rebuilds so an existing ./data stays writable.
+RUN addgroup -g 10001 -S lyftr && adduser -u 10001 -S -G lyftr lyftr
 
+# Persistent data directory (mount a volume here), owned by the runtime user.
+RUN mkdir -p /app/data && chown -R lyftr:lyftr /app
+
+COPY --chown=lyftr:lyftr entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# No USER directive: the entrypoint starts as root only long enough to fix
+# ownership of a freshly created bind mount, then execs as lyftr. See
+# entrypoint.sh for why that step can't be skipped on Linux hosts.
 EXPOSE 3000
 
-ENTRYPOINT ["/app/lyftr-api"]
+ENTRYPOINT ["/app/entrypoint.sh", "/app/lyftr-api"]
