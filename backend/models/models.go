@@ -409,7 +409,10 @@ type FoodHistoryPoint struct {
 
 type RegisterRequest struct {
 	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=8"`
+	Password string `json:"password" validate:"required,min=8,max=72"`
+	// InviteCode is required only when the server sets
+	// REGISTRATION_INVITE_CODE; ignored otherwise.
+	InviteCode string `json:"invite_code"`
 }
 
 type LoginRequest struct {

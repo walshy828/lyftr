@@ -116,6 +116,18 @@ func (s *UserStore) Create(email, hash string) (int64, error) {
 	})
 }
 
+// IsEmpty reports whether the instance has no accounts yet. Register uses this
+// to let a fresh install create its first user even when registration is
+// otherwise closed — without it, the closed-by-default setting would lock a new
+// deployment out of itself.
+func (s *UserStore) IsEmpty() (bool, error) {
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
+		return false, err
+	}
+	return n == 0, nil
+}
+
 // Delete removes the user; child rows go via ON DELETE CASCADE (foreign_keys=on).
 func (s *UserStore) Delete(uid int64) error {
 	_, err := s.db.Exec(`DELETE FROM users WHERE id = ?`, uid)

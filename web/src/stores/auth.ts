@@ -9,7 +9,7 @@ interface AuthStore {
   isLoading: boolean
   error: string | null
   login:     (email: string, password: string) => Promise<void>
-  register:  (email: string, password: string) => Promise<void>
+  register:  (email: string, password: string, inviteCode?: string) => Promise<void>
   logout:    () => void
   clearError: () => void
   // Replace the cached user (e.g. after a profile edit or a fresh /me fetch)
@@ -49,10 +49,10 @@ export const useAuthStore = create<AuthStore>((set) => {
       }
     },
 
-    register: async (email, password) => {
+    register: async (email, password, inviteCode) => {
       set({ isLoading: true, error: null })
       try {
-        const data = await authAPI.register({ email, password })
+        const data = await authAPI.register({ email, password, ...(inviteCode ? { invite_code: inviteCode } : {}) })
         localStorage.setItem('access_token', data.token)
         localStorage.setItem('refresh_token', data.refresh_token)
         localStorage.setItem('user', JSON.stringify(data.user))

@@ -16,6 +16,15 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - DB_TYPE=sqlite
       - DB_PATH=/app/data/lyftr.db
+      # The frontend's nginx is the only hop in front of the backend, and it
+      # sits on the Docker bridge network. Trusting exactly that range lets the
+      # rate limiter see real client IPs without letting a client forge one.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-172.16.0.0/12}
+      # Registration is closed by default. Set ALLOW_REGISTRATION=true (and
+      # optionally REGISTRATION_INVITE_CODE) long enough to create accounts,
+      # then set it back.
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
+      - REGISTRATION_INVITE_CODE=${REGISTRATION_INVITE_CODE:-}
     expose:
       - "3000"
     healthcheck:

@@ -17,6 +17,7 @@ import (
 // also rebuilds the DI handler (th) bound to this DB.
 func setupFileDB(t *testing.T) string {
 	t.Helper()
+	setupTestConfig(t)
 	path := filepath.Join(t.TempDir(), "lock.db")
 	var err error
 	db.DB, err = sql.Open("sqlite", path+"?_pragma=busy_timeout(0)")

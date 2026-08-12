@@ -210,7 +210,7 @@ func (h *Handler) DeleteFoodLog(c *gin.Context) {
 
 	if strings.HasPrefix(f.ImageURL, mealPhotoURLPrefix) {
 		relPath := strings.TrimPrefix(f.ImageURL, mealPhotoURLPrefix) // "{userID}/{filename}"
-		if err := storage.DeletePhoto(config.C.MealPhotoDir, relPath); err != nil {
+		if err := storage.DeleteUserPhoto(config.C.MealPhotoDir, uid, relPath); err != nil {
 			log.Printf("[food/:id delete] photo cleanup error: %v", err)
 		}
 	}

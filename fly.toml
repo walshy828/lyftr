@@ -14,6 +14,14 @@ primary_region = "fra"
   PORT       = "3000"
   DB_PATH    = "/app/data/lyftr.db"
   CORS_ORIGIN = "https://lyftr-demo.fly.dev"
+  # This is the public demo, so it deliberately opts into both of the things a
+  # real deployment must never enable: the well-known demo account, and open
+  # signup. The volume is wiped hourly by fly/reset.sh and holds no real data.
+  # Do NOT copy this block to a self-hosted instance.
+  SEED_DEMO         = "true"
+  ALLOW_REGISTRATION = "true"
+  # nginx runs in the same machine and proxies to the backend over loopback.
+  TRUSTED_PROXIES   = "127.0.0.1/32,::1/128"
 
 # JWT_SECRET must be set as a secret:
 #   fly secrets set JWT_SECRET=$(openssl rand -hex 32)

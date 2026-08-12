@@ -41,6 +41,15 @@ func main() {
 	}
 
 	r := gin.Default()
+	// Gin trusts every proxy by default, so c.ClientIP() would come from a
+	// client-supplied X-Forwarded-For — and the auth rate limiter keys its
+	// buckets on exactly that. Nil (the empty case) means "trust no proxy,
+	// use the direct peer address", which is correct for a directly exposed
+	// backend; set TRUSTED_PROXIES when running behind nginx/Caddy/Cloudflare.
+	if err := r.SetTrustedProxies(config.C.TrustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
+
 	s := stores.New(db.DB)
 
 	visionProvider, err := vision.New(vision.Config{

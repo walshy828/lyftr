@@ -1957,3 +1957,81 @@ func TestRecommendMeals_overBudgetClampsToZero(t *testing.T) {
 		t.Errorf("expected all remaining macros clamped to 0, got %+v", req)
 	}
 }
+
+// TestDeleteFoodLog_rejectsPhotoPathTraversal covers the arbitrary-file-delete
+// hole: image_url is client-supplied and was passed to os.Remove after nothing
+// more than a prefix trim, so "…/photos/../../lyftr.db" unlinked the database.
+func TestDeleteFoodLog_rejectsPhotoPathTraversal(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	dir := withTempMealPhotoDir(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	// A file outside the photo dir that must survive. One level up mirrors the
+	// real layout: MEAL_PHOTO_DIR defaults to data/meal-photos, DB_PATH to
+	// data/lyftr.db, so "../lyftr.db" is exactly the live database.
+	victim := filepath.Join(dir, "..", "lyftr.db")
+	if err := os.WriteFile(victim, []byte("precious"), 0o600); err != nil {
+		t.Fatalf("seed victim file: %v", err)
+	}
+
+	body := map[string]any{
+		"name": "Traversal", "meal": "lunch", "calories": 1,
+		"source": "photo", "image_url": "/api/v1/food/photos/../lyftr.db",
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food", body)
+	h.LogFood(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 logging food, got %d: %s", w.Code, w.Body.String())
+	}
+	lid := int64(decodeResponse(t, w)["data"].(map[string]any)["id"].(float64))
+
+	c2, w2 := newContext(uid, http.MethodDelete, fmt.Sprintf("/api/v1/food/%d", lid), nil)
+	setParam(c2, "id", fmt.Sprintf("%d", lid))
+	h.DeleteFoodLog(c2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200 deleting food log, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("traversal deleted a file outside the photo dir: %v", err)
+	}
+}
+
+// TestDeleteFoodLog_cannotDeleteAnotherUsersPhoto is the same hole without any
+// traversal: the {userID} segment of image_url was never checked against the
+// caller, so pointing a log at someone else's photo deleted it.
+func TestDeleteFoodLog_cannotDeleteAnotherUsersPhoto(t *testing.T) {
+	setupTestDB(t)
+	uidA := createTestUser(t)
+	uidB := otherUser(t)
+	dir := withTempMealPhotoDir(t)
+	h := NewHandler(stores.New(db.DB), &fakeVisionProvider{})
+
+	victimRel, err := storage.SavePhoto(dir, uidA, []byte("fake-jpeg-bytes"))
+	if err != nil {
+		t.Fatalf("seed victim photo: %v", err)
+	}
+
+	body := map[string]any{
+		"name": "Someone else's photo", "meal": "lunch", "calories": 1,
+		"source": "photo", "image_url": "/api/v1/food/photos/" + victimRel,
+	}
+	c, w := newContext(uidB, http.MethodPost, "/api/v1/food", body)
+	h.LogFood(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 logging food, got %d: %s", w.Code, w.Body.String())
+	}
+	lid := int64(decodeResponse(t, w)["data"].(map[string]any)["id"].(float64))
+
+	c2, w2 := newContext(uidB, http.MethodDelete, fmt.Sprintf("/api/v1/food/%d", lid), nil)
+	setParam(c2, "id", fmt.Sprintf("%d", lid))
+	h.DeleteFoodLog(c2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200 deleting food log, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, victimRel)); err != nil {
+		t.Fatalf("another user's photo was deleted: %v", err)
+	}
+}

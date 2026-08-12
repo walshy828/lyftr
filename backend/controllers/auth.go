@@ -1,8 +1,10 @@
 package controllers
 
 import (
+	"crypto/subtle"
 	"database/sql"
 
+	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/models"
 	"github.com/Cawlumm/lyftr-backend/utils"
 	"github.com/gin-gonic/gin"
@@ -16,6 +18,22 @@ var validate = validator.New()
 const dummyBcryptHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
 
 func (h *Handler) Register(c *gin.Context) {
+	// Checked before binding so a closed instance gives an attacker nothing at
+	// all — no validation feedback, no email-existence oracle, no bcrypt work.
+	// The empty-instance exception keeps a fresh deployment from locking itself
+	// out: with no accounts there is nothing to protect, and the window closes
+	// the moment the first user is created.
+	if !config.C.AllowRegistration {
+		empty, err := h.s.User.IsEmpty()
+		if utils.DBError(c, err) {
+			return
+		}
+		if !empty {
+			utils.Forbidden(c, "registration is closed on this server")
+			return
+		}
+	}
+
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, err.Error())
@@ -23,6 +41,13 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 	if err := validate.Struct(req); err != nil {
 		utils.ValidationError(c, err)
+		return
+	}
+
+	// Constant-time so the code can't be recovered a character at a time.
+	if len(config.C.RegistrationInviteCode) > 0 &&
+		subtle.ConstantTimeCompare([]byte(req.InviteCode), config.C.RegistrationInviteCode) != 1 {
+		utils.Forbidden(c, "invalid invite code")
 		return
 	}
 

@@ -28,5 +28,8 @@ func DemoUser(db *sql.DB) {
 
 	userID, _ := res.LastInsertId()
 	db.Exec(`INSERT INTO user_settings (user_id) VALUES (?)`, userID)
-	log.Println("seed: demo user created (demo@lyftr.local / password123)")
+	// The password is deliberately not logged: server logs are routinely
+	// shipped to aggregators and read by people who shouldn't get credentials.
+	// It's documented in the README for anyone who needs it.
+	log.Println("seed: demo user created (demo@lyftr.local)")
 }

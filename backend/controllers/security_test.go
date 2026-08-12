@@ -104,16 +104,117 @@ func TestSeedDemoConfigGating(t *testing.T) {
 	}
 	t.Setenv("JWT_SECRET", "test-secret-that-is-long-enough-123456")
 
-	if !load("development", "") {
-		t.Error("development default: want SeedDemo=true")
+	// Seeding is opt-in in every environment. It used to default to on outside
+	// production, so any deployment that forgot to set ENV silently grew a
+	// demo@lyftr.local account with a publicly documented password.
+	if load("development", "") {
+		t.Error("development default: want SeedDemo=false")
 	}
 	if load("production", "") {
 		t.Error("production default: want SeedDemo=false")
+	}
+	if !load("development", "true") {
+		t.Error("development + SEED_DEMO=true: want SeedDemo=true")
 	}
 	if !load("production", "true") {
 		t.Error("production + SEED_DEMO=true: want SeedDemo=true")
 	}
 	if load("development", "false") {
 		t.Error("development + SEED_DEMO=false: want SeedDemo=false")
+	}
+}
+
+// TestJWTSecretHardening covers the signing-key guard, which previously only
+// rejected one exact literal and only when ENV was spelled "production".
+func TestJWTSecretHardening(t *testing.T) {
+	weak := []string{
+		"",
+		"short",
+		"change-me-in-production-min-32-chars!!",
+		"change-me-to-a-random-32-plus-character-string",
+	}
+	for _, s := range weak {
+		if !config.WeakJWTSecret(s) {
+			t.Errorf("WeakJWTSecret(%q) = false, want true", s)
+		}
+	}
+	if config.WeakJWTSecret("a-genuinely-random-secret-of-sufficient-length") {
+		t.Error("WeakJWTSecret rejected a strong secret")
+	}
+
+	// Outside production a weak/absent secret is replaced with a random one
+	// rather than a known default, so tokens are never forgeable.
+	t.Setenv("ENV", "development")
+	t.Setenv("JWT_SECRET", "")
+	orig := config.C
+	t.Cleanup(func() { config.C = orig })
+	config.Load()
+	if config.WeakJWTSecret(config.C.JWTSecret) {
+		t.Fatalf("development fallback produced a weak secret: %q", config.C.JWTSecret)
+	}
+
+	first := config.C.JWTSecret
+	config.Load()
+	if config.C.JWTSecret == first {
+		t.Error("ephemeral secret was stable across loads; it should be random per process")
+	}
+}
+
+// TestRegistrationClosedByDefault: an open signup endpoint is pure attack
+// surface on a self-hosted instance, and its 409-vs-201 split is an
+// email-enumeration oracle.
+func TestRegistrationClosedByDefault(t *testing.T) {
+	setupTestDB(t)
+	config.C.AllowRegistration = false
+
+	// A brand-new instance with no accounts must still be able to create its
+	// first user, or closed-by-default would lock a fresh deployment out.
+	c, w := newContext(0, http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"email": "first@example.com", "password": "password123"})
+	th.Register(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("first user on an empty instance: got %d, want 201 (%s)", w.Code, w.Body.String())
+	}
+
+	// Once an account exists the window closes.
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"email": "second@example.com", "password": "password123"})
+	th.Register(c)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("second user while closed: got %d, want 403 (%s)", w.Code, w.Body.String())
+	}
+
+	// Closed means closed even for an email that already exists — no oracle.
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"email": "first@example.com", "password": "password123"})
+	th.Register(c)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("existing email while closed: got %d, want 403", w.Code)
+	}
+}
+
+func TestRegistrationInviteCode(t *testing.T) {
+	setupTestDB(t)
+	config.C.RegistrationInviteCode = []byte("let-me-in")
+
+	c, w := newContext(0, http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"email": "a@example.com", "password": "password123"})
+	th.Register(c)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("missing invite code: got %d, want 403", w.Code)
+	}
+
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"email": "a@example.com", "password": "password123", "invite_code": "wrong"})
+	th.Register(c)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("wrong invite code: got %d, want 403", w.Code)
+	}
+
+	c, w = newContext(0, http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"email": "a@example.com", "password": "password123", "invite_code": "let-me-in"})
+	th.Register(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("correct invite code: got %d, want 201 (%s)", w.Code, w.Body.String())
 	}
 }

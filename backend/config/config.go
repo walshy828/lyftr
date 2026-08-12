@@ -1,8 +1,12 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -32,7 +36,29 @@ type Config struct {
 	// AdminEmails is the comma-separated allow-list (ADMIN_EMAILS) of user
 	// emails permitted to call the /admin/* endpoints. Empty means no one:
 	// the admin surface is closed unless explicitly opened.
+	//
+	// Emails are self-asserted at registration and never verified, so an
+	// address listed here that has not been registered yet is claimable by
+	// whoever registers it first. Keep registration closed (see
+	// AllowRegistration) or register the admin account before setting this.
 	AdminEmails []string
+
+	// AllowRegistration opens POST /auth/register. Off by default: a
+	// self-hosted instance normally has a fixed set of accounts, so an open
+	// signup endpoint is attack surface with no upside. Existing users are
+	// unaffected when it is off.
+	AllowRegistration bool
+
+	// RegistrationInviteCode, when non-empty, additionally requires callers of
+	// /auth/register to present a matching invite_code. Lets registration stay
+	// open for onboarding household members without being open to the network.
+	RegistrationInviteCode []byte
+
+	// TrustedProxies lists the CIDRs/IPs (TRUSTED_PROXIES) permitted to set
+	// X-Forwarded-For. Gin's default is to trust every proxy, which lets any
+	// client forge its own source IP and so mint unlimited rate-limit buckets.
+	// Empty means trust nothing and use the direct peer address.
+	TrustedProxies []string
 
 	// Nutrition label photo import (optional). VisionProvider selects which
 	// of the three keys below is used; leave it unset to disable the feature.
@@ -88,7 +114,7 @@ func Load() {
 		DBName:     getEnv("DB_NAME", "lyftr"),
 		DBUser:     getEnv("DB_USER", "postgres"),
 		DBPassword: getEnv("DB_PASSWORD", ""),
-		JWTSecret:  getEnv("JWT_SECRET", "change-me-in-production-min-32-chars!!"),
+		JWTSecret:  getEnv("JWT_SECRET", ""),
 		JWTExpiry:  getEnv("JWT_EXPIRY", "3600"),
 		CORSOrigin: getEnv("CORS_ORIGIN", "http://localhost:5173"),
 		Env:        getEnv("ENV", "development"),
@@ -107,13 +133,63 @@ func Load() {
 		MealPhotoDir: getEnv("MEAL_PHOTO_DIR", "data/meal-photos"),
 	}
 
-	C.SeedDemo = getEnv("SEED_DEMO", "") == "true" ||
-		(C.Env != "production" && getEnv("SEED_DEMO", "") != "false")
+	// Demo seeding is opt-in everywhere. It previously defaulted to on outside
+	// production, which meant any deployment that forgot to set ENV grew a live
+	// account with a publicly documented password.
+	C.SeedDemo = getEnv("SEED_DEMO", "") == "true"
 	C.AdminEmails = splitList(getEnv("ADMIN_EMAILS", ""))
+	C.AllowRegistration = getEnv("ALLOW_REGISTRATION", "") == "true"
+	C.RegistrationInviteCode = []byte(getEnv("REGISTRATION_INVITE_CODE", ""))
+	C.TrustedProxies = splitList(getEnv("TRUSTED_PROXIES", ""))
 
-	if C.Env == "production" && C.JWTSecret == "change-me-in-production-min-32-chars!!" {
-		log.Fatal("JWT_SECRET must be set in production")
+	if err := C.resolveJWTSecret(); err != nil {
+		log.Fatalf("config: %v", err)
 	}
+}
+
+// placeholderSecrets are the values shipped in the repo's docs and examples.
+// They are public, so a deployment running one has no signing key at all.
+var placeholderSecrets = []string{
+	"change-me-in-production-min-32-chars!!",
+	"change-me-to-a-random-32-plus-character-string",
+}
+
+// minJWTSecretLen is the shortest secret we accept. HS256 keys shorter than the
+// 256-bit hash output weaken the MAC and are brute-forcible offline from a
+// single captured token.
+const minJWTSecretLen = 32
+
+// WeakJWTSecret reports whether s is unusable as a signing key — empty, too
+// short, or one of the published placeholders.
+func WeakJWTSecret(s string) bool {
+	if len(s) < minJWTSecretLen {
+		return true
+	}
+	return slices.Contains(placeholderSecrets, s)
+}
+
+// resolveJWTSecret enforces a usable signing key. Production refuses to boot
+// without one. Outside production we generate a random ephemeral secret rather
+// than falling back to a hardcoded default: `go run .` keeps working with no
+// setup, but the key is never a value an attacker could know. The cost is that
+// sessions don't survive a restart, which is why the warning says so.
+func (c *Config) resolveJWTSecret() error {
+	if !WeakJWTSecret(c.JWTSecret) {
+		return nil
+	}
+
+	if c.Env == "production" {
+		return fmt.Errorf("JWT_SECRET must be set to a random string of at least %d characters in production", minJWTSecretLen)
+	}
+
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Errorf("generate ephemeral JWT secret: %w", err)
+	}
+	c.JWTSecret = hex.EncodeToString(buf)
+	log.Printf("config: JWT_SECRET is unset or too weak — generated an ephemeral one for this process. "+
+		"Sessions will not survive a restart. Set JWT_SECRET to a random %d+ character string to fix.", minJWTSecretLen)
+	return nil
 }
 
 func splitList(raw string) []string {

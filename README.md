@@ -85,13 +85,17 @@ curl -o docker-compose.yml https://raw.githubusercontent.com/Cawlumm/lyftr/main/
 curl -o .env https://raw.githubusercontent.com/Cawlumm/lyftr/main/.env.example
 ```
 
-Edit `.env` and set a strong `JWT_SECRET` (32+ characters), then:
+Edit `.env` and set a strong `JWT_SECRET` (`openssl rand -hex 32`), then:
 
 ```bash
 docker compose up -d
 ```
 
-Open `http://localhost` in your browser and create your account. If running on a VPS, replace `localhost` with your server IP or domain.
+Open `http://localhost` in your browser and create your account. Registration is
+closed by default, but a brand-new instance always allows the *first* account to
+be created — so just sign up. To add more people later, set
+`ALLOW_REGISTRATION=true` (optionally with `REGISTRATION_INVITE_CODE`), create
+the accounts, then set it back to `false`. If running on a VPS, replace `localhost` with your server IP or domain.
 
 ---
 
@@ -117,7 +121,11 @@ All variables live in `.env` at the project root.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JWT_SECRET` | *required* | Min 32-char secret for signing tokens |
+| `JWT_SECRET` | *required* | Min 32-char secret for signing tokens. Generate with `openssl rand -hex 32`. Production refuses to start without one; outside production a random ephemeral secret is generated per boot. Rotating it logs everyone out |
+| `ALLOW_REGISTRATION` | `false` | Opens `POST /auth/register`. Closed by default — a self-hosted instance has a fixed set of accounts, so open signup is attack surface with no upside. A brand-new instance with no accounts can always create its first user |
+| `REGISTRATION_INVITE_CODE` | *(none)* | When set, registration additionally requires this code. Lets you onboard household members without leaving signup open |
+| `TRUSTED_PROXIES` | *(none)* | Comma-separated CIDRs allowed to set `X-Forwarded-For`. Empty means trust no proxy. The compose file sets the Docker bridge range so the auth rate limiter sees real client IPs. Never widen this to a range you don't control — anything inside it can forge its source IP and bypass rate limiting |
+| `SEED_DEMO` | `false` | Seeds the demo account. Opt-in everywhere; never enable it on an instance holding real data |
 | `CORS_ORIGIN` | `http://localhost` | Comma-separated allow-list of client origins. Use `*` to allow any (the API is Bearer-token based, no cookies) |
 | `PORT` | `80` | Host port for the web interface |
 | `BACKEND_ORIGIN` | `backend:3000` | Docker **service name**:port the frontend proxies `/api` to — not a host IP. Only change the port, to match a custom backend `PORT` |

@@ -833,4 +833,6 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string
   password: string
+  // Required only when the server sets REGISTRATION_INVITE_CODE.
+  invite_code?: string
 }

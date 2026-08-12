@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Cawlumm/lyftr-backend/config"
 	"github.com/Cawlumm/lyftr-backend/db"
 	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/gin-gonic/gin"
@@ -20,8 +21,23 @@ import (
 // the fresh per-test db.DB.
 var th *Handler
 
+// setupTestConfig installs a baseline config.C for handlers that consult it.
+// Registration is enabled here because most tests exercise the happy path; the
+// closed-by-default production behaviour is covered in security_test.go.
+func setupTestConfig(t *testing.T) {
+	t.Helper()
+	orig := config.C
+	config.C = &config.Config{
+		Env:               "test",
+		AllowRegistration: true,
+		MealPhotoDir:      t.TempDir(),
+	}
+	t.Cleanup(func() { config.C = orig })
+}
+
 func setupTestDB(t *testing.T) {
 	t.Helper()
+	setupTestConfig(t)
 	var err error
 	// modernc ignores the mattn-style _foreign_keys=on; use the _pragma form so the
 	// harness actually enforces foreign keys, matching the production DSN.
