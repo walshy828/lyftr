@@ -20,6 +20,8 @@ import SmartMealEntry from '../components/SmartMealEntry'
 import EditSavedFoodSheet from '../components/EditSavedFoodSheet'
 import MealItemEditCard, { type EditableMealItem } from '../components/MealItemEditCard'
 import FoodCaptureBar from '../components/food/FoodCaptureBar'
+import SourceBadge from '../components/food/SourceBadge'
+import { foodSourceBadge } from '../utils/foodSource'
 import PortionPicker from '../components/food/PortionPicker'
 import ServingEditor from '../components/food/ServingEditor'
 import SegmentedControl from '../components/ui/SegmentedControl'
@@ -34,7 +36,14 @@ type Phase = 'search' | 'detail' | 'scan' | 'scan-label' | 'smart' | 'smart-revi
 type SearchFilter = 'all' | 'recent' | 'myfoods' | 'database'
 
 type ReviewItem = EditableMealItem
-type PhotoReviewItem = types.MealPhotoItem & { servings: number; include: boolean }
+type PhotoReviewItem = types.MealPhotoItem & {
+  servings: number
+  include: boolean
+  // Set when the user swaps in a database label — same contract as
+  // EditableMealItem, so the shared edit card can patch either kind.
+  source?: types.FoodSearchResult['source']
+  label_accurate?: boolean
+}
 
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'] as const
 const MEAL_LABELS: Record<string, string> = {
@@ -64,6 +73,10 @@ function entryToResult(e: types.FoodLog): types.FoodSearchResult {
     serving_size: e.serving_size ?? '',
     serving_size_grams: e.serving_size_grams,
     image_url: e.image_url,
+    barcode: e.barcode,
+    // label_accurate is deliberately not inferred here: a stored entry records
+    // which source it came from, not whether that source quoted a real panel,
+    // and claiming a label we can't prove is worse than claiming nothing.
     source: (e.source as types.FoodSearchResult['source']) || 'saved',
   }
 }
@@ -131,7 +144,10 @@ function FoodResultRow({ item, onClick }: { item: types.FoodSearchResult; onClic
         }
       />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-tx-primary truncate">{item.name}</p>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <p className="text-sm font-semibold text-tx-primary truncate">{item.name}</p>
+          <SourceBadge item={item} className="flex-shrink-0" />
+        </div>
         {item.brand && <p className="text-xs text-tx-muted truncate mt-0.5">{item.brand}</p>}
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           <span className="text-xs font-semibold text-tx-secondary tabular-nums">{Math.round(item.calories)} kcal</span>
@@ -265,7 +281,17 @@ export default function LogFood() {
       selectResult(await foodAPI.barcode(code))
     } catch (err: any) {
       if (err?.response?.status === 404) {
-        startManual()
+        // Neither database has this product. The package is still in the
+        // user's hand, so send them to the label camera rather than a blank
+        // form — photographing the real panel beats typing it, and beats an
+        // AI estimate of a product nobody has data for. The scanned code is
+        // kept so the finished entry still records what was scanned, and
+        // manual entry stays one tap away from the label screen.
+        setSelected({ ...manualResult(), barcode: code })
+        setAmount(1)
+        setUnitId(SERVING_UNIT_ID)
+        setCondensed(false)
+        setPhase('scan-label')
       } else {
         setSearchError('Product not found — enter details manually')
       }
@@ -321,7 +347,8 @@ export default function LogFood() {
         servings: item.servings,
         serving_size: item.serving_size ?? item.quantity ?? '',
         image_url: photoAnalysis.image_url,
-        source: 'photo',
+        // See handleLogMealItems: a looked-up label stops being an estimate.
+        source: item.source ?? 'photo',
         logged_at: dayToIsoNoon(date),
       })))
       navigate('/food', { replace: true })
@@ -350,7 +377,9 @@ export default function LogFood() {
         cholesterol: +((item.cholesterol ?? 0) * item.servings).toFixed(1),
         servings: item.servings,
         serving_size: item.serving_size ?? item.quantity ?? '',
-        source: 'ai',
+        // An item the user replaced with a database label is no longer an AI
+        // estimate, and shouldn't be badged as one in the diary.
+        source: item.source ?? 'ai',
         logged_at: dayToIsoNoon(date),
       })))
       navigate('/food', { replace: true })
@@ -429,6 +458,10 @@ export default function LogFood() {
         serving_size: unit.id === SERVING_UNIT_ID ? (selected.serving_size ?? '') : unit.label,
         serving_size_grams: unit.grams,
         image_url: selected.image_url ?? '',
+        // Carrying the scanned code through means a logged entry can be matched
+        // back to its product later — barcode was previously always empty,
+        // since the lookup never returned the code it resolved.
+        barcode: selected.barcode ?? '',
         source: selected.source,
         logged_at: dayToIsoNoon(date),
       }
@@ -443,6 +476,7 @@ export default function LogFood() {
             carbs: selected.carbs, fat: selected.fat, fiber: selected.fiber ?? 0,
             serving_size: selected.serving_size ?? '',
             serving_size_grams: selected.serving_size_grams ?? 0,
+            barcode: selected.barcode ?? '',
             image_url: capturedImageUrl,
           }).catch(() => {})
         }
@@ -818,11 +852,28 @@ export default function LogFood() {
             )}
 
             <div className="p-5">
-              <div className="flex justify-end mb-2">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                {/* Where these numbers came from. An AI estimate and a
+                    manufacturer's label look identical once they're both just
+                    digits in a field, so say which this is before the user
+                    commits it to their day. */}
+                {(() => {
+                  const badge = foodSourceBadge(selected)
+                  if (!badge) return <span />
+                  return (
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <SourceBadge item={selected} />
+                      <span className="text-[10px] text-tx-muted truncate">
+                        {badge.detail}
+                        {selected.label_date && ` · published ${selected.label_date}`}
+                      </span>
+                    </span>
+                  )
+                })()}
                 <button
                   type="button"
                   onClick={() => setPhase('scan-label')}
-                  className="flex items-center gap-1.5 text-xs text-tx-muted hover:text-tx-primary transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-tx-muted hover:text-tx-primary transition-colors flex-shrink-0"
                 >
                   <Camera className="w-3.5 h-3.5" />
                   {selected.source === 'photo' ? 'Rescan label' : 'Scan label'}

@@ -3,27 +3,46 @@ package controllers
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/config"
+	"github.com/Cawlumm/lyftr-backend/models"
 )
 
-// withFDCMock points the FDC client and URL at a local test server and enables
+// withFDCMock points the FDC client and URLs at a local test server and enables
 // the FDC leg by setting config.C.FDCAPIKey. Mirrors withOFFMock.
+//
+// Both the search and detail endpoints are retargeted at the same handler, so a
+// test that cares about the label-hydration round trip can route on r.URL.Path
+// ("/fdc/v1/foods/search" vs "/fdc/v1/foods").
 func withFDCMock(t *testing.T, handler http.HandlerFunc) {
 	t.Helper()
 	s := httptest.NewServer(handler)
 
-	prevClient, prevURL, prevCfg := fdcClient, fdcSearchURL, config.C
+	prevClient, prevURL, prevDetail, prevCfg := fdcClient, fdcSearchURL, fdcDetailURL, config.C
 	fdcClient = &http.Client{Timeout: 5 * time.Second}
 	fdcSearchURL = s.URL + "/fdc/v1/foods/search"
+	fdcDetailURL = s.URL + "/fdc/v1/foods"
 	config.C = &config.Config{FDCAPIKey: "test-key"}
 
 	t.Cleanup(func() {
-		fdcClient, fdcSearchURL, config.C = prevClient, prevURL, prevCfg
+		fdcClient, fdcSearchURL, fdcDetailURL, config.C = prevClient, prevURL, prevDetail, prevCfg
 		s.Close()
 	})
+}
+
+// fdcRoute dispatches a mocked FDC request to the search or detail responder.
+func fdcRoute(search, detail http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/search") {
+			search(w, r)
+			return
+		}
+		detail(w, r)
+	}
 }
 
 // ─── parseServingMass ─────────────────────────────────────────────────────────
@@ -172,6 +191,284 @@ func TestFdcFoodToResult_brandedServingBecomesPortion(t *testing.T) {
 	}
 }
 
+// TestFdcFoodToResult_servingUnitGRM is a regression test. FDC serves the
+// UN/CEFACT code "GRM" as often as it serves "g", and the original equality
+// check on "g" silently dropped the declared serving of every branded food
+// that used it — leaving the user with no portion at all for exactly the
+// products a barcode scan returns.
+func TestFdcFoodToResult_servingUnitGRM(t *testing.T) {
+	f := fdcFood{
+		Description:              "Cheerios Cereal",
+		DataType:                 "Branded",
+		BrandName:                "Cheerios",
+		ServingSize:              20,
+		ServingSizeUnit:          "GRM",
+		HouseholdServingFullText: "3/4 CUP",
+	}
+	got := fdcFoodToResult(f)
+
+	if len(got.Portions) != 1 {
+		t.Fatalf("portions = %+v, want 1 — GRM must be recognized as grams", got.Portions)
+	}
+	if got.Portions[0].Grams != 20 {
+		t.Errorf("portion grams = %v, want 20", got.Portions[0].Grams)
+	}
+	if got.Portions[0].Label != "3/4 cup" {
+		t.Errorf("portion label = %q, want %q (shouty FDC text tidied)", got.Portions[0].Label, "3/4 cup")
+	}
+}
+
+func TestFdcFoodToResult_volumeServingGivesNoGramBasis(t *testing.T) {
+	f := fdcFood{
+		Description:     "Orange Juice",
+		DataType:        "Branded",
+		ServingSize:     240,
+		ServingSizeUnit: "MLT", // millilitres — a volume, so no mass without a density
+		LabelNutrients:  &fdcLabelNutrients{Calories: fdcLabelValue{Value: 110}},
+	}
+	got := fdcFoodToResult(f)
+
+	if got.ServingSizeGrams != 0 {
+		t.Errorf("serving_size_grams = %v, want 0 for a volume serving", got.ServingSizeGrams)
+	}
+	if len(got.Portions) != 0 {
+		t.Errorf("portions = %+v, want none for a volume serving", got.Portions)
+	}
+	// The label numbers are still real, so they're still quoted — just without
+	// a gram basis to rescale by.
+	if !got.LabelAccurate || got.Calories != 110 {
+		t.Errorf("label values should survive: accurate=%t calories=%v", got.LabelAccurate, got.Calories)
+	}
+}
+
+func TestFdcFoodToResult_labelPanelBeatsPer100g(t *testing.T) {
+	f := fdcFood{
+		Description:              "Cheerios Cereal",
+		DataType:                 "Branded",
+		BrandName:                "Cheerios",
+		GTINUpc:                  "00016000275287",
+		PublicationDate:          "4/27/2023",
+		ServingSize:              20,
+		ServingSizeUnit:          "GRM",
+		HouseholdServingFullText: "3/4 cup (20g)",
+		// Per-100g values, which must NOT be what the user sees.
+		FoodNutrients: []fdcNutrient{
+			{NutrientID: fdcNutrientCalories, Value: 359},
+			{NutrientID: fdcNutrientSodium, Value: 487},
+		},
+		LabelNutrients: &fdcLabelNutrients{
+			Calories:      fdcLabelValue{Value: 71.8},
+			Protein:       fdcLabelValue{Value: 2.56},
+			Carbohydrates: fdcLabelValue{Value: 14.9},
+			Fat:           fdcLabelValue{Value: 1.28},
+			Fiber:         fdcLabelValue{Value: 2.06},
+			Sugars:        fdcLabelValue{Value: 1.03},
+			Sodium:        fdcLabelValue{Value: 97.4},
+			Cholesterol:   fdcLabelValue{Value: 0},
+		},
+	}
+	got := fdcFoodToResult(f)
+
+	if got.Calories != 71.8 {
+		t.Errorf("calories = %v, want the label's 71.8 (not the per-100g 359)", got.Calories)
+	}
+	// FDC label sodium is already mg — it must not be run through a conversion.
+	if got.Sodium != 97.4 {
+		t.Errorf("sodium = %v, want 97.4 mg", got.Sodium)
+	}
+	if !got.LabelAccurate {
+		t.Error("label_accurate should be true when the panel was used")
+	}
+	if got.ServingSize != "3/4 cup (20g)" || got.ServingSizeGrams != 20 {
+		t.Errorf("serving = %q/%v, want %q/20", got.ServingSize, got.ServingSizeGrams, "3/4 cup (20g)")
+	}
+	if got.Barcode != "00016000275287" || got.LabelDate != "4/27/2023" {
+		t.Errorf("barcode/date = %q/%q", got.Barcode, got.LabelDate)
+	}
+}
+
+func TestFdcFoodToResult_emptyLabelPanelFallsBackToPer100g(t *testing.T) {
+	// FDC returns a labelNutrients object with no calories for some records.
+	// Quoting that as "the label" would show the user a zero-calorie food.
+	f := fdcFood{
+		Description:    "Something Branded",
+		DataType:       "Branded",
+		LabelNutrients: &fdcLabelNutrients{},
+		FoodNutrients:  []fdcNutrient{{NutrientID: fdcNutrientCalories, Value: 250}},
+	}
+	got := fdcFoodToResult(f)
+
+	if got.LabelAccurate {
+		t.Error("an empty label panel must not be marked label_accurate")
+	}
+	if got.Calories != 250 || got.ServingSize != "per 100g" {
+		t.Errorf("expected per-100g fallback, got %v/%q", got.Calories, got.ServingSize)
+	}
+}
+
+func TestTidyHouseholdServing(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"5.3 ONZ", "5.3 oz"},
+		{"1 CONTAINER", "1 container"},
+		{"3/4 cup (20g)", "3/4 cup (20g)"}, // already readable, left alone
+		{"2 Tbsp", "2 Tbsp"},               // mixed case is already fine
+		{"1 GRM", "1 g"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := tidyHouseholdServing(tc.in); got != tc.want {
+			t.Errorf("tidyHouseholdServing(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestNormalizeGTIN(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"016000275287", "00016000275287"},   // UPC-A, 12 digits
+		{"0016000275287", "00016000275287"},  // EAN-13
+		{"00016000275287", "00016000275287"}, // already a GTIN-14
+		{"12345678", "00000012345678"},
+	}
+	for _, tc := range cases {
+		if got := normalizeGTIN(tc.in); got != tc.want {
+			t.Errorf("normalizeGTIN(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestFdcServingGrams(t *testing.T) {
+	cases := []struct {
+		size float64
+		unit string
+		want float64
+	}{
+		{20, "g", 20},
+		{20, "GRM", 20},
+		{1, "ONZ", 28.349523125},
+		{240, "MLT", 0}, // volume: no mass without a density
+		{240, "ml", 0},
+		{0, "g", 0},
+		{20, "widgets", 0},
+	}
+	for _, tc := range cases {
+		got := fdcServingGrams(tc.size, tc.unit)
+		if diff := got - tc.want; diff > 0.0001 || diff < -0.0001 {
+			t.Errorf("fdcServingGrams(%v, %q) = %v, want %v", tc.size, tc.unit, got, tc.want)
+		}
+	}
+}
+
+// ─── label hydration ──────────────────────────────────────────────────────────
+
+// fdcSearchWithID is a search response for a Branded food, carrying the fdcId
+// hydration needs and only per-100g nutrients.
+const fdcSearchWithID = `{"foods":[{"fdcId":2517161,"description":"Cheerios Cereal","dataType":"Branded",
+	"brandName":"Cheerios","foodNutrients":[{"nutrientId":1008,"value":359}]}]}`
+
+// fdcDetailWithLabel is the matching detail response, which is the only place
+// FDC exposes labelNutrients.
+const fdcDetailWithLabel = `[{"fdcId":2517161,"description":"Cheerios Cereal","dataType":"Branded",
+	"gtinUpc":"00016000275287","servingSize":20,"servingSizeUnit":"GRM",
+	"householdServingFullText":"3/4 cup (20g)",
+	"labelNutrients":{"calories":{"value":71.8},"protein":{"value":2.56},"sodium":{"value":97.4}}}]`
+
+func TestSearchFood_hydratesBrandedLabels(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	detailCalls := 0
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"hits":[]}`))
+	})
+	withFDCMock(t, fdcRoute(
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fdcSearchWithID)) },
+		func(w http.ResponseWriter, r *http.Request) {
+			detailCalls++
+			w.Write([]byte(fdcDetailWithLabel))
+		},
+	))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/search?q=cheerios", nil)
+	th.SearchFood(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if detailCalls != 1 {
+		t.Errorf("detail endpoint called %d times, want exactly 1 batched call", detailCalls)
+	}
+
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("expected 1 result, got %d: %s", len(data), w.Body.String())
+	}
+	item := data[0].(map[string]any)
+	if item["calories"].(float64) != 71.8 {
+		t.Errorf("calories = %v, want the hydrated label's 71.8", item["calories"])
+	}
+	if item["label_accurate"] != true {
+		t.Errorf("label_accurate = %v, want true", item["label_accurate"])
+	}
+	if item["serving_size"] != "3/4 cup (20g)" {
+		t.Errorf("serving_size = %v, want the label serving", item["serving_size"])
+	}
+}
+
+func TestSearchFood_labelHydrationFailureFallsBackToPer100g(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"hits":[]}`))
+	})
+	withFDCMock(t, fdcRoute(
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fdcSearchWithID)) },
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
+	))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/search?q=cheerios", nil)
+	th.SearchFood(c)
+
+	// Hydration is best-effort: a broken detail call degrades the numbers, it
+	// must never fail the search the user is waiting on.
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 despite hydration failure, got %d: %s", w.Code, w.Body.String())
+	}
+	item := decodeResponse(t, w)["data"].([]any)[0].(map[string]any)
+	if item["calories"].(float64) != 359 {
+		t.Errorf("calories = %v, want the per-100g fallback 359", item["calories"])
+	}
+	if item["label_accurate"] == true {
+		t.Error("label_accurate must be false when hydration failed")
+	}
+}
+
+func TestRankByQuery_labelAccurateWinsWithinSameNameBand(t *testing.T) {
+	results := []models.FoodSearchResult{
+		{Name: "Cheerios", Calories: 359},
+		{Name: "Cheerios", Calories: 140, LabelAccurate: true},
+	}
+	got := rankByQuery("cheerios", results)
+
+	if !got[0].LabelAccurate {
+		t.Error("a label-accurate result should sort ahead of a per-100g one with the same name")
+	}
+}
+
+func TestRankByQuery_nameRelevanceOutranksLabelAccuracy(t *testing.T) {
+	results := []models.FoodSearchResult{
+		{Name: "Chicken Nuggets", LabelAccurate: true},
+		{Name: "Chicken Breast"},
+	}
+	got := rankByQuery("chicken breast", results)
+
+	// Otherwise searching for a whole food answers with whatever branded
+	// product happens to have the best-attested label.
+	if got[0].Name != "Chicken Breast" {
+		t.Errorf("got[0] = %q, want the name match to outrank label accuracy", got[0].Name)
+	}
+}
+
 // ─── merged SearchFood ────────────────────────────────────────────────────────
 
 const fdcMayoResponse = `{"foods":[{"description":"Mayonnaise, regular","dataType":"SR Legacy",
@@ -208,6 +505,34 @@ func TestSearchFood_mergesBothSources(t *testing.T) {
 	}
 	if !sources["off"] || !sources["fdc"] {
 		t.Errorf("expected both sources represented, got %v", sources)
+	}
+}
+
+func TestSearchFood_dropsOFFEntriesWithNoNutrition(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	// Real shape of an OFF query: a stub record someone scanned but never
+	// filled in, ranked above the complete one. Both dedupe to the same
+	// name+brand, so if the stub survives it is the only thing the user sees —
+	// and logging it silently adds 0 kcal to their day.
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"hits":[
+			{"product_name":"Cheerios","brands":"Cheerios","nutriments":{}},
+			{"product_name":"Cheerios","brands":"Cheerios","serving_size":"39 g","nutriments":{"energy-kcal_serving":140,"proteins_serving":5}}
+		]}`))
+	})
+	withFDCMock(t, func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"foods":[]}`)) })
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/search?q=cheerios", nil)
+	th.SearchFood(c)
+
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("expected 1 result, got %d: %s", len(data), w.Body.String())
+	}
+	if cal := data[0].(map[string]any)["calories"].(float64); cal != 140 {
+		t.Errorf("calories = %v, want 140 — the empty stub should have been dropped", cal)
 	}
 }
 

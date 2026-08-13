@@ -267,6 +267,12 @@ CREATE TABLE IF NOT EXISTS saved_foods (
   image_url    TEXT    NOT NULL DEFAULT '',
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS food_products (
+  gtin       TEXT     PRIMARY KEY,
+  payload    TEXT     NOT NULL,
+  source     TEXT     NOT NULL DEFAULT '',
+  fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS user_profile (
   user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   birth_date      TEXT    NOT NULL DEFAULT '',

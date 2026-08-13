@@ -538,6 +538,17 @@ CREATE TABLE IF NOT EXISTS saved_foods (
 
 CREATE INDEX IF NOT EXISTS idx_saved_foods_user ON saved_foods(user_id);
 
+-- Resolved barcode lookups, keyed by 14-digit GTIN. Unlike saved_foods this is
+-- deliberately global rather than per-user: a UPC identifies the same physical
+-- product for everyone, and the row holds only public product data — nothing
+-- about who scanned it or when they ate it.
+CREATE TABLE IF NOT EXISTS food_products (
+  gtin       TEXT     PRIMARY KEY,
+  payload    TEXT     NOT NULL,
+  source     TEXT     NOT NULL DEFAULT '',
+  fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS active_sessions (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
