@@ -127,12 +127,21 @@ export const ensureFreshToken = async (): Promise<void> => {
   }
 }
 
-// True when this browser holds a refresh token that could still be redeemed.
-// Used at boot so an obviously dead session renders the login page directly
-// instead of flashing the app shell and bouncing a moment later.
+// True when this browser still holds a credential worth trying. Used at boot so
+// an obviously dead session renders the login page directly instead of flashing
+// the app shell and bouncing a moment later.
+//
+// Either token will do, and the test is "not demonstrably expired" rather than
+// "present": a refresh token that lapsed while an access token is still good
+// should keep you working until that one dies too, and a token whose expiry
+// can't be read (opaque, or not a JWT) is given the benefit of the doubt —
+// the server is the authority, and guessing "logged out" here would sign
+// people out over a parsing failure.
 export const hasRedeemableSession = (): boolean => {
+  const access = localStorage.getItem('access_token')
   const refresh = localStorage.getItem('refresh_token')
-  return !!refresh && !isExpired(refresh)
+  if (refresh && !isExpired(refresh)) return true
+  return !!access && !isExpired(access)
 }
 
 // Ends the session locally and sends the user to the login page with an
