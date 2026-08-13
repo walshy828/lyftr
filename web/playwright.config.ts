@@ -37,6 +37,12 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // The app is a PWA, and its service worker intercepts fetches before
+    // page.route() ever sees them — so API mocks silently do nothing and the
+    // test hits the real backend instead. It bit WebKit first (the SW claims
+    // the page sooner there), but the race exists in every browser. No spec
+    // exercises offline behaviour, so blocking the worker costs no coverage.
+    serviceWorkers: 'block',
   },
   projects: [
     // storageState is supplied per-worker by e2e/fixtures.ts (logged-in specs).

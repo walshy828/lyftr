@@ -89,7 +89,12 @@ test.describe('Workouts', () => {
     await page.getByRole('button', { name: /add exercise/i }).click()
     await expect(page.getByPlaceholder(/search name/i)).toBeVisible()
     await page.getByPlaceholder(/search name/i).fill('bench press')
+    // Picking a name opens that exercise's detail view; a second tap on its
+    // own "Add Exercise" button is what actually adds it to the workout.
     await page.getByText(/bench press/i).first().click()
+    // .last(): the detail view's confirm button renders after the form's own
+    // "Add Exercise" opener, which is still in the DOM behind the overlay.
+    await page.getByRole('button', { name: /add exercise/i }).last().click()
 
     // Fill in set
     await page.locator('input[placeholder="10"]').first().fill('8')
@@ -196,7 +201,14 @@ test.describe('Gym Mode', { tag: '@mobile' }, () => {
     gymExerciseId = (await exRes.json()).data[0].id
   })
 
-  function seedGymSession(page: any, name: string, exerciseName: string, sets: any[], extraExercises?: any[]) {
+  // Seeds an in-progress session both server-side and in localStorage.
+  //
+  // The server copy is not optional. Active sessions sync across devices now,
+  // and the store hydrates from the server on load: finding no session there,
+  // it concludes the workout was ended elsewhere, clears local state and
+  // renders nothing. A localStorage-only seed is erased before the first
+  // assertion runs.
+  async function seedGymSession(page: any, name: string, exerciseName: string, sets: any[], extraExercises?: any[]) {
     const exId = gymExerciseId
     const session = {
       name,
@@ -211,11 +223,24 @@ test.describe('Gym Mode', { tag: '@mobile' }, () => {
         ...(extraExercises || []),
       ],
     }
-    return page.addInitScript(({ sk, lk, s }: { sk: string; lk: string; s: any }) => {
+    await page.request.put(`${API}/active-session`, {
+      headers: { Authorization: `Bearer ${gymAuthToken}` },
+      data: { data: JSON.stringify(session) },
+    })
+
+    await page.addInitScript(({ sk, lk, s }: { sk: string; lk: string; s: any }) => {
       localStorage.setItem(sk, JSON.stringify(s))
       localStorage.setItem(lk, 'gym')
     }, { sk: SESSION_KEY, lk: LAYOUT_KEY, s: session })
   }
+
+  // A leaked server-side session would show an "active workout" pill to every
+  // later spec sharing this worker's user.
+  test.afterAll(async ({ request }) => {
+    await request.delete(`${API}/active-session`, {
+      headers: { Authorization: `Bearer ${gymAuthToken}` },
+    })
+  })
 
   test('settings toggle switches layout and persists', async ({ page }) => {
     await page.goto('/settings')
@@ -352,29 +377,15 @@ test.describe('Gym Mode', { tag: '@mobile' }, () => {
   })
 
   test('gym mode restores phase after minimize and reopen', async ({ page }) => {
-    const exId = gymExerciseId
-    await page.addInitScript(({ sk, lk, id }: { sk: string; lk: string; id: number }) => {
-      const session = {
-        name: 'E2E Restore Test',
-        started_at: new Date().toISOString(),
-        exercises: [
-          {
-            exercise_id: id,
-            exercise: { id, name: 'Exercise One', muscle_group: 'Chest', equipment: 'barbell', category: 'strength', secondary_muscles: [], description: '', image_url: null },
-            notes: '',
-            sets: [{ set_number: 1, target_reps: 5, target_weight: 100, actual_reps: 5, actual_weight: 100, completed: false }],
-          },
-          {
-            exercise_id: id,
-            exercise: { id, name: 'Exercise Two', muscle_group: 'Back', equipment: 'barbell', category: 'strength', secondary_muscles: [], description: '', image_url: null },
-            notes: '',
-            sets: [{ set_number: 1, target_reps: 5, target_weight: 80, actual_reps: 5, actual_weight: 80, completed: false }],
-          },
-        ],
-      }
-      localStorage.setItem(sk, JSON.stringify(session))
-      localStorage.setItem(lk, 'gym')
-    }, { sk: SESSION_KEY, lk: LAYOUT_KEY, id: exId })
+    await seedGymSession(page, 'E2E Restore Test', 'Exercise One',
+      [{ set_number: 1, target_reps: 5, target_weight: 100, actual_reps: 5, actual_weight: 100, completed: false }],
+      [{
+        exercise_id: gymExerciseId,
+        exercise: { id: gymExerciseId, name: 'Exercise Two', muscle_group: 'Back', equipment: 'barbell', category: 'strength', secondary_muscles: [], description: '', image_url: null },
+        notes: '',
+        sets: [{ set_number: 1, target_reps: 5, target_weight: 80, actual_reps: 5, actual_weight: 80, completed: false }],
+      }]
+    )
 
     await page.goto('/workout/active')
     await expect(page.getByRole('button', { name: /start workout/i })).toBeVisible({ timeout: 5000 })
@@ -397,29 +408,15 @@ test.describe('Gym Mode', { tag: '@mobile' }, () => {
   })
 
   test('gym mode restores phase after page refresh', async ({ page }) => {
-    const exId = gymExerciseId
-    await page.addInitScript(({ sk, lk, id }: { sk: string; lk: string; id: number }) => {
-      const session = {
-        name: 'E2E Refresh Test',
-        started_at: new Date().toISOString(),
-        exercises: [
-          {
-            exercise_id: id,
-            exercise: { id, name: 'Squat', muscle_group: 'Legs', equipment: 'barbell', category: 'strength', secondary_muscles: [], description: '', image_url: null },
-            notes: '',
-            sets: [{ set_number: 1, target_reps: 5, target_weight: 100, actual_reps: 5, actual_weight: 100, completed: false }],
-          },
-          {
-            exercise_id: id,
-            exercise: { id, name: 'Deadlift', muscle_group: 'Back', equipment: 'barbell', category: 'strength', secondary_muscles: [], description: '', image_url: null },
-            notes: '',
-            sets: [{ set_number: 1, target_reps: 3, target_weight: 140, actual_reps: 3, actual_weight: 140, completed: false }],
-          },
-        ],
-      }
-      localStorage.setItem(sk, JSON.stringify(session))
-      localStorage.setItem(lk, 'gym')
-    }, { sk: SESSION_KEY, lk: LAYOUT_KEY, id: exId })
+    await seedGymSession(page, 'E2E Refresh Test', 'Squat',
+      [{ set_number: 1, target_reps: 5, target_weight: 100, actual_reps: 5, actual_weight: 100, completed: false }],
+      [{
+        exercise_id: gymExerciseId,
+        exercise: { id: gymExerciseId, name: 'Deadlift', muscle_group: 'Back', equipment: 'barbell', category: 'strength', secondary_muscles: [], description: '', image_url: null },
+        notes: '',
+        sets: [{ set_number: 1, target_reps: 3, target_weight: 140, actual_reps: 3, actual_weight: 140, completed: false }],
+      }]
+    )
 
     await page.goto('/workout/active')
     await expect(page.getByRole('button', { name: /start workout/i })).toBeVisible({ timeout: 5000 })

@@ -73,7 +73,12 @@ test.describe('Programs', () => {
     await page.getByRole('button', { name: /add exercise/i }).click()
     await expect(page.getByPlaceholder(/search name/i)).toBeVisible()
     await page.getByPlaceholder(/search name/i).fill('squat')
+    // Picking a name opens that exercise's detail view; a second tap on its
+    // own "Add Exercise" button is what actually adds it to the program.
     await page.getByText(/squat/i).first().click()
+    // .last(): the detail view's confirm button renders after the form's own
+    // "Add Exercise" opener, which is still in the DOM behind the overlay.
+    await page.getByRole('button', { name: /add exercise/i }).last().click()
 
     // Fill target sets
     await page.locator('input[placeholder="10"]').first().fill('5')
@@ -131,6 +136,9 @@ test.describe('Programs', () => {
     await page.getByRole('button', { name: /add exercise/i }).click()
     await page.getByPlaceholder(/search name/i).fill('deadlift')
     await page.getByText(/deadlift/i).first().click()
+    // Confirm from the exercise detail view — without this no set row exists,
+    // so there's no target-weight field to carry a unit suffix.
+    await page.getByRole('button', { name: /add exercise/i }).last().click()
 
     const weightSuffix = page.locator('text=/^(lb|kg)$/')
     await expect(weightSuffix.first()).toBeVisible()

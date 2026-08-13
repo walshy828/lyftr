@@ -55,7 +55,9 @@ test.describe('Blood pressure', () => {
 
     await expect(page.getByRole('heading', { name: 'Health' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Log Reading' })).toBeVisible()
-    await expect(page.getByText('Your Average')).toBeVisible()
+    // The heading, not loose text: "average" also appears in the coaching copy
+    // ("Where your average falls", "Based on your average, ...").
+    await expect(page.getByRole('heading', { name: 'Your Average' })).toBeVisible()
   })
 
   test('shows the latest reading with its category', async ({ page }) => {

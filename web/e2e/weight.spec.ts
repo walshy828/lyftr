@@ -53,7 +53,7 @@ test.describe('Weight', () => {
   })
 
   test('page loads with log form and history', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Weight', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Log Weight' })).toBeVisible()
     await expect(page.getByRole('button', { name: /log weight/i })).toBeVisible()
     await expect(page.getByText(/history/i)).toBeVisible({ timeout: 5000 })
   })
@@ -66,14 +66,14 @@ test.describe('Weight', () => {
   })
 
   test('period selector switches chart range without crash', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Weight', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Log Weight' })).toBeVisible()
     for (const period of ['7d', '90d', 'All', '30d']) {
       const periodBtn = page.getByRole('button', { name: period, exact: true })
       await periodBtn.click()
       // Selected period takes the active style (deterministic, no data
       // dependency), and the page is still alive — replaces a fixed sleep.
       await expect(periodBtn).toHaveClass(/bg-surface-raised/)
-      await expect(page.getByRole('heading', { name: 'Weight', exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Log Weight' })).toBeVisible()
     }
   })
 
@@ -111,7 +111,10 @@ test.describe('Weight', () => {
 
   test('history entry navigates to weight detail', async ({ page }) => {
     await expect(page.getByText(/history/i)).toBeVisible({ timeout: 5000 })
-    const firstEntry = page.locator('a[href^="/weight/"]').first()
+    // Target a seeded entry by id. "/weight/plan" also lives under /weight/,
+    // and it sorts first — a positional .first() picks the plan link and
+    // navigates somewhere this test never meant to go.
+    const firstEntry = page.locator(`a[href="/weight/${seedWeightIds[0]}"]`)
     await expect(firstEntry).toBeVisible({ timeout: 5000 })
     await firstEntry.click()
     await expect(page).toHaveURL(/\/weight\/\d+/)
@@ -138,7 +141,8 @@ test.describe('Weight', () => {
     await page.getByRole('button', { name: /delete/i }).click()
     await expect(page.getByText(/permanently deleted/i)).toBeVisible({ timeout: 3000 })
     await page.getByRole('button', { name: /^delete$/i }).click()
-    await page.waitForURL('/weight', { timeout: 5000 })
-    await expect(page.getByRole('heading', { name: 'Weight', exact: true })).toBeVisible()
+    // The app navigates to /weight, which redirects to the Health weight tab.
+    await page.waitForURL(/\/health\?tab=weight/, { timeout: 5000 })
+    await expect(page.getByRole('heading', { name: 'Log Weight' })).toBeVisible()
   })
 })
