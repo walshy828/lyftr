@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -146,6 +147,66 @@ func tidyHouseholdServing(s string) string {
 		}
 		return word
 	})
+}
+
+// servingMeasureWords are the nouns a household serving description is built
+// from. A label naming none of them, and carrying no quantity either, isn't
+// describing a portion at all.
+var servingMeasureWords = map[string]bool{
+	"cup": true, "cups": true, "tbsp": true, "tablespoon": true, "tablespoons": true,
+	"tsp": true, "teaspoon": true, "teaspoons": true, "oz": true, "ounce": true,
+	"ounces": true, "g": true, "gram": true, "grams": true, "ml": true, "l": true,
+	"piece": true, "pieces": true, "slice": true, "slices": true, "container": true,
+	"pouch": true, "packet": true, "package": true, "bar": true, "can": true,
+	"bottle": true, "box": true, "bag": true, "serving": true, "servings": true,
+	"scoop": true, "scoops": true, "stick": true, "sticks": true, "egg": true,
+	"cookie": true, "cookies": true, "cracker": true, "crackers": true,
+	"slider": true, "patty": true, "link": true, "links": true, "wrap": true,
+	"bun": true, "roll": true, "muffin": true, "bagel": true, "tortilla": true,
+	"each": true, "unit": true, "units": true, "fl": true,
+}
+
+var digitRe = regexp.MustCompile(`[0-9]`)
+
+// usableServingLabel picks the label to show for a branded food's declared
+// serving, falling back to the plain gram form when FDC's household text can't
+// serve as one.
+//
+// Manufacturers submit that field by hand and a fair number get it wrong —
+// "Frosted Cheerios" (the product name), or a bare "36" with the unit dropped.
+// Passing those through gives the user a portion picker offering "1 ×
+// Frosted Cheerios", which describes nothing and can't be reasoned about. The
+// gram weight is always right, so it's the safe fallback.
+func usableServingLabel(household string, grams float64) string {
+	household = strings.TrimSpace(household)
+	gramLabel := ""
+	if grams > 0 {
+		gramLabel = fmt.Sprintf("%g g", grams)
+	}
+	if household == "" {
+		return gramLabel
+	}
+
+	hasDigit := digitRe.MatchString(household)
+	hasMeasure := false
+	for _, w := range householdWordRe.FindAllString(household, -1) {
+		if servingMeasureWords[strings.ToLower(w)] {
+			hasMeasure = true
+			break
+		}
+	}
+
+	switch {
+	// "36" — a quantity with no unit. The gram form says the same thing, but
+	// unambiguously.
+	case hasDigit && !hasMeasure && gramLabel != "":
+		return gramLabel
+	// "Frosted Cheerios" — neither a quantity nor a measure, so not a serving.
+	case !hasDigit && !hasMeasure && gramLabel != "":
+		return gramLabel
+	default:
+		return household
+	}
 }
 
 // normalizeGTIN left-pads a scanned barcode to the 14-digit GTIN form FDC

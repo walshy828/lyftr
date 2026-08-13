@@ -162,15 +162,15 @@ func Load() {
 		Env:                    getEnv("ENV", "development"),
 		Version:                buildVersion,
 
-		VisionProvider:  getEnv("VISION_PROVIDER", ""),
-		AnthropicAPIKey: getEnv("ANTHROPIC_API_KEY", ""),
-		OpenAIAPIKey:    getEnv("OPENAI_API_KEY", ""),
-		GeminiAPIKey:    getEnv("GEMINI_API_KEY", ""),
-		AnthropicModel:  getEnv("ANTHROPIC_MODEL", ""),
-		OpenAIModel:     getEnv("OPENAI_MODEL", ""),
-		GeminiModel:     getEnv("GEMINI_MODEL", ""),
+		VisionProvider:  strings.TrimSpace(getEnv("VISION_PROVIDER", "")),
+		AnthropicAPIKey: getSecret("ANTHROPIC_API_KEY", ""),
+		OpenAIAPIKey:    getSecret("OPENAI_API_KEY", ""),
+		GeminiAPIKey:    getSecret("GEMINI_API_KEY", ""),
+		AnthropicModel:  strings.TrimSpace(getEnv("ANTHROPIC_MODEL", "")),
+		OpenAIModel:     strings.TrimSpace(getEnv("OPENAI_MODEL", "")),
+		GeminiModel:     strings.TrimSpace(getEnv("GEMINI_MODEL", "")),
 
-		FDCAPIKey: getEnv("FDC_API_KEY", ""),
+		FDCAPIKey: getSecret("FDC_API_KEY", ""),
 
 		MealPhotoDir: getEnv("MEAL_PHOTO_DIR", "data/meal-photos"),
 	}
@@ -299,4 +299,27 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getSecret is getEnv for third-party API keys, with the two transcription
+// mistakes that silently break them stripped out.
+//
+// Neither is exotic. docker-compose keeps quotes literally when reading a .env
+// file — unlike a shell — so `FDC_API_KEY="abc"` delivers the quotes as part of
+// the key, and a trailing newline survives a copy-paste out of a browser. Both
+// reach the provider as a corrupted key and come back as a flat 403, which
+// looks identical to "your key is wrong" and sends you off revoking a key that
+// was fine all along.
+//
+// Deliberately NOT used for JWT_SECRET or REGISTRATION_INVITE_CODE: those are
+// opaque local values, and someone may have intentionally included a quote.
+// Rewriting a signing secret would silently invalidate every live session.
+func getSecret(key, fallback string) string {
+	v := strings.TrimSpace(getEnv(key, fallback))
+	if len(v) >= 2 {
+		if (v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'') {
+			v = strings.TrimSpace(v[1 : len(v)-1])
+		}
+	}
+	return v
 }

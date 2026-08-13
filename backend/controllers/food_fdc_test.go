@@ -322,6 +322,33 @@ func TestTidyHouseholdServing(t *testing.T) {
 	}
 }
 
+func TestUsableServingLabel(t *testing.T) {
+	cases := []struct {
+		household string
+		grams     float64
+		want      string
+	}{
+		{"3/4 cup (20g)", 20, "3/4 cup (20g)"},
+		{"1 pouch (31g)", 31, "1 pouch (31g)"},
+		{"3/4 cup with 1/2 cup skim milk", 150, "3/4 cup with 1/2 cup skim milk"},
+		// Manufacturer put the product name in the serving field. "1 ×
+		// Frosted Cheerios" describes no quantity a user can reason about.
+		{"Frosted Cheerios", 36, "36 g"},
+		// A quantity with the unit dropped.
+		{"36", 36, "36 g"},
+		{"", 36, "36 g"},
+		// With no gram weight there is nothing better to fall back to, so even
+		// a poor label beats none.
+		{"Frosted Cheerios", 0, "Frosted Cheerios"},
+		{"", 0, ""},
+	}
+	for _, tc := range cases {
+		if got := usableServingLabel(tc.household, tc.grams); got != tc.want {
+			t.Errorf("usableServingLabel(%q, %v) = %q, want %q", tc.household, tc.grams, got, tc.want)
+		}
+	}
+}
+
 func TestNormalizeGTIN(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"016000275287", "00016000275287"},   // UPC-A, 12 digits
@@ -354,6 +381,29 @@ func TestFdcServingGrams(t *testing.T) {
 		got := fdcServingGrams(tc.size, tc.unit)
 		if diff := got - tc.want; diff > 0.0001 || diff < -0.0001 {
 			t.Errorf("fdcServingGrams(%v, %q) = %v, want %v", tc.size, tc.unit, got, tc.want)
+		}
+	}
+}
+
+func TestFdcStatusError_surfacesDataGovErrorCode(t *testing.T) {
+	// The whole point: a 403 from a quoted or newline-terminated key is
+	// indistinguishable from a revoked one unless the body is reported.
+	body := []byte(`{"error":{"code":"API_KEY_INVALID","message":"An invalid api_key was supplied."}}`)
+	got := fdcStatusError(403, body).Error()
+
+	if !strings.Contains(got, "API_KEY_INVALID") {
+		t.Errorf("error = %q, want it to name the data.gov code", got)
+	}
+	if !strings.Contains(got, "403") {
+		t.Errorf("error = %q, want it to keep the status", got)
+	}
+}
+
+func TestFdcStatusError_fallsBackWhenBodyIsNotDataGov(t *testing.T) {
+	for _, body := range [][]byte{[]byte(`<html>502</html>`), nil, []byte(`{}`)} {
+		got := fdcStatusError(502, body).Error()
+		if !strings.Contains(got, "502") {
+			t.Errorf("error = %q, want the status preserved for body %q", got, body)
 		}
 	}
 }

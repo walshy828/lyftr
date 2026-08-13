@@ -108,6 +108,31 @@ type fdcFoodMeasure struct {
 	GramWeight        float64 `json:"gramWeight"`
 }
 
+// fdcErrorResponse is data.gov's error envelope, shared by every api.data.gov
+// -fronted service including FDC.
+type fdcErrorResponse struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// fdcStatusError turns a non-200 FDC response into an error that says what
+// actually went wrong.
+//
+// data.gov answers a malformed key with a flat 403 and an body naming the
+// cause — API_KEY_INVALID vs API_KEY_MISSING vs OVER_RATE_LIMIT. Reporting only
+// the status code makes an unquoted-env-var typo indistinguishable from a
+// revoked key, so the body is worth carrying into the log even though nothing
+// downstream branches on it.
+func fdcStatusError(status int, body []byte) error {
+	var parsed fdcErrorResponse
+	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Error.Code != "" {
+		return fmt.Errorf("fdc: status %d: %s: %s", status, parsed.Error.Code, parsed.Error.Message)
+	}
+	return fmt.Errorf("fdc: unexpected status %d", status)
+}
+
 func fdcNutrientValue(nutrients []fdcNutrient, id int) float64 {
 	for _, n := range nutrients {
 		if n.NutrientID == id {
@@ -167,13 +192,9 @@ func fdcFoodToResult(f fdcFood) models.FoodSearchResult {
 	}
 
 	// Branded foods carry a single declared serving rather than a measure list.
-	servingLabel := tidyHouseholdServing(f.HouseholdServingFullText)
-	if servingGrams > 0 {
-		label := servingLabel
-		if label == "" {
-			label = fmt.Sprintf("%g g", servingGrams)
-		}
-		addPortion(label, servingGrams)
+	servingLabel := usableServingLabel(tidyHouseholdServing(f.HouseholdServingFullText), servingGrams)
+	if servingGrams > 0 && servingLabel != "" {
+		addPortion(servingLabel, servingGrams)
 	}
 	for _, m := range f.FoodMeasures {
 		addPortion(fdcMeasureLabel(m), m.GramWeight)
@@ -202,12 +223,9 @@ func fdcFoodToResult(f fdcFood) models.FoodSearchResult {
 		// The label figures describe one declared serving, so the serving
 		// label and gram basis must describe that same serving — otherwise the
 		// client rescales correct numbers by a wrong divisor.
-		switch {
-		case servingLabel != "":
+		if servingLabel != "" {
 			r.ServingSize = servingLabel
-		case servingGrams > 0:
-			r.ServingSize = fmt.Sprintf("%g g", servingGrams)
-		default:
+		} else {
 			r.ServingSize = "1 serving"
 		}
 		r.ServingSizeGrams = servingGrams
@@ -268,7 +286,7 @@ func searchFDCFoods(ctx context.Context, apiKey, query string, limit int) ([]mod
 		return nil, nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("fdc: unexpected status %d", resp.StatusCode)
+		return nil, nil, fdcStatusError(resp.StatusCode, raw)
 	}
 
 	var parsed fdcSearchResponse
@@ -388,7 +406,7 @@ func fetchFDCFoods(ctx context.Context, apiKey string, ids []int) ([]fdcFood, er
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fdc: detail unexpected status %d", resp.StatusCode)
+		return nil, fmt.Errorf("detail: %w", fdcStatusError(resp.StatusCode, raw))
 	}
 
 	var parsed []fdcFood
