@@ -904,6 +904,7 @@ export default function LogFood() {
                   <div className="flex items-baseline gap-1.5">
                     <input
                       type="number"
+                      aria-label="Calories"
                       value={cal}
                       onChange={e => setMacro('calories', Number(e.target.value) || 0)}
                       className="text-5xl font-bold tabular-nums text-tx-primary leading-none bg-transparent border-0 outline-none w-32"
@@ -955,6 +956,7 @@ export default function LogFood() {
                     <div className="flex items-baseline justify-center gap-0.5">
                       <input
                         type="number"
+                        aria-label={m.label}
                         value={m.value}
                         onChange={e => setMacro(m.field, Number(e.target.value) || 0)}
                         className={`text-sm font-bold tabular-nums bg-transparent border-0 outline-none w-10 text-center ${m.color}`}

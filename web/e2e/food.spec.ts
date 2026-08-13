@@ -101,7 +101,9 @@ test.describe('Food', () => {
   })
 
   test('macro summary card shows calorie and macro labels', async ({ page }) => {
-    await expect(page.getByText('Calories')).toBeVisible()
+    // .first() like the macros below: "Calories" appears both as the summary
+    // card's label and as a section heading further down the page.
+    await expect(page.getByText('Calories').first()).toBeVisible()
     await expect(page.getByText('Protein').first()).toBeVisible()
     await expect(page.getByText('Carbs').first()).toBeVisible()
     await expect(page.getByText('Fat').first()).toBeVisible()
@@ -187,7 +189,8 @@ test.describe('Food', () => {
     await page.getByText('Quick add 500 kcal').click()
     // Detail phase with 500 kcal
     await expect(page.getByRole('button', { name: 'Log Food' })).toBeVisible()
-    await expect(page.getByText('500').first()).toBeVisible()
+    // Calories are an editable field, not text — assert the value, not a match.
+    await expect(page.getByLabel('Calories')).toHaveValue('500')
   })
 
   // @mobile: touch stepper (+/- taps) — a phone-viewport touch interaction.
@@ -204,13 +207,13 @@ test.describe('Food', () => {
     await page.getByText('Test Rice').click()
 
     // Default 1 serving = 200 kcal shown
-    await expect(page.getByText('200').first()).toBeVisible()
+    await expect(page.getByLabel('Calories')).toHaveValue('200')
 
     // No gram basis on this food, so the amount is the servings multiplier and
     // steps by 0.5 — two taps reaches 2 → 400 kcal.
     await page.getByRole('button', { name: 'Increase amount' }).click()
     await page.getByRole('button', { name: 'Increase amount' }).click()
-    await expect(page.getByText('400').first()).toBeVisible()
+    await expect(page.getByLabel('Calories')).toHaveValue('400')
   })
 
   // @mobile: naming your own serving is a phone-first manual-entry step.
@@ -260,11 +263,13 @@ test.describe('Food', () => {
   // @mobile: the capture bar must stay on one row at a phone width.
   test('capture bar offers all four entry points at a glance', { tag: '@mobile' }, async ({ page }) => {
     await page.goto('/food/log')
+    // exact: the accessible-name match is a substring by default, and "Manual"
+    // also appears inside the "Add a food manually" fallback row below the list.
     for (const label of ['Describe', 'Barcode', 'Label', 'Manual']) {
-      await expect(page.getByRole('button', { name: label })).toBeVisible()
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible()
     }
     // One tap from a cold search screen to a blank entry form.
-    await page.getByRole('button', { name: 'Manual' }).click()
+    await page.getByRole('button', { name: 'Manual', exact: true }).click()
     await expect(page.getByPlaceholder('Food name')).toBeVisible()
   })
 
@@ -287,7 +292,7 @@ test.describe('Food', () => {
     await page.getByLabel('Unit').selectOption('portion:1 tbsp')
     await expect(page.getByText('1 tbsp = 14 g')).toBeVisible()
     // 680 kcal per 100 g → 95 kcal for one 14 g tbsp
-    await expect(page.getByText('95').first()).toBeVisible()
+    await expect(page.getByLabel('Calories')).toHaveValue('95')
   })
 
   // @mobile: touch chip selector that sets the entry's meal.
@@ -333,7 +338,7 @@ test.describe('Food', () => {
     await page.getByText('Test Apple').click()
 
     await expect(page.getByRole('button', { name: 'Log Food' })).toBeVisible()
-    await expect(page.getByText('95').first()).toBeVisible()
+    await expect(page.getByLabel('Calories')).toHaveValue('95')
   })
 
   test('429 rate limit response shows amber warning banner', async ({ page }) => {
@@ -352,7 +357,9 @@ test.describe('Food', () => {
     await page.goto(`/food/log?edit=${firstId}`)
 
     await expect(page.getByRole('button', { name: 'Save Changes' })).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText(`${SEED_PREFIX}-breakfast`)).toBeVisible()
+    // The name is an editable field in the detail form, so it has a value
+    // rather than text content.
+    await expect(page.getByPlaceholder('Food name')).toHaveValue(`${SEED_PREFIX}-breakfast`)
   })
 
   test('edit mode: saving returns to food page', async ({ page }) => {
