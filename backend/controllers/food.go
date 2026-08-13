@@ -285,6 +285,7 @@ func (b *offBrands) UnmarshalJSON(data []byte) error {
 }
 
 type offProduct struct {
+	Code        string       `json:"code"` // the product's barcode
 	ProductName string       `json:"product_name"`
 	Brands      offBrands    `json:"brands"`
 	Nutriments  offNutrients `json:"nutriments"`
@@ -382,7 +383,12 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		ServingSizeGrams: servingGrams,
 		Portions:         portions,
 		ImageURL:         imageURL,
-		Source:           "off",
+		Barcode:          strings.TrimSpace(p.Code),
+		// useServing means OFF published real per-serving values against a
+		// stated serving size — a contributor transcribed the actual panel.
+		// The per-100g fallback is a derived figure, so it makes no such claim.
+		LabelAccurate: useServing,
+		Source:        "off",
 	}
 }
 
@@ -480,9 +486,14 @@ func (h *Handler) SearchFood(c *gin.Context) {
 // signalling when it's the only source that ran.
 func searchOFF(ctx context.Context, q string, limit int) ([]models.FoodSearchResult, int, error) {
 	start := time.Now()
+	// Constrain to products actually sold in the US. Open Food Facts is a
+	// global database, and an unfiltered query returns the French and Irish
+	// formulations of the same brand alongside the American one — different
+	// recipes, different labels, and no way for the user to tell them apart in
+	// a result list. The US label is the one on the box in their kitchen.
 	searchURL := fmt.Sprintf(
-		"https://search.openfoodfacts.org/search?q=%s&lang=en&cc=world&page_size=%d&page=1&fields=product_name,brands,nutriments,serving_size,image_url",
-		url.QueryEscape(q), limit,
+		"https://search.openfoodfacts.org/search?q=%s&lang=en&cc=us&page_size=%d&page=1&fields=code,product_name,brands,nutriments,serving_size,image_url",
+		url.QueryEscape(q+` countries_tags:"en:united-states"`), limit,
 	)
 	// The query itself is not logged: it's a record of what the user eats, and
 	// container logs are routinely shipped to aggregators. Length is enough to
@@ -517,9 +528,27 @@ func searchOFF(ctx context.Context, q string, limit int) ([]models.FoodSearchRes
 		if p.ProductName == "" {
 			continue
 		}
-		results = append(results, offProductToResult(p))
+		r := offProductToResult(p)
+		if isEmptyNutrition(r) {
+			continue
+		}
+		results = append(results, r)
 	}
 	return results, status, nil
+}
+
+// isEmptyNutrition reports whether a result carries no usable nutrition at all.
+//
+// Open Food Facts is crowdsourced, and a good number of entries are a barcode
+// and a name that nobody has filled in yet. Those rank alongside complete
+// records and, because dedupe collapses same-name products, an empty "Cheerios"
+// can shadow the one with real values — the user picks it and logs 0 kcal.
+//
+// The cost of the check is that a genuinely all-zero food (water, black coffee)
+// is dropped too. That's an acceptable trade: such an entry adds nothing to a
+// nutrition log, whereas a silently-empty one corrupts the day's totals.
+func isEmptyNutrition(r models.FoodSearchResult) bool {
+	return r.Calories == 0 && r.Protein == 0 && r.Carbs == 0 && r.Fat == 0
 }
 
 // mergeSearchResults dedupes across sources and interleaves them, so neither
@@ -560,6 +589,11 @@ func mergeSearchResults(query string, off, fdc []models.FoodSearchResult, limit 
 
 // rankByQuery stably re-sorts results by how directly the name answers the
 // query: exact match, then prefix, then substring, then everything else.
+//
+// Label-accurate results float up within each of those bands, but never
+// across them. Name relevance has to stay dominant — promoting label accuracy
+// above it would answer "chicken breast" with branded chicken nuggets, on the
+// grounds that the nuggets have a better-attested label.
 func rankByQuery(query string, results []models.FoodSearchResult) []models.FoodSearchResult {
 	q := normalizeFoodName(query)
 	if q == "" || len(results) < 2 {
@@ -580,7 +614,13 @@ func rankByQuery(query string, results []models.FoodSearchResult) []models.FoodS
 	}
 	sorted := make([]models.FoodSearchResult, len(results))
 	copy(sorted, results)
-	sort.SliceStable(sorted, func(i, j int) bool { return score(sorted[i]) < score(sorted[j]) })
+	sort.SliceStable(sorted, func(i, j int) bool {
+		si, sj := score(sorted[i]), score(sorted[j])
+		if si != sj {
+			return si < sj
+		}
+		return sorted[i].LabelAccurate && !sorted[j].LabelAccurate
+	})
 	return sorted
 }
 
@@ -589,6 +629,11 @@ type offBarcodeResponse struct {
 	Status  string     `json:"status"` // v3 API returns "success" | "failure"
 	Product offProduct `json:"product"`
 }
+
+// barcodeCacheTTL is how long a resolved product stays usable without being
+// re-fetched. Reformulations happen, but on the order of years, not weeks —
+// and the user can always correct the numbers on the entry, or re-scan.
+const barcodeCacheTTL = 30 * 24 * time.Hour
 
 func (h *Handler) LookupBarcode(c *gin.Context) {
 	code := c.Param("code")
@@ -603,14 +648,114 @@ func (h *Handler) LookupBarcode(c *gin.Context) {
 		return
 	}
 
+	// FDC stores every barcode zero-padded to 14 digits, and a UPC-A scans as
+	// 12. The padded form is both what FDC can find and the key that collapses
+	// the encodings of one physical product onto a single cache row.
+	gtin := normalizeGTIN(code)
+
+	if cached, fetchedAt, err := h.s.FoodProduct.Get(gtin); err == nil {
+		if time.Since(fetchedAt) < barcodeCacheTTL {
+			log.Printf("[food/barcode] cache hit: age=%dh", int(time.Since(fetchedAt).Hours()))
+			utils.OK(c, cached)
+			return
+		}
+	} else if err != sql.ErrNoRows {
+		// A broken cache must not break lookups — fall through to the network.
+		log.Printf("[food/barcode] cache read error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	fdcKey := ""
+	if config.C != nil {
+		fdcKey = config.C.FDCAPIKey
+	}
+
+	// Fan out to both sources concurrently, same shape as SearchFood. FDC's
+	// Branded records are manufacturer label submissions, so when both answer
+	// the USDA panel is the one that matches the box; OFF has far better
+	// barcode coverage, so it's the one that usually answers at all.
+	var (
+		wg        sync.WaitGroup
+		offResult models.FoodSearchResult
+		offFound  bool
+		offErr    error
+		offStatus int
+		fdcResult models.FoodSearchResult
+		fdcFound  bool
+		fdcErr    error
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		offResult, offFound, offStatus, offErr = lookupOFFBarcode(ctx, code)
+	}()
+
+	if fdcKey != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			fdcResult, fdcFound, fdcErr = lookupFDCByGTIN(ctx, fdcKey, gtin)
+			log.Printf("[food/barcode] FDC response: found=%t duration=%dms err=%v",
+				fdcFound, time.Since(start).Milliseconds(), fdcErr)
+		}()
+	}
+	wg.Wait()
+
+	var result models.FoodSearchResult
+	switch {
+	case fdcFound && fdcResult.LabelAccurate:
+		result = fdcResult
+	case offFound:
+		result = offResult
+	case fdcFound:
+		result = fdcResult
+	default:
+		// Nothing matched. Distinguish "the product isn't in either database"
+		// from "we couldn't ask", so the client knows whether retrying helps.
+		switch {
+		case ctx.Err() == context.DeadlineExceeded:
+			utils.ServiceUnavailable(c, "barcode lookup timed out — try again")
+		case offStatus == 429:
+			log.Printf("[food/barcode] OFF rate limit hit")
+			c.Header("Retry-After", "60")
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests — wait a moment and try again"})
+		case offStatus >= 500:
+			log.Printf("[food/barcode] OFF upstream error: %d", offStatus)
+			utils.ServiceUnavailable(c, "barcode lookup temporarily unavailable")
+		case offErr != nil && fdcErr != nil:
+			utils.ServiceUnavailable(c, "could not reach food database")
+		case offErr != nil && fdcKey == "":
+			utils.ServiceUnavailable(c, "could not reach food database")
+		default:
+			utils.NotFound(c, "product not found")
+		}
+		return
+	}
+
+	// The scanned code is what lets the entry round-trip back to this product
+	// later; without it food_logs.barcode stays empty on every scanned entry.
+	result.Barcode = code
+
+	if err := h.s.FoodProduct.Upsert(gtin, result); err != nil {
+		log.Printf("[food/barcode] cache write error: %v", err)
+	}
+
+	utils.OK(c, result)
+}
+
+// lookupOFFBarcode resolves a barcode against Open Food Facts. The HTTP status
+// comes back alongside the error so the caller can preserve OFF's rate-limit
+// signalling when it's the source that failed.
+func lookupOFFBarcode(ctx context.Context, code string) (models.FoodSearchResult, bool, int, error) {
 	start := time.Now()
 	lookupURL := fmt.Sprintf("https://world.openfoodfacts.org/api/v3/product/%s.json", url.PathEscape(code))
 	// The scanned barcode identifies a specific product the user is eating —
 	// dietary data, not diagnostics. See the note in the search handler.
 	log.Printf("[food/barcode] OFF request")
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
 
 	body, status, err := doOFFRequest(ctx, lookupURL)
 	elapsed := time.Since(start)
@@ -619,39 +764,24 @@ func (h *Handler) LookupBarcode(c *gin.Context) {
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			log.Printf("[food/barcode] OFF timeout after %dms", elapsed.Milliseconds())
-			utils.ServiceUnavailable(c, "barcode lookup timed out — try again")
-			return
+		} else {
+			log.Printf("[food/barcode] OFF network error: %v", err)
 		}
-		log.Printf("[food/barcode] OFF network error: %v", err)
-		utils.ServiceUnavailable(c, "could not reach food database")
-		return
+		return models.FoodSearchResult{}, false, status, err
 	}
-
-	switch {
-	case status == 429:
-		log.Printf("[food/barcode] OFF rate limit hit")
-		c.Header("Retry-After", "60")
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests — wait a moment and try again"})
-		return
-	case status >= 500:
-		log.Printf("[food/barcode] OFF upstream error: %d", status)
-		utils.ServiceUnavailable(c, "barcode lookup temporarily unavailable")
-		return
+	if status != http.StatusOK {
+		return models.FoodSearchResult{}, false, status, fmt.Errorf("off: unexpected status %d", status)
 	}
 
 	var parsed offBarcodeResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		log.Printf("[food/barcode] OFF parse error: %v", err)
-		utils.InternalError(c)
-		return
+		return models.FoodSearchResult{}, false, status, err
 	}
-
 	if !strings.HasPrefix(parsed.Status, "success") || parsed.Product.ProductName == "" {
-		utils.NotFound(c, "product not found")
-		return
+		return models.FoodSearchResult{}, false, status, nil
 	}
-
-	utils.OK(c, offProductToResult(parsed.Product))
+	return offProductToResult(parsed.Product), true, status, nil
 }
 
 // ─── Saved Foods ──────────────────────────────────────────────────────────────

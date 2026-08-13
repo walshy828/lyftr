@@ -408,6 +408,21 @@ type FoodSearchResult struct {
 	Portions         []FoodPortion `json:"portions,omitempty"`
 	ImageURL         string        `json:"image_url,omitempty"`
 	Source           string        `json:"source"` // "off" | "fdc" | "saved" | "manual" | "photo"
+
+	// LabelAccurate marks a result whose numbers came off a real Nutrition
+	// Facts panel — USDA Branded labelNutrients, or an Open Food Facts record
+	// that published per-serving values — rather than a per-100g figure the
+	// user has to rescale, or an AI estimate. It is the difference between
+	// "this is what the box says" and "this is roughly right", and the client
+	// surfaces it so the two are never mistaken for each other.
+	LabelAccurate bool `json:"label_accurate,omitempty"`
+	// Barcode is the GTIN this result was resolved from, when it came from a
+	// scan, so the client can persist it on the log entry.
+	Barcode string `json:"barcode,omitempty"`
+	// LabelDate is FDC's publicationDate — informational only. Branded records
+	// are manufacturer submissions and can lag a reformulation by years, so
+	// the age of the data is worth showing rather than hiding.
+	LabelDate string `json:"label_date,omitempty"`
 }
 
 type FoodHistoryPoint struct {

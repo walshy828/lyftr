@@ -328,6 +328,15 @@ export interface FoodSearchResult {
   portions?: FoodPortion[]
   image_url?: string
   source: 'off' | 'fdc' | 'saved' | 'manual' | 'photo' | 'ai'
+  /**
+   * True when these numbers came off a real Nutrition Facts panel rather than
+   * a per-100g figure or an AI estimate. Drives the provenance badge.
+   */
+  label_accurate?: boolean
+  /** The GTIN this result was resolved from, when it came from a scan. */
+  barcode?: string
+  /** USDA publication date for the label data — informational. */
+  label_date?: string
 }
 
 export interface NutritionExtraction {

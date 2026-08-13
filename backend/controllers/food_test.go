@@ -881,6 +881,177 @@ func TestLookupBarcode_rateLimited(t *testing.T) {
 	}
 }
 
+// fdcBarcodeSearch/Detail are the two legs of an FDC barcode resolution: the
+// search matches the padded GTIN as a keyword, the detail supplies the panel.
+const fdcBarcodeSearch = `{"foods":[{"fdcId":9001,"description":"Jif Peanut Butter","dataType":"Branded",
+	"brandName":"Jif","gtinUpc":"00051500255186","foodNutrients":[{"nutrientId":1008,"value":588}]}]}`
+
+const fdcBarcodeDetail = `[{"fdcId":9001,"description":"Jif Peanut Butter","dataType":"Branded",
+	"brandName":"Jif","gtinUpc":"00051500255186","servingSize":32,"servingSizeUnit":"GRM",
+	"householdServingFullText":"2 Tbsp",
+	"labelNutrients":{"calories":{"value":190},"protein":{"value":7},"fat":{"value":16},"sodium":{"value":140}}}]`
+
+func TestLookupBarcode_prefersFDCLabelOverOFF(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	// OFF answers with its own per-serving figures; FDC answers with the
+	// manufacturer's submitted label. The label is what's on the jar.
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"success","product":{"product_name":"Jif PB","brands":"Jif","serving_size":"2 tbsp","nutriments":{"energy-kcal_serving":188}}}`))
+	})
+	withFDCMock(t, fdcRoute(
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fdcBarcodeSearch)) },
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fdcBarcodeDetail)) },
+	))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/barcode/051500255186", nil)
+	setParam(c, "code", "051500255186")
+	th.LookupBarcode(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].(map[string]any)
+	if data["calories"].(float64) != 190 {
+		t.Errorf("calories = %v, want the FDC label's 190", data["calories"])
+	}
+	if data["source"] != "fdc" || data["label_accurate"] != true {
+		t.Errorf("source/label_accurate = %v/%v, want fdc/true", data["source"], data["label_accurate"])
+	}
+	// The scanned code must round-trip so the log entry can carry it.
+	if data["barcode"] != "051500255186" {
+		t.Errorf("barcode = %v, want the code as scanned", data["barcode"])
+	}
+}
+
+func TestLookupBarcode_rejectsFDCGTINMismatch(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	// FDC has no barcode endpoint — the GTIN is matched as a search keyword,
+	// which is fuzzy. An unverified hit would staple a completely unrelated
+	// product onto the user's scan, so a mismatched gtinUpc must be discarded.
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"success","product":{"product_name":"Jif PB","brands":"Jif","serving_size":"2 tbsp","nutriments":{"energy-kcal_serving":188}}}`))
+	})
+	withFDCMock(t, fdcRoute(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"foods":[{"fdcId":9002,"description":"Unrelated Cereal","dataType":"Branded","gtinUpc":"00099999999999"}]}`))
+		},
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`[{"fdcId":9002,"gtinUpc":"00099999999999","labelNutrients":{"calories":{"value":400}}}]`))
+		},
+	))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/barcode/051500255186", nil)
+	setParam(c, "code", "051500255186")
+	th.LookupBarcode(c)
+
+	data := decodeResponse(t, w)["data"].(map[string]any)
+	if data["source"] != "off" {
+		t.Fatalf("source = %v, want the OFF result — the FDC GTIN didn't match", data["source"])
+	}
+	if data["name"] != "Jif PB" {
+		t.Errorf("name = %v, want Jif PB", data["name"])
+	}
+}
+
+func TestLookupBarcode_cacheAvoidsSecondUpstreamCall(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	offCalls := 0
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		offCalls++
+		w.Write([]byte(`{"status":"success","product":{"product_name":"Jif PB","serving_size":"32 g","nutriments":{"energy-kcal_serving":190}}}`))
+	})
+
+	for i := 0; i < 2; i++ {
+		c, w := newContext(uid, http.MethodGet, "/api/v1/food/barcode/051500255186", nil)
+		setParam(c, "code", "051500255186")
+		th.LookupBarcode(c)
+		if w.Code != http.StatusOK {
+			t.Fatalf("call %d: expected 200, got %d: %s", i, w.Code, w.Body.String())
+		}
+		if decodeResponse(t, w)["data"].(map[string]any)["name"] != "Jif PB" {
+			t.Fatalf("call %d: cached payload didn't round-trip", i)
+		}
+	}
+
+	if offCalls != 1 {
+		t.Errorf("OFF called %d times, want 1 — the second scan should hit the cache", offCalls)
+	}
+}
+
+func TestLookupBarcode_cacheKeyIgnoresGTINPadding(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	offCalls := 0
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		offCalls++
+		w.Write([]byte(`{"status":"success","product":{"product_name":"Jif PB","serving_size":"32 g","nutriments":{"energy-kcal_serving":190}}}`))
+	})
+
+	// The same physical jar scans as UPC-A on one reader and EAN-13 on another.
+	for _, code := range []string{"051500255186", "0051500255186"} {
+		c, _ := newContext(uid, http.MethodGet, "/api/v1/food/barcode/"+code, nil)
+		setParam(c, "code", code)
+		th.LookupBarcode(c)
+	}
+
+	if offCalls != 1 {
+		t.Errorf("OFF called %d times, want 1 — padding variants are one product", offCalls)
+	}
+}
+
+func TestLookupBarcode_notFoundWhenBothSourcesMiss(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"failure","product":{}}`))
+	})
+	withFDCMock(t, fdcRoute(
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"foods":[]}`)) },
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`[]`)) },
+	))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/barcode/012345678901", nil)
+	setParam(c, "code", "012345678901")
+	th.LookupBarcode(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when neither source has the product, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestLookupBarcode_fdcAnswersWhenOFFMisses(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"failure","product":{}}`))
+	})
+	withFDCMock(t, fdcRoute(
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fdcBarcodeSearch)) },
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fdcBarcodeDetail)) },
+	))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/barcode/051500255186", nil)
+	setParam(c, "code", "051500255186")
+	th.LookupBarcode(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].(map[string]any)
+	if data["calories"].(float64) != 190 || data["serving_size"] != "2 Tbsp" {
+		t.Errorf("got %v cal / %v serving, want the FDC label", data["calories"], data["serving_size"])
+	}
+}
+
 // ─── SearchFood ───────────────────────────────────────────────────────────────
 
 func TestSearchFood_missingQuery(t *testing.T) {

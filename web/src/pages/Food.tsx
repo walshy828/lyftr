@@ -17,6 +17,7 @@ import {
 import Loading from '../components/Loading'
 import MealRecommendations from '../components/MealRecommendations'
 import PeriodSelector from '../components/PeriodSelector'
+import SourceBadge from '../components/food/SourceBadge'
 import { foodAPI, userAPI } from '../services/api'
 import { todayStr } from '../utils/dateUtils'
 import { MACRO_COLORS } from '../utils/macroColors'
@@ -456,7 +457,17 @@ export default function Food() {
                                 }
                               />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-tx-primary truncate">{entry.name}</p>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <p className="text-sm font-medium text-tx-primary truncate">{entry.name}</p>
+                                  {/* Only estimates are badged here. A stored
+                                      entry records its source but not whether
+                                      that source quoted a real panel, so the
+                                      diary can flag "this was a guess" but
+                                      can't honestly promise the opposite. */}
+                                  {(entry.source === 'ai' || entry.source === 'photo') && (
+                                    <SourceBadge item={{ source: entry.source }} className="flex-shrink-0" />
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                   <span className="text-xs font-semibold text-tx-secondary tabular-nums">
                                     {Math.round(entry.calories)} kcal
