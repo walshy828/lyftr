@@ -648,6 +648,131 @@ func TestSearchFood_failsWhenBothSourcesFail(t *testing.T) {
 	}
 }
 
+// ─── source filtering ─────────────────────────────────────────────────────────
+
+func TestParseSearchSources(t *testing.T) {
+	cases := []struct {
+		raw           string
+		wantOFF, wFDC bool
+	}{
+		{"", true, true},              // absent — everything
+		{"off,fdc", true, true},       // both named
+		{"off", true, false},          // narrowed
+		{"fdc", false, true},          // narrowed
+		{" FDC , ", false, true},      // whitespace and case tolerated
+		{"nonsense", true, true},      // unknown name alone — don't answer nothing
+		{"off,nonsense", true, false}, // unknown alongside a real one is ignored
+	}
+	for _, tc := range cases {
+		off, fdc := parseSearchSources(tc.raw)
+		if off != tc.wantOFF || fdc != tc.wFDC {
+			t.Errorf("parseSearchSources(%q) = off:%t fdc:%t, want off:%t fdc:%t",
+				tc.raw, off, fdc, tc.wantOFF, tc.wFDC)
+		}
+	}
+}
+
+func TestSearchFood_sourcesFDCOnlySkipsOFF(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	offCalled := false
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		offCalled = true
+		w.Write([]byte(`{"hits":[{"product_name":"Mayonnaise","nutriments":{"energy-kcal_100g":680}}]}`))
+	})
+	withFDCMock(t, fdcRoute(
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fdcMayoResponse)) },
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`[]`)) },
+	))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/search?q=mayonnaise&sources=fdc", nil)
+	th.SearchFood(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	// Not querying a deselected source is the point — it's what lets a
+	// single-source search return a full page of that source.
+	if offCalled {
+		t.Error("OFF was queried despite sources=fdc")
+	}
+	data := decodeResponse(t, w)["data"].([]any)
+	for _, item := range data {
+		if src := item.(map[string]any)["source"]; src != "fdc" {
+			t.Errorf("got a %v result under sources=fdc", src)
+		}
+	}
+}
+
+func TestSearchFood_sourcesOFFOnlySkipsFDC(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	fdcCalled := false
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"hits":[{"product_name":"Mayonnaise","nutriments":{"energy-kcal_100g":680}}]}`))
+	})
+	withFDCMock(t, func(w http.ResponseWriter, r *http.Request) {
+		fdcCalled = true
+		w.Write([]byte(fdcMayoResponse))
+	})
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/search?q=mayonnaise&sources=off", nil)
+	th.SearchFood(c)
+
+	if fdcCalled {
+		t.Error("FDC was queried despite sources=off")
+	}
+	if data := decodeResponse(t, w)["data"].([]any); len(data) != 1 {
+		t.Fatalf("expected 1 OFF result, got %d", len(data))
+	}
+}
+
+func TestSearchFood_deselectedSourceFailureIsNotReported(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	// OFF is down, but the user asked for USDA only — their search succeeded.
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	withFDCMock(t, fdcRoute(
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fdcMayoResponse)) },
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`[]`)) },
+	))
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/search?q=mayonnaise&sources=fdc", nil)
+	th.SearchFood(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 — the selected source answered, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSearchFood_fdcOnlyWithoutKeyExplainsItself(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	withOFFMock(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"hits":[]}`))
+	})
+	withFDCMock(t, func(w http.ResponseWriter, r *http.Request) {})
+	config.C.FDCAPIKey = "" // withFDCMock restores the previous config on cleanup
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/search?q=mayonnaise&sources=fdc", nil)
+	th.SearchFood(c)
+
+	// An empty list here would read as "no such food" rather than "this server
+	// can't search USDA at all".
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for USDA-only search with no key, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "not configured") {
+		t.Errorf("error should name the cause, got %s", w.Body.String())
+	}
+}
+
 func TestSearchFood_skipsFDCWithoutAPIKey(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)

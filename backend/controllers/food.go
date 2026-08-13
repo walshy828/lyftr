@@ -421,17 +421,26 @@ func (h *Handler) SearchFood(c *gin.Context) {
 		limit = l
 	}
 
+	// The client can narrow the search to specific upstreams. Filtering here
+	// rather than in the client matters: a user who asks for USDA only gets a
+	// full page of USDA results, instead of a mixed page filtered down to
+	// whatever fraction happened to be USDA.
+	wantOFF, wantFDC := parseSearchSources(c.Query("sources"))
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	// Fan out to both sources concurrently under the one timeout. Either source
-	// alone is enough to answer: OFF covers barcoded packaged goods, FDC covers
-	// generic whole foods, and a user searching "chicken breast" should not get
-	// an error page because the packaged-goods index was down.
+	// Fan out to the selected sources concurrently under the one timeout.
+	// Either source alone is enough to answer: OFF covers barcoded packaged
+	// goods, FDC covers generic whole foods and carries real label panels, and
+	// a user searching "chicken breast" should not get an error page because
+	// the packaged-goods index was down.
 	fdcKey := ""
 	if config.C != nil {
 		fdcKey = config.C.FDCAPIKey
 	}
+	// A source that can't run is not a source the caller selected.
+	ranFDC := wantFDC && fdcKey != ""
 
 	var (
 		wg         sync.WaitGroup
@@ -442,13 +451,15 @@ func (h *Handler) SearchFood(c *gin.Context) {
 		fdcErr     error
 	)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		offResults, offStatus, offErr = searchOFF(ctx, q, limit)
-	}()
+	if wantOFF {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			offResults, offStatus, offErr = searchOFF(ctx, q, limit)
+		}()
+	}
 
-	if fdcKey != "" {
+	if ranFDC {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -460,18 +471,23 @@ func (h *Handler) SearchFood(c *gin.Context) {
 	}
 	wg.Wait()
 
-	// Only surface a failure when neither source produced anything.
+	// Only surface a failure when nothing the caller asked for produced
+	// anything. Errors from a source they deselected are not their problem.
 	if len(offResults) == 0 && len(fdcResults) == 0 {
 		switch {
-		case offErr != nil && ctx.Err() == context.DeadlineExceeded:
+		case ctx.Err() == context.DeadlineExceeded && (offErr != nil || fdcErr != nil):
 			utils.ServiceUnavailable(c, "food search timed out — try again")
-		case offStatus == 429:
+		case wantOFF && offStatus == 429:
 			c.Header("Retry-After", "60")
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests — wait a moment and try again"})
-		case offErr != nil:
+		case wantOFF && offErr != nil:
 			utils.ServiceUnavailable(c, "could not reach food database")
-		case fdcErr != nil && fdcKey != "":
+		case ranFDC && fdcErr != nil:
 			utils.ServiceUnavailable(c, "food search temporarily unavailable")
+		case wantFDC && !wantOFF && fdcKey == "":
+			// They narrowed to USDA on a deployment that has no FDC key, so
+			// the empty list would otherwise look like "no such food".
+			utils.ServiceUnavailable(c, "USDA search is not configured on this server")
 		default:
 			utils.OK(c, []models.FoodSearchResult{})
 		}
@@ -479,6 +495,27 @@ func (h *Handler) SearchFood(c *gin.Context) {
 	}
 
 	utils.OK(c, mergeSearchResults(q, offResults, fdcResults, limit))
+}
+
+// parseSearchSources reads the `sources` query parameter — a comma-separated
+// list of upstream names — into per-source flags.
+//
+// An absent, empty or wholly unrecognized value means "everything", so an old
+// client, a hand-typed URL, or a future source name the backend doesn't know
+// yet all degrade to the full search rather than to silence.
+func parseSearchSources(raw string) (off, fdc bool) {
+	for _, name := range strings.Split(raw, ",") {
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "off":
+			off = true
+		case "fdc":
+			fdc = true
+		}
+	}
+	if !off && !fdc {
+		return true, true
+	}
+	return off, fdc
 }
 
 // searchOFF runs the Open Food Facts leg of a search. The HTTP status is

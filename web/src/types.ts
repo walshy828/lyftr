@@ -29,6 +29,8 @@ export interface UserSettings {
   // Client-only (localStorage, not persisted server-side):
   rest_enabled?: boolean        // master rest-timer on/off
   rest_seconds_default?: number // default rest seconds, seeds new exercises
+  /** Which external food databases the Log Food search queries. Never empty. */
+  food_search_sources?: FoodSource[]
 }
 
 export interface Exercise {
@@ -310,6 +312,13 @@ export interface FoodPortion {
   label: string
   grams: number
 }
+
+/**
+ * An external food database the search can be narrowed to. Deliberately only
+ * the upstreams — 'saved'/'manual'/'ai' are result origins, not things you can
+ * ask the search endpoint for.
+ */
+export type FoodSource = 'off' | 'fdc'
 
 export interface FoodSearchResult {
   name: string
