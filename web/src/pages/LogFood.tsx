@@ -21,7 +21,9 @@ import EditSavedFoodSheet from '../components/EditSavedFoodSheet'
 import MealItemEditCard, { type EditableMealItem } from '../components/MealItemEditCard'
 import FoodCaptureBar from '../components/food/FoodCaptureBar'
 import SourceBadge from '../components/food/SourceBadge'
+import SourceFilter from '../components/food/SourceFilter'
 import { foodSourceBadge } from '../utils/foodSource'
+import { useSettingsStore } from '../stores/settings'
 import PortionPicker from '../components/food/PortionPicker'
 import ServingEditor from '../components/food/ServingEditor'
 import SegmentedControl from '../components/ui/SegmentedControl'
@@ -44,6 +46,8 @@ type PhotoReviewItem = types.MealPhotoItem & {
   source?: types.FoodSearchResult['source']
   label_accurate?: boolean
 }
+
+const DEFAULT_SOURCES: types.FoodSource[] = ['off', 'fdc']
 
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'] as const
 const MEAL_LABELS: Record<string, string> = {
@@ -180,6 +184,12 @@ export default function LogFood() {
 
   const [phase, setPhase] = useState<Phase>('search')
   const [filter, setFilter] = useState<SearchFilter>('all')
+  // Which upstream databases to query. Persisted client-side, so the choice
+  // survives leaving and coming back to the search. The fallback is a module
+  // constant, not an inline literal: this value is a search effect dependency,
+  // and a fresh array every render would re-run the search forever.
+  const sources = useSettingsStore(s => s.settings.food_search_sources) ?? DEFAULT_SOURCES
+  const setSources = useSettingsStore(s => s.setFoodSearchSources)
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState<types.FoodSearchResult[]>([])
   const [recentItems, setRecentItems] = useState<types.FoodSearchResult[]>([])
@@ -250,17 +260,19 @@ export default function LogFood() {
       setSearchError(null)
       setRateLimited(false)
       try {
-        setSearchResults(await foodAPI.search(query.trim()) ?? [])
+        setSearchResults(await foodAPI.search(query.trim(), 20, sources) ?? [])
       } catch (err: any) {
         if (err?.response?.status === 429) setRateLimited(true)
-        else setSearchError('Food search unavailable — enter details manually')
+        else setSearchError(err?.response?.data?.error || 'Food search unavailable — enter details manually')
         setSearchResults([])
       } finally {
         setSearching(false)
       }
     }, 300)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [query])
+    // Re-runs when the source selection changes, so toggling a source updates
+    // the list in place instead of waiting for the next keystroke.
+  }, [query, sources])
 
   const selectResult = (result: types.FoodSearchResult, quick = false) => {
     const portion = initPortion(result, 1)
@@ -674,6 +686,12 @@ export default function LogFood() {
             value={filter}
             onChange={setFilter}
           />
+
+          {/* Only shown where it can act: the Recent and My Foods tabs are your
+              own foods and never touch an upstream database. */}
+          {(filter === 'all' || filter === 'database') && (
+            <SourceFilter value={sources} onChange={setSources} className="px-1" />
+          )}
 
           {/* Results — one list, sectioned by where each food came from */}
           <div className="card overflow-hidden">

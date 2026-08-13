@@ -5,14 +5,36 @@ import { userAPI } from '../services/api'
 const LAYOUT_KEY = 'lyftr_workout_layout'
 const REST_ON_KEY = 'lyftr_rest_enabled'
 const REST_SEC_KEY = 'lyftr_rest_seconds'
+const FOOD_SOURCES_KEY = 'lyftr_food_search_sources'
+
+const ALL_FOOD_SOURCES: types.FoodSource[] = ['off', 'fdc']
+
+/**
+ * Reads the remembered food-search sources, falling back to all of them.
+ *
+ * Anything unrecognized is dropped, and an empty result falls back to all
+ * sources rather than none — a persisted value should never be able to leave
+ * the user with a search that silently returns nothing.
+ */
+function readFoodSources(): types.FoodSource[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(FOOD_SOURCES_KEY) ?? '[]')
+    if (!Array.isArray(parsed)) return ALL_FOOD_SOURCES
+    const valid = parsed.filter((s): s is types.FoodSource => ALL_FOOD_SOURCES.includes(s))
+    return valid.length > 0 ? valid : ALL_FOOD_SOURCES
+  } catch {
+    return ALL_FOOD_SOURCES
+  }
+}
 
 // Client-only prefs (not stored server-side) — re-applied over any backend fetch
 // so a settings GET/PUT never clobbers them.
-function clientPrefs(): Pick<types.UserSettings, 'workout_layout' | 'rest_enabled' | 'rest_seconds_default'> {
+function clientPrefs(): Pick<types.UserSettings, 'workout_layout' | 'rest_enabled' | 'rest_seconds_default' | 'food_search_sources'> {
   return {
     workout_layout: (localStorage.getItem(LAYOUT_KEY) as 'list' | 'gym') ?? 'list',
     rest_enabled: localStorage.getItem(REST_ON_KEY) !== 'false', // default on
     rest_seconds_default: Number(localStorage.getItem(REST_SEC_KEY)) || 90,
+    food_search_sources: readFoodSources(),
   }
 }
 
@@ -24,6 +46,7 @@ interface SettingsStore {
   setWorkoutLayout: (layout: 'list' | 'gym') => void
   setRestEnabled: (on: boolean) => void
   setRestSeconds: (secs: number) => void
+  setFoodSearchSources: (sources: types.FoodSource[]) => void
   reset: () => void
 }
 
@@ -79,6 +102,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setRestSeconds: (secs) => {
     localStorage.setItem(REST_SEC_KEY, String(secs))
     set(state => ({ settings: { ...state.settings, rest_seconds_default: secs } }))
+  },
+
+  setFoodSearchSources: (sources) => {
+    // Never persist an empty selection: it would come back as a search that
+    // queries nothing and looks broken. Callers guard this too, but the store
+    // is what outlives the session, so it enforces it.
+    const next = sources.length > 0 ? sources : ALL_FOOD_SOURCES
+    localStorage.setItem(FOOD_SOURCES_KEY, JSON.stringify(next))
+    set(state => ({ settings: { ...state.settings, food_search_sources: next } }))
   },
 
   reset: () => set({ settings: DEFAULTS, loaded: false }),

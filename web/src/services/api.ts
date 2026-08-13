@@ -336,7 +336,13 @@ export const foodAPI = {
       .then(res => unwrap(res)),
   history: (days = 30) => api.get<{ data: types.FoodHistoryPoint[] }>('/food/history', { params: { days } }).then(res => unwrap(res)),
   recent:  () => api.get<{ data: types.RecentFood[] }>('/food/recent').then(res => unwrap(res)),
-  search:  (q: string, limit = 20) => api.get<{ data: types.FoodSearchResult[] }>('/food/search', { params: { q, limit } }).then(res => unwrap(res)),
+  // `sources` narrows which upstream databases are queried ('off' | 'fdc').
+  // Omitted means all of them — the backend treats an absent value as "no
+  // restriction", so callers that don't care can ignore it entirely.
+  search:  (q: string, limit = 20, sources?: types.FoodSource[]) =>
+    api.get<{ data: types.FoodSearchResult[] }>('/food/search', {
+      params: { q, limit, ...(sources?.length ? { sources: sources.join(',') } : {}) },
+    }).then(res => unwrap(res)),
   barcode: (code: string) => api.get<{ data: types.FoodSearchResult }>(`/food/barcode/${code}`).then(res => unwrap(res)),
   analyzeLabel: (imageBase64: string, mediaType: string) =>
     api.post<{ data: types.NutritionExtraction }>('/food/analyze-label', { image_base64: imageBase64, media_type: mediaType }).then(res => unwrap(res)),
