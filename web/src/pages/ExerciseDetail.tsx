@@ -6,7 +6,6 @@ import { useWorkoutSession } from '../stores/workoutSession'
 import ExerciseDetailContent from '../components/ExerciseDetailContent'
 import AddToRoutineSheet from '../components/AddToRoutineSheet'
 import * as types from '../types'
-import { muscleColorBordered } from '../utils/exerciseUtils'
 
 export default function ExerciseDetail() {
   const { exerciseId } = useParams<{ exerciseId: string }>()
@@ -52,9 +51,6 @@ export default function ExerciseDetail() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="font-display font-bold text-2xl text-tx-primary leading-tight">{exercise.name}</h1>
-          <span className={`inline-flex items-center mt-1.5 px-2 py-0.5 rounded text-xs font-medium border ${muscleColorBordered(exercise.muscle_group)}`}>
-            {exercise.muscle_group}
-          </span>
         </div>
         <button
           onClick={() => setShowPlanSheet(true)}

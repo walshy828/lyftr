@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Trophy, SquarePlay } from 'lucide-react'
+import { Trophy, SquarePlay, Dumbbell } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Model, { IExerciseData } from 'react-body-highlighter'
@@ -10,7 +10,7 @@ import PeriodSelector from './PeriodSelector'
 import ExerciseDemo from './exercise/ExerciseDemo'
 import { hasExerciseImage } from '../utils/exerciseMedia'
 import * as types from '../types'
-import { muscleColor, EQUIPMENT_LABEL, muscleToBodySlugs } from '../utils/exerciseUtils'
+import { muscleColor, muscleColorBordered, EQUIPMENT_LABEL, muscleToBodySlugs } from '../utils/exerciseUtils'
 
 const HISTORY_PERIODS = ['1m', '3m', '6m', 'All'] as const
 type HistoryPeriod = typeof HISTORY_PERIODS[number]
@@ -68,56 +68,69 @@ export default function ExerciseDetailContent({ exercise }: Props) {
 
   const bodyData = buildBodyData(exercise)
   const equipLabel = EQUIPMENT_LABEL[exercise.equipment?.toLowerCase()] || exercise.equipment
-  const descLines = exercise.description
-    ? exercise.description.split('\n').filter(l => l.trim())
-    : []
+
+  // The seed data has two shapes for `description`: free-exercise-db already
+  // numbers each step on its own line ("1. ...\n2. ..."), while the
+  // gymvisual source stores one unbroken paragraph with no line breaks at
+  // all. Numbered lines are used as-is; a single unbroken blob is split into
+  // sentences so it still renders as a step list instead of a wall of text.
+  const instructionSteps = useMemo(() => {
+    if (!exercise.description) return []
+    const lines = exercise.description.split('\n').map(l => l.trim()).filter(Boolean)
+    if (lines.length > 1) return lines.map(l => l.replace(/^\d+\.\s*/, ''))
+    const sentences = lines[0]?.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).map(s => s.trim()).filter(Boolean) || []
+    return sentences.length > 1 ? sentences : lines
+  }, [exercise.description])
 
   return (
     <div className="space-y-5">
-      {/* Muscle diagram */}
-      <div className="card p-4">
-        <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider mb-3">Muscles Worked</p>
+      {/* Movement demo — crossfades the start and end positions when the
+          library has both frames, otherwise shows whichever one exists.
+          Matted on white regardless of theme since the source art is
+          white-background line art, and given room to breathe edge-to-edge
+          with the rest of the page content. */}
+      {hasExerciseImage(exercise, 'start') && (
+        <ExerciseDemo exercise={exercise} className="w-full h-72 rounded-2xl" />
+      )}
 
-        <div className="flex items-start justify-center gap-6">
-          <div className="flex flex-col items-center gap-1">
-            <Model
-              data={bodyData}
-              type="anterior"
-              bodyColor={bodyColor}
-              highlightedColors={highlightColors}
-              style={{ width: '140px' }}
-            />
-            <span className="text-xs text-tx-muted">Front</span>
-          </div>
-          <div className="flex flex-col items-center gap-1">
-            <Model
-              data={bodyData}
-              type="posterior"
-              bodyColor={bodyColor}
-              highlightedColors={highlightColors}
-              style={{ width: '140px' }}
-            />
-            <span className="text-xs text-tx-muted">Back</span>
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="flex items-center gap-4 mt-3 justify-center">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22d3ee' }} />
-            <span className="text-xs text-tx-muted">Primary</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#0e7490' }} />
-            <span className="text-xs text-tx-muted">Secondary</span>
-          </div>
-        </div>
+      {/* Tags: primary muscle, equipment, and secondary muscles together */}
+      <div className="flex flex-wrap gap-2">
+        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${muscleColorBordered(exercise.muscle_group)}`}>
+          {exercise.muscle_group}
+        </span>
+        {equipLabel && exercise.equipment !== 'other' && (
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-surface-muted border border-surface-border text-xs font-medium text-tx-secondary">
+            <Dumbbell className="w-3 h-3" />
+            {equipLabel}
+          </span>
+        )}
+        {exercise.category && (
+          <span className="inline-flex items-center px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-xs font-medium text-brand-400 capitalize">
+            {exercise.category}
+          </span>
+        )}
+        {exercise.secondary_muscles?.map(m => (
+          <span key={m} className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${muscleColor(m)}`}>
+            {m}
+          </span>
+        ))}
       </div>
 
-      {/* Movement demo — crossfades the start and end positions when the
-          library has both frames, otherwise shows whichever one exists. */}
-      {hasExerciseImage(exercise, 'start') && (
-        <ExerciseDemo exercise={exercise} className="w-full h-64 rounded-2xl" />
+      {/* Instructions */}
+      {instructionSteps.length > 0 && (
+        <div className="card p-4">
+          <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider mb-3">Instructions</p>
+          <ol className="space-y-3">
+            {instructionSteps.map((step, i) => (
+              <li key={i} className="flex gap-3">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-500/15 text-brand-400 text-[11px] font-bold flex items-center justify-center mt-0.5">
+                  {i + 1}
+                </span>
+                <p className="text-sm text-tx-secondary leading-relaxed">{step}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
 
       {/* Watch on YouTube */}
@@ -130,34 +143,6 @@ export default function ExerciseDetailContent({ exercise }: Props) {
         <SquarePlay className="w-4 h-4" />
         Watch on YouTube
       </a>
-
-      {/* Tags */}
-      <div className="flex flex-wrap gap-2">
-        {equipLabel && exercise.equipment !== 'other' && (
-          <span className="inline-flex items-center px-3 py-1 rounded-full bg-surface-muted border border-surface-border text-xs font-medium text-tx-secondary">
-            {equipLabel}
-          </span>
-        )}
-        {exercise.category && (
-          <span className="inline-flex items-center px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-xs font-medium text-brand-400 capitalize">
-            {exercise.category}
-          </span>
-        )}
-      </div>
-
-      {/* Secondary muscles */}
-      {exercise.secondary_muscles?.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider mb-2">Also works</p>
-          <div className="flex flex-wrap gap-1.5">
-            {exercise.secondary_muscles.map(m => (
-              <span key={m} className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${muscleColor(m)}`}>
-                {m}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Personal Record */}
       {pr && pr.weight > 0 && (
@@ -262,25 +247,45 @@ export default function ExerciseDetailContent({ exercise }: Props) {
         )
       })()}
 
-      {/* Instructions */}
-      {descLines.length > 0 && (
-        <div className="card p-4">
-          <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider mb-3">Instructions</p>
-          <div className="space-y-2.5">
-            {descLines.map((line, i) => {
-              const stepMatch = line.match(/^(\d+\.)\s*(.*)/)
-              if (stepMatch) {
-                return (
-                  <p key={i} className="text-sm text-tx-secondary leading-relaxed">
-                    <span className="font-semibold text-tx-primary">{stepMatch[1]}</span>{' '}{stepMatch[2]}
-                  </p>
-                )
-              }
-              return <p key={i} className="text-sm text-tx-secondary leading-relaxed">{line}</p>
-            })}
+      {/* Muscle diagram */}
+      <div className="card p-4">
+        <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider mb-3">Muscles Worked</p>
+
+        <div className="flex items-start justify-center gap-6">
+          <div className="flex flex-col items-center gap-1">
+            <Model
+              data={bodyData}
+              type="anterior"
+              bodyColor={bodyColor}
+              highlightedColors={highlightColors}
+              style={{ width: '140px' }}
+            />
+            <span className="text-xs text-tx-muted">Front</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <Model
+              data={bodyData}
+              type="posterior"
+              bodyColor={bodyColor}
+              highlightedColors={highlightColors}
+              style={{ width: '140px' }}
+            />
+            <span className="text-xs text-tx-muted">Back</span>
           </div>
         </div>
-      )}
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 mt-3 justify-center">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22d3ee' }} />
+            <span className="text-xs text-tx-muted">Primary</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#0e7490' }} />
+            <span className="text-xs text-tx-muted">Secondary</span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

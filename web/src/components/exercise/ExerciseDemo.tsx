@@ -47,7 +47,7 @@ function GifDemo({ exercise, sources, className }: { exercise: MediaExercise; so
   if (!src) return <Placeholder className={className} />
 
   return (
-    <div className={`relative overflow-hidden bg-surface-muted ${className}`}>
+    <div className={`relative overflow-hidden bg-white ${className}`}>
       <img
         key={src}
         src={src}
@@ -111,7 +111,7 @@ function CrossfadeDemo({ exercise, className, compact }: { exercise: MediaExerci
   if (!startSrc && !endSrc) return <Placeholder className={className} />
 
   return (
-    <div className={`relative overflow-hidden bg-surface-muted ${className}`}>
+    <div className={`relative overflow-hidden bg-white ${className}`}>
       {startSrc && (
         <img
           // Keyed by src so React remounts on fallback rather than reusing the
@@ -142,18 +142,19 @@ function CrossfadeDemo({ exercise, className, compact }: { exercise: MediaExerci
           type="button"
           onClick={() => setPaused(p => !p)}
           aria-label={paused ? 'Play demonstration' : 'Pause demonstration'}
-          className="absolute bottom-2 right-2 p-1.5 rounded-lg bg-surface-base/70 backdrop-blur border border-surface-border hover:bg-surface-base transition-colors"
+          className="absolute bottom-2 right-2 flex items-center gap-1 pl-2 pr-2.5 py-1 rounded-full bg-black/60 backdrop-blur text-white hover:bg-black/75 transition-colors"
         >
           {paused
-            ? <Play className="w-3.5 h-3.5 text-tx-secondary" />
-            : <Pause className="w-3.5 h-3.5 text-tx-secondary" />}
+            ? <Play className="w-3 h-3 fill-current" />
+            : <Pause className="w-3 h-3 fill-current" />}
+          <span className="text-[10px] font-semibold">{paused ? 'tap to play' : 'pause'}</span>
         </button>
       )}
 
       {/* Which position is showing. Without it a paused demo is ambiguous —
           you can't tell the bottom of a squat from the top of one. */}
       {animatable && (
-        <span className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-surface-base/70 backdrop-blur text-tx-muted border border-surface-border">
+        <span className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-black/60 backdrop-blur text-white">
           {showEnd ? 'End' : 'Start'}
         </span>
       )}
