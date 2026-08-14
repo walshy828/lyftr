@@ -17,6 +17,7 @@ const Workouts = lazy(() => import('./pages/Workouts'))
 const Programs = lazy(() => import('./pages/Programs'))
 const ExerciseDetail = lazy(() => import('./pages/ExerciseDetail'))
 const Exercises = lazy(() => import('./pages/Exercises'))
+const Schedule = lazy(() => import('./pages/Schedule'))
 const AddProgram = lazy(() => import('./pages/AddProgram'))
 const AddAIProgram = lazy(() => import('./pages/AddAIProgram'))
 const EditProgram = lazy(() => import('./pages/EditProgram'))
@@ -76,6 +77,7 @@ function App() {
             {/* Before the :exerciseId route is irrelevant here (react-router ranks
                 static segments higher), but keep them adjacent so the pair is obvious. */}
             <Route path="/exercises" element={<Exercises />} />
+            <Route path="/schedule" element={<Schedule />} />
             <Route path="/exercises/:exerciseId" element={<ExerciseDetail />} />
             <Route path="/food" element={<Food />} />
             <Route path="/food/log" element={<LogFood />} />

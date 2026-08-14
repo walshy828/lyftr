@@ -176,6 +176,24 @@ CREATE TABLE IF NOT EXISTS program_exercises (
   notes TEXT NOT NULL DEFAULT '',
   rest_seconds INTEGER NOT NULL DEFAULT 90
 );
+CREATE TABLE IF NOT EXISTS program_schedules (
+  id          INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  program_id  INTEGER  NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+  weekday     INTEGER  NOT NULL,
+  order_index INTEGER  NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_program_schedules_uniq ON program_schedules(user_id, weekday, program_id);
+CREATE TABLE IF NOT EXISTS program_schedule_overrides (
+  id          INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  on_date     TEXT     NOT NULL,
+  program_id  INTEGER  REFERENCES programs(id) ON DELETE CASCADE,
+  order_index INTEGER  NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_overrides_uniq ON program_schedule_overrides(user_id, on_date, IFNULL(program_id, 0));
 CREATE TABLE IF NOT EXISTS program_sets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   program_exercise_id INTEGER NOT NULL REFERENCES program_exercises(id) ON DELETE CASCADE,

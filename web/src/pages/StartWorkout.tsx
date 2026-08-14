@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { ArrowLeft, Zap, BookOpen, ChevronRight, Dumbbell, AlertCircle, Play, Timer, Trash2, CalendarClock } from 'lucide-react'
 import { programAPI } from '../services/api'
@@ -9,6 +9,7 @@ import * as types from '../types'
 
 export default function StartWorkout() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const { session, startSession, cancelSession } = useWorkoutSession()
   const [programs, setPrograms] = useState<types.Program[]>([])
   const [loading, setLoading] = useState(false)
@@ -21,6 +22,19 @@ export default function StartWorkout() {
       .catch(() => setError('Failed to load programs'))
       .finally(() => setLoading(false))
   }, [])
+
+  // Arriving from the schedule ("Start" on today's plan) names the program in
+  // the query string. Fetch it in full — the list response is enough to render
+  // a card but startFromProgram needs the exercises — and begin immediately;
+  // the user already pressed Start on the previous screen, so making them press
+  // it twice is just a second tap. Skipped when a session is already running,
+  // which the resume/discard UI below handles instead.
+  useEffect(() => {
+    const id = Number(params.get('program'))
+    if (!id || session) return
+    programAPI.get(id).then(startFromProgram).catch(() => setError('Could not load that program'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, session])
 
   const startQuick = () => {
     const name = `Workout — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`

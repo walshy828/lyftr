@@ -155,6 +155,15 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.PATCH("food/:id", h.UpdateFoodLog)
 		protected.DELETE("food/:id", h.DeleteFoodLog)
 
+		// Weekly training schedule. A flat namespace on purpose: the only
+		// wildcard is overrides/:date, so no static sub-path can collide with
+		// it. Don't add schedule/:id.
+		protected.GET("schedule", h.GetSchedule)
+		protected.PUT("schedule", h.ReplaceSchedule)
+		protected.GET("schedule/today", h.GetTodaysWorkout)
+		protected.POST("schedule/overrides", h.SetScheduleOverride)
+		protected.DELETE("schedule/overrides/:date", h.ClearScheduleOverride)
+
 		// Exercises (read-only for users)
 		protected.GET("exercises", h.ListExercises)
 		// Named sub-path before the :id wildcard, or the wildcard swallows it.

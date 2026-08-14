@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { format, subDays } from 'date-fns'
-import { workoutAPI, foodAPI, weightAPI, userAPI, profileAPI, weightPlanAPI } from '../services/api'
+import { workoutAPI, foodAPI, weightAPI, userAPI, profileAPI, weightPlanAPI, scheduleAPI } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import * as types from '../types'
 
@@ -21,6 +21,8 @@ export interface DashboardData {
    * consistency, muscle coverage, streaks — reads from here instead.
    */
   training: types.TrainingStats | null
+  /** Today's resolved plan, or null when the user has no schedule. */
+  todaysPlan: types.ScheduledDay | null
   food: types.DailyStats
   foodHistory: types.FoodHistoryPoint[]
   weightLogs: types.WeightLog[]
@@ -43,6 +45,7 @@ export function useDashboardData(): DashboardData {
 
   const [workouts, setWorkouts] = useState<types.Workout[]>([])
   const [training, setTraining] = useState<types.TrainingStats | null>(null)
+  const [todaysPlan, setTodaysPlan] = useState<types.ScheduledDay | null>(null)
   const [food, setFood] = useState<types.DailyStats>(DEFAULT_FOOD)
   const [foodHistory, setFoodHistory] = useState<types.FoodHistoryPoint[]>([])
   const [weightLogs, setWeightLogs] = useState<types.WeightLog[]>([])
@@ -69,8 +72,9 @@ export function useDashboardData(): DashboardData {
       userAPI.getSettings().catch(() => storedSettings),
       profileAPI.get().catch(() => null),
       weightPlanAPI.current().catch(() => null), // 404 when no active plan
+      scheduleAPI.today().catch(() => null),
     ])
-      .then(([ws, ts, fs, fh, wl, wst, s, prof, cur]) => {
+      .then(([ws, ts, fs, fh, wl, wst, s, prof, cur, plan]) => {
         setWorkouts(ws || [])
         setTraining(ts)
         setFood(fs || DEFAULT_FOOD)
@@ -80,6 +84,7 @@ export function useDashboardData(): DashboardData {
         setSettings(s || storedSettings)
         setProfile(prof)
         setPlan(cur)
+        setTodaysPlan(plan)
         // Adherence is a second round-trip (may hit the AI motivation cache);
         // only fetch it when a plan actually exists.
         if (cur) weightPlanAPI.adherence().then(setAdherence).catch(() => setAdherence(null))
@@ -97,7 +102,7 @@ export function useDashboardData(): DashboardData {
   }
 
   return {
-    workouts, training, food, foodHistory, weightLogs, weightStats, settings, profile, plan, adherence,
+    workouts, training, todaysPlan, food, foodHistory, weightLogs, weightStats, settings, profile, plan, adherence,
     loading, error, addWeightLog,
   }
 }

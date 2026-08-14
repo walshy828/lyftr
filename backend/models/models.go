@@ -1218,3 +1218,18 @@ type DailyStats struct {
 	TotalCholesterol float64 `json:"total_cholesterol"`
 	WorkoutCount     int     `json:"workout_count"`
 }
+
+// ReplaceScheduleRequest swaps the whole recurring weekly pattern. Keys are
+// weekday numbers as strings ("0" = Sunday), because JSON object keys are
+// always strings; the controller parses and range-checks them.
+type ReplaceScheduleRequest struct {
+	Days map[string][]int64 `json:"days"`
+}
+
+// SetScheduleOverrideRequest replaces one date's plan. An empty or omitted
+// ProgramIDs means an explicit rest day — meaningfully different from having no
+// override, which falls through to the recurring pattern.
+type SetScheduleOverrideRequest struct {
+	Date       string  `json:"date" validate:"required"`
+	ProgramIDs []int64 `json:"program_ids"`
+}

@@ -870,6 +870,41 @@ export interface PersonalRecord {
   workout_id: number
 }
 
+/** One program's slot on a scheduled day. */
+export interface ScheduledProgram {
+  program_id: number
+  name: string
+  exercise_count: number
+  order_index: number
+  /** Set when a workout for this program was already logged on this date. */
+  completed_workout_id?: number
+}
+
+/**
+ * Why a day looks the way it does. 'override' means this specific date was
+ * changed without touching the weekly pattern; 'rest' means nothing is planned
+ * (either no pattern for that weekday, or an explicit rest override).
+ */
+export type ScheduleSource = 'recurring' | 'override' | 'rest'
+
+export interface ScheduledDay {
+  date: string
+  /** 0 = Sunday .. 6 = Saturday */
+  weekday: number
+  source: ScheduleSource
+  programs: ScheduledProgram[]
+}
+
+/** The recurring weekly pattern, keyed by weekday number. */
+export type RecurringSchedule = Record<string, ScheduledProgram[]>
+
+export interface ScheduleResponse {
+  from: string
+  to: string
+  days: ScheduledDay[]
+  recurring: RecurringSchedule
+}
+
 /** The filterable fields of the exercise library. */
 export type ExerciseFacetKey =
   | 'muscle_group' | 'equipment' | 'category' | 'level' | 'mechanic' | 'force'

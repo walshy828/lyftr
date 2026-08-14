@@ -418,6 +418,53 @@ CREATE INDEX IF NOT EXISTS idx_exercises_source_id ON exercises(source_id);`
 	if _, err := DB.Exec(exerciseIndexes); err != nil {
 		log.Fatalf("create exercise facet indexes: %v", err)
 	}
+
+	// Weekly training schedule: which programs belong on which weekday, so the
+	// app can answer "what am I doing today".
+	//
+	// A join table rather than a weekday column on programs, because the same
+	// program belongs on several days (Push on Mon and Thu) and one day can
+	// carry more than one (mobility plus legs). Neither fits in a column.
+	//
+	// The overrides table holds one-off deviations. A row there REPLACES the
+	// recurring pattern for that single date and leaves the pattern untouched,
+	// so "move leg day to Tuesday this week" is a rest row on Monday plus a set
+	// row on Tuesday, and next Monday is still leg day. program_id NULL means an
+	// explicit rest day, which is distinct from having no override at all (that
+	// falls through to the pattern).
+	//
+	// on_date rather than `date`: legal, but it shadows the SQL function and
+	// reads badly in every query. IFNULL(program_id, 0) in the unique index is
+	// what makes "one rest row per date" enforceable — NULL != NULL would
+	// otherwise allow duplicates.
+	//
+	// ON DELETE CASCADE on program_id means deleting a program unschedules it,
+	// which is the right behaviour and needs no application code.
+	schedule := `
+CREATE TABLE IF NOT EXISTS program_schedules (
+  id          INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  program_id  INTEGER  NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+  weekday     INTEGER  NOT NULL,           -- 0=Sunday .. 6=Saturday (Go's time.Weekday)
+  order_index INTEGER  NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_program_schedules_uniq ON program_schedules(user_id, weekday, program_id);
+CREATE INDEX IF NOT EXISTS idx_program_schedules_user_day ON program_schedules(user_id, weekday);
+
+CREATE TABLE IF NOT EXISTS program_schedule_overrides (
+  id          INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  on_date     TEXT     NOT NULL,           -- 'YYYY-MM-DD', the user's LOCAL day
+  program_id  INTEGER  REFERENCES programs(id) ON DELETE CASCADE, -- NULL = rest
+  order_index INTEGER  NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_overrides_uniq ON program_schedule_overrides(user_id, on_date, IFNULL(program_id, 0));
+CREATE INDEX IF NOT EXISTS idx_schedule_overrides_user_date ON program_schedule_overrides(user_id, on_date);`
+	if _, err := DB.Exec(schedule); err != nil {
+		log.Fatalf("create program schedule tables: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

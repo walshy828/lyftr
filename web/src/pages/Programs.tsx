@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, Plus, Dumbbell, Search, Sparkles } from 'lucide-react'
+import { BookOpen, Plus, Dumbbell, Search, Sparkles, CalendarDays } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Loading from '../components/Loading'
 import PageHeader from '../components/ui/PageHeader'
@@ -46,9 +46,13 @@ export default function Programs() {
         subtitle="Reusable workout templates"
         action={
           <div className="flex gap-2 w-full sm:w-auto">
-            {/* The library has no home of its own in the tab bar (it's full at
-                five), and building a program is when you most want to go
-                looking through it. */}
+            {/* Neither the schedule nor the library has a home in the tab bar
+                (it's full at five), and programs is where you'd go looking for
+                both: this is the screen where you decide what to train and
+                when. */}
+            <button onClick={() => navigate('/schedule')} className="btn-ghost btn-sm flex-1 sm:flex-none">
+              <CalendarDays className="w-4 h-4" /> Schedule
+            </button>
             <button onClick={() => navigate('/exercises')} className="btn-ghost btn-sm flex-1 sm:flex-none">
               <Dumbbell className="w-4 h-4" /> Exercises
             </button>

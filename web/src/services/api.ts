@@ -269,6 +269,27 @@ export const exerciseAPI = {
 }
 
 
+const tzOffset = () => -new Date().getTimezoneOffset()
+
+export const scheduleAPI = {
+  /** Resolved plan for a date range, plus the recurring pattern behind it. */
+  range: (from: string, to: string) =>
+    api.get<{ data: types.ScheduleResponse }>('/schedule', { params: { from, to, tz_offset: tzOffset() } })
+      .then(res => unwrap(res)),
+  today: () =>
+    api.get<{ data: types.ScheduledDay | null }>('/schedule/today', { params: { tz_offset: tzOffset() } })
+      .then(res => unwrap(res)),
+  /** Full replace of the weekly pattern; keys are weekday numbers as strings. */
+  replace: (days: Record<string, number[]>) =>
+    api.put<{ data: { recurring: types.RecurringSchedule } }>('/schedule', { days }).then(res => unwrap(res)),
+  /** Change one date without touching the pattern. An empty list = rest day. */
+  setOverride: (date: string, programIds: number[]) =>
+    api.post<{ data: types.ScheduledDay }>('/schedule/overrides', { date, program_ids: programIds })
+      .then(res => unwrap(res)),
+  clearOverride: (date: string) =>
+    api.delete<{ data: types.ScheduledDay }>(`/schedule/overrides/${date}`).then(res => unwrap(res)),
+}
+
 export const programAPI = {
   list:       (params?: { limit?: number; offset?: number; q?: string; sort?: types.ProgramSort }) => api.get<{ data: types.Program[] }>('/programs', { params }).then(res => unwrap(res)),
   listShared: (params?: { limit?: number; offset?: number; q?: string; sort?: types.ProgramSort }) => api.get<{ data: types.Program[] }>('/programs/shared', { params }).then(res => unwrap(res)),

@@ -20,6 +20,7 @@ import NutritionTodayCard from '../components/dashboard/NutritionTodayCard'
 import NutritionTrendCard from '../components/dashboard/NutritionTrendCard'
 import MuscleMapCard, { MUSCLE_PERIOD_DAYS, type MusclePeriod } from '../components/dashboard/MuscleMapCard'
 import LastWorkoutCard from '../components/dashboard/LastWorkoutCard'
+import TodaysWorkoutCard from '../components/dashboard/TodaysWorkoutCard'
 
 const TODAY = new Date()
 
@@ -89,6 +90,12 @@ export default function Dashboard() {
           <ArrowRight className="w-4 h-4 text-amber-400 flex-shrink-0" />
         </Link>
       )}
+
+      {/* What the plan says to do today, when there is a plan */}
+      <TodaysWorkoutCard
+        today={d.todaysPlan}
+        hasSchedule={!!d.todaysPlan && (d.todaysPlan.programs.length > 0 || d.todaysPlan.source !== 'rest')}
+      />
 
       {/* This week — the headline synthesis */}
       <ThisWeekScorecard
