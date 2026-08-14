@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS exercises (
   image_url TEXT NOT NULL DEFAULT '',
   video_url TEXT NOT NULL DEFAULT '',
   image_url_end TEXT NOT NULL DEFAULT '',
+  gif_url TEXT NOT NULL DEFAULT '',
   "force" TEXT NOT NULL DEFAULT '',
   level TEXT NOT NULL DEFAULT '',
   mechanic TEXT NOT NULL DEFAULT '',

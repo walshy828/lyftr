@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Dumbbell, Pause, Play } from 'lucide-react'
-import { exerciseImageSources, type Frame } from '../../utils/exerciseMedia'
+import { exerciseImageSources, exerciseGifSources, type Frame } from '../../utils/exerciseMedia'
 import * as types from '../../types'
 
 /** How long each frame holds before crossing to the other, in ms. */
 const FRAME_MS = 1100
 
-type MediaExercise = Pick<types.Exercise, 'id' | 'name' | 'image_url' | 'image_url_end' | 'source_id'>
+type MediaExercise = Pick<types.Exercise, 'id' | 'name' | 'image_url' | 'image_url_end' | 'gif_url' | 'source_id'>
 
 interface Props {
   exercise: MediaExercise
@@ -18,6 +18,49 @@ interface Props {
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined'
     && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+}
+
+/** Placeholder shown while no artwork has loaded yet, or none exists. */
+function Placeholder({ className }: { className: string }) {
+  return (
+    <div className={`flex items-center justify-center bg-brand-500/10 border border-brand-500/20 ${className}`}>
+      <Dumbbell className="w-1/4 h-1/4 text-brand-500" />
+    </div>
+  )
+}
+
+/**
+ * A single animated GIF of the movement, when the library was seeded from
+ * the optional Gymvisual-sourced dataset (EXERCISE_GIF_SOURCE). The browser
+ * animates it natively — no interval/crossfade bookkeeping needed — so this
+ * is a strictly simpler render path than the two-frame fallback below.
+ * Reduced-motion users still get the (static) first frame; browsers don't
+ * offer a way to freeze a GIF, so this is the same tradeoff every animated
+ * image on the web makes.
+ */
+function GifDemo({ exercise, sources, className }: { exercise: MediaExercise; sources: string[]; className: string }) {
+  const [attempt, setAttempt] = useState(0)
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => { setAttempt(0); setLoaded(false) }, [exercise.id])
+
+  const src = sources[attempt]
+  if (!src) return <Placeholder className={className} />
+
+  return (
+    <div className={`relative overflow-hidden bg-surface-muted ${className}`}>
+      <img
+        key={src}
+        src={src}
+        alt={`${exercise.name} demonstration`}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={() => setAttempt(a => a + 1)}
+        className="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
+        style={{ opacity: loaded ? 1 : 0 }}
+      />
+      {!loaded && <Placeholder className="absolute inset-0" />}
+    </div>
+  )
 }
 
 /**
@@ -32,7 +75,7 @@ function prefersReducedMotion(): boolean {
  * as a fallback) and walks it on error, so a library that hasn't been synced
  * yet still renders — see exerciseImageSources.
  */
-export default function ExerciseDemo({ exercise, className = '', compact }: Props) {
+function CrossfadeDemo({ exercise, className, compact }: { exercise: MediaExercise; className: string; compact?: boolean }) {
   const [showEnd, setShowEnd] = useState(false)
   const [paused, setPaused] = useState(prefersReducedMotion)
   // Index into each frame's candidate source list; past the end means the frame
@@ -65,13 +108,7 @@ export default function ExerciseDemo({ exercise, className = '', compact }: Prop
   const onFrameError = (frame: Frame) =>
     setAttempt(a => ({ ...a, [frame]: a[frame] + 1 }))
 
-  if (!startSrc && !endSrc) {
-    return (
-      <div className={`flex items-center justify-center bg-brand-500/10 border border-brand-500/20 ${className}`}>
-        <Dumbbell className="w-1/4 h-1/4 text-brand-500" />
-      </div>
-    )
-  }
+  if (!startSrc && !endSrc) return <Placeholder className={className} />
 
   return (
     <div className={`relative overflow-hidden bg-surface-muted ${className}`}>
@@ -122,4 +159,12 @@ export default function ExerciseDemo({ exercise, className = '', compact }: Prop
       )}
     </div>
   )
+}
+
+export default function ExerciseDemo({ exercise, className = '', compact }: Props) {
+  const gifSources = useMemo(() => exerciseGifSources(exercise), [exercise])
+  if (gifSources.length > 0) {
+    return <GifDemo exercise={exercise} sources={gifSources} className={className} />
+  }
+  return <CrossfadeDemo exercise={exercise} className={className} compact={compact} />
 }

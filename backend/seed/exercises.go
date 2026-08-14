@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/Cawlumm/lyftr-backend/config"
 )
 
 const (
@@ -17,6 +19,13 @@ const (
 	// ImageBaseURL is exported because the on-disk image cache fetches from the
 	// same origin; duplicating the string would let the two drift apart.
 	ImageBaseURL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises"
+
+	// gymvisualDatasetURL and gymvisualMediaBaseURL back the optional
+	// EXERCISE_GIF_SOURCE dataset (see config.ExerciseGifSource). Its media is
+	// copyrighted by Gymvisual, not covered by that repo's own license — see
+	// the comment on config.ExerciseGifSource.
+	gymvisualDatasetURL   = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/data/exercises.json"
+	gymvisualMediaBaseURL = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/"
 )
 
 var seeding atomic.Bool
@@ -33,6 +42,36 @@ type freeExerciseItem struct {
 	Instructions     []string `json:"instructions"`
 	Category         string   `json:"category"`
 	Images           []string `json:"images"`
+}
+
+// gymvisualItem mirrors the subset of hasaneyldrm/exercises-dataset's schema
+// (data/exercises.schema.json) that the seed actually uses. Instructions are
+// keyed by language; only English is consumed.
+type gymvisualItem struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	Category         string            `json:"category"`
+	BodyPart         string            `json:"body_part"`
+	Equipment        string            `json:"equipment"`
+	Instructions     map[string]string `json:"instructions"`
+	MuscleGroup      string            `json:"muscle_group"`
+	SecondaryMuscles []string          `json:"secondary_muscles"`
+	Target           string            `json:"target"`
+	MediaID          string            `json:"media_id"`
+	Image            string            `json:"image"`
+	GifURL           string            `json:"gif_url"`
+}
+
+// seedItem is the common shape both upstream datasets are normalized into
+// before the upsert, so fetchAndStoreLocked doesn't need to know which
+// source produced a given row.
+type seedItem struct {
+	Name                             string
+	MuscleGroup                      string
+	SecondaryMuscles                 []string
+	Category, Equipment, Description string
+	ImageURL, ImageEndURL, GifURL    string
+	Force, Level, Mechanic, SourceID string
 }
 
 // SeedStatus returns current exercise count and whether a seed is running.
@@ -54,7 +93,7 @@ func Exercises(db *sql.DB) {
 	var count int
 	db.QueryRow(`SELECT COUNT(*) FROM exercises`).Scan(&count)
 	if count == 0 {
-		log.Println("seed: exercises table empty - syncing from free-exercise-db in background...")
+		log.Println("seed: exercises table empty - syncing in background...")
 		go fetchAndStoreAsync(db)
 		return
 	}
@@ -137,8 +176,8 @@ func fetchAndStoreLocked(db *sql.DB) error {
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO exercises (name, muscle_group, secondary_muscles, category, equipment, description,
-		                       image_url, image_url_end, "force", level, mechanic, source_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                       image_url, image_url_end, gif_url, "force", level, mechanic, source_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(name) DO UPDATE SET
 		  muscle_group      = excluded.muscle_group,
 		  secondary_muscles = excluded.secondary_muscles,
@@ -147,6 +186,7 @@ func fetchAndStoreLocked(db *sql.DB) error {
 		  description       = excluded.description,
 		  image_url         = excluded.image_url,
 		  image_url_end     = excluded.image_url_end,
+		  gif_url           = excluded.gif_url,
 		  "force"           = excluded."force",
 		  level             = excluded.level,
 		  mechanic          = excluded.mechanic,
@@ -160,44 +200,25 @@ func fetchAndStoreLocked(db *sql.DB) error {
 
 	inserted := 0
 	for _, e := range items {
-		primaryMuscle := ""
-		if len(e.PrimaryMuscles) > 0 {
-			primaryMuscle = e.PrimaryMuscles[0]
-		}
-
 		secondaryJSON, _ := json.Marshal(e.SecondaryMuscles)
 		if e.SecondaryMuscles == nil {
 			secondaryJSON = []byte("[]")
 		}
 
-		instructions := buildInstructions(e.Instructions)
-
-		// Build both frames from the upstream paths rather than re-deriving
-		// them from e.ID. The dataset's entries are already "<id>/<n>.jpg", so
-		// using them directly survives any id/path mismatch upstream. Most
-		// exercises ship two frames — the start and end of the movement — but
-		// not all, hence the length guard.
-		imageURL, imageEndURL := "", ""
-		if len(e.Images) > 0 {
-			imageURL = ImageBaseURL + "/" + e.Images[0]
-		}
-		if len(e.Images) > 1 {
-			imageEndURL = ImageBaseURL + "/" + e.Images[1]
-		}
-
 		if _, err := stmt.Exec(
 			e.Name,
-			primaryMuscle,
+			e.MuscleGroup,
 			string(secondaryJSON),
 			e.Category,
 			e.Equipment,
-			instructions,
-			imageURL,
-			imageEndURL,
+			e.Description,
+			e.ImageURL,
+			e.ImageEndURL,
+			e.GifURL,
 			e.Force,
 			e.Level,
 			e.Mechanic,
-			e.ID,
+			e.SourceID,
 		); err != nil {
 			log.Printf("seed: skip %q: %v", e.Name, err)
 			continue
@@ -213,7 +234,16 @@ func fetchAndStoreLocked(db *sql.DB) error {
 	return nil
 }
 
-func fetchAll() ([]freeExerciseItem, error) {
+// fetchAll picks the upstream dataset based on config.C.ExerciseGifSource and
+// normalizes it into the common seedItem shape.
+func fetchAll() ([]seedItem, error) {
+	if config.C != nil && config.C.ExerciseGifSource {
+		return fetchGymvisual()
+	}
+	return fetchFreeExerciseDB()
+}
+
+func fetchFreeExerciseDB() ([]seedItem, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(exerciseDBURL)
 	if err != nil {
@@ -226,9 +256,111 @@ func fetchAll() ([]freeExerciseItem, error) {
 		return nil, fmt.Errorf("fetch returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var items []freeExerciseItem
-	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+	var raw []freeExerciseItem
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode failed: %w", err)
+	}
+
+	items := make([]seedItem, 0, len(raw))
+	for _, e := range raw {
+		primaryMuscle := ""
+		if len(e.PrimaryMuscles) > 0 {
+			primaryMuscle = e.PrimaryMuscles[0]
+		}
+
+		// Build both frames from the upstream paths rather than re-deriving
+		// them from e.ID. The dataset's entries are already "<id>/<n>.jpg", so
+		// using them directly survives any id/path mismatch upstream. Most
+		// exercises ship two frames — the start and end of the movement — but
+		// not all, hence the length guard.
+		imageURL, imageEndURL := "", ""
+		if len(e.Images) > 0 {
+			imageURL = ImageBaseURL + "/" + e.Images[0]
+		}
+		if len(e.Images) > 1 {
+			imageEndURL = ImageBaseURL + "/" + e.Images[1]
+		}
+
+		items = append(items, seedItem{
+			Name:             e.Name,
+			MuscleGroup:      primaryMuscle,
+			SecondaryMuscles: e.SecondaryMuscles,
+			Category:         e.Category,
+			Equipment:        e.Equipment,
+			Description:      buildInstructions(e.Instructions),
+			ImageURL:         imageURL,
+			ImageEndURL:      imageEndURL,
+			Force:            e.Force,
+			Level:            e.Level,
+			Mechanic:         e.Mechanic,
+			SourceID:         e.ID,
+		})
+	}
+	return items, nil
+}
+
+// fetchGymvisual pulls the optional Gymvisual-sourced dataset (see
+// config.ExerciseGifSource) and normalizes it. That dataset has no
+// force/level/mechanic taxonomy, so those filter chips simply won't appear
+// for rows seeded from it — the facets endpoint already skips empty values.
+func fetchGymvisual() ([]seedItem, error) {
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Get(gymvisualDatasetURL)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("fetch returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var raw []gymvisualItem
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decode failed: %w", err)
+	}
+
+	items := make([]seedItem, 0, len(raw))
+	for _, e := range raw {
+		// target is the dataset's "primary target muscle"; muscle_group is the
+		// synergist the schema pairs it with. Lyftr's MuscleGroup column means
+		// "primary", so target maps there and muscle_group folds into
+		// secondary_muscles alongside the dataset's own secondary list.
+		secondary := e.SecondaryMuscles
+		if e.MuscleGroup != "" {
+			secondary = append([]string{e.MuscleGroup}, secondary...)
+		}
+
+		// sourceID doubles as the on-disk cache key (storage.EnsureExerciseImage/
+		// EnsureExerciseGif) and must match the dataset's own filename stem —
+		// "images/0001-2gPfomN.jpg" / "videos/0001-2gPfomN.gif" — so frames can
+		// be re-derived from it later without storing the id/media_id pair twice.
+		sourceID := e.ID
+		if e.MediaID != "" {
+			sourceID = e.ID + "-" + e.MediaID
+		}
+
+		imageURL := ""
+		if e.Image != "" {
+			imageURL = gymvisualMediaBaseURL + e.Image
+		}
+		gifURL := ""
+		if e.GifURL != "" {
+			gifURL = gymvisualMediaBaseURL + e.GifURL
+		}
+
+		items = append(items, seedItem{
+			Name:             e.Name,
+			MuscleGroup:      e.Target,
+			SecondaryMuscles: secondary,
+			Category:         e.Category,
+			Equipment:        e.Equipment,
+			Description:      e.Instructions["en"],
+			ImageURL:         imageURL,
+			GifURL:           gifURL,
+			SourceID:         sourceID,
+		})
 	}
 	return items, nil
 }

@@ -85,6 +85,11 @@ type Exercise struct {
 	// animates the lift; alone, each is just a photo. Empty for the exercises
 	// upstream only ships one frame for.
 	ImageEndURL string `json:"image_url_end,omitempty" db:"image_url_end"`
+	// GifURL is a real animated GIF of the movement, only populated when the
+	// library was seeded from the Gymvisual-sourced dataset (see
+	// config.ExerciseGifSource). Empty for free-exercise-db rows, which
+	// animate via the ImageURL/ImageEndURL crossfade instead.
+	GifURL string `json:"gif_url,omitempty" db:"gif_url"`
 	// Force ("push"/"pull"/"static"), Level ("beginner"/"intermediate"/
 	// "expert") and Mechanic ("compound"/"isolation") come from the upstream
 	// dataset and drive the library's filter chips.

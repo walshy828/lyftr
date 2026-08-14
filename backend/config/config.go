@@ -131,6 +131,17 @@ type Config struct {
 	// Defaults beside the sqlite file so it rides the same volume, exactly
 	// like MealPhotoDir.
 	ExerciseImageDir string
+
+	// ExerciseGifSource switches the library seed from free-exercise-db
+	// (default) to hasaneyldrm/exercises-dataset, which ships a real animated
+	// GIF per exercise instead of a two-frame photo crossfade. Opt-in and off
+	// by default: that dataset's media is copyrighted by Gymvisual and
+	// redistributing it requires a license from them (see its NOTICE/README) —
+	// self-hosters who want it are expected to review those terms themselves
+	// before setting EXERCISE_GIF_SOURCE=true. Flipping this after the library
+	// is already seeded from the other source doesn't replace existing rows;
+	// pair it with an admin "reset exercises" to get a clean swap.
+	ExerciseGifSource bool
 }
 
 var C *Config
@@ -192,6 +203,7 @@ func Load() {
 	C.AdminEmails = splitList(getEnv("ADMIN_EMAILS", ""))
 	C.AllowRegistration = getEnv("ALLOW_REGISTRATION", "") == "true"
 	C.RegistrationInviteCode = []byte(getEnv("REGISTRATION_INVITE_CODE", ""))
+	C.ExerciseGifSource = getEnv("EXERCISE_GIF_SOURCE", "") == "true"
 	C.TrustedProxies = splitList(getEnv("TRUSTED_PROXIES", ""))
 	C.AIHealthInsightsEnabled = getEnv("AI_HEALTH_INSIGHTS_ENABLED", "") == "true"
 

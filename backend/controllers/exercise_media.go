@@ -41,15 +41,7 @@ func (h *Handler) ServeExerciseImage(c *gin.Context) {
 		return
 	}
 
-	frame := 0
-	if name := c.Param("frame"); name != "" {
-		f, ok := frameNames[name]
-		if !ok {
-			utils.NotFound(c, "unknown frame")
-			return
-		}
-		frame = f
-	}
+	name := c.Param("frame")
 
 	e, err := h.s.Exercise.Get(id)
 	if err == sql.ErrNoRows {
@@ -64,6 +56,31 @@ func (h *Handler) ServeExerciseImage(c *gin.Context) {
 	if e.SourceID == "" {
 		utils.NotFound(c, "no image for this exercise")
 		return
+	}
+
+	// "gif" isn't one of the two-frame photo positions — it's the real
+	// animated GIF, only present when the library was seeded from the
+	// optional Gymvisual-sourced dataset (see config.ExerciseGifSource).
+	if name == "gif" {
+		path, err := storage.EnsureExerciseGif(config.C.ExerciseImageDir, e.SourceID, e.GifURL)
+		if err != nil {
+			log.Printf("exercise gif %d: %v", id, err)
+			utils.NotFound(c, "no animation for this exercise")
+			return
+		}
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.File(path)
+		return
+	}
+
+	frame := 0
+	if name != "" {
+		f, ok := frameNames[name]
+		if !ok {
+			utils.NotFound(c, "unknown frame")
+			return
+		}
+		frame = f
 	}
 
 	path, err := storage.EnsureExerciseImage(config.C.ExerciseImageDir, seed.ImageBaseURL, e.SourceID, frame)

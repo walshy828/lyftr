@@ -36,3 +36,21 @@ export function exerciseImageSources(exercise: MediaExercise, frame: Frame): str
 export function hasExerciseImage(exercise: MediaExercise, frame: Frame): boolean {
   return exerciseImageSources(exercise, frame).length > 0
 }
+
+type GifExercise = Pick<types.Exercise, 'id' | 'gif_url' | 'source_id'>
+
+/**
+ * Where to load an exercise's real animated GIF from (only present on
+ * libraries seeded with EXERCISE_GIF_SOURCE — see backend/config.go).
+ *
+ * Same cache-then-upstream fallback chain as exerciseImageSources: the local
+ * cache endpoint can only serve it once source_id is populated, so the
+ * stored gif_url is always kept as a fallback for onError.
+ */
+export function exerciseGifSources(exercise: GifExercise): string[] {
+  if (!exercise.gif_url) return []
+  const sources: string[] = []
+  if (exercise.source_id) sources.push(apiAssetUrl(`/exercises/${exercise.id}/image/gif`))
+  sources.push(exercise.gif_url)
+  return sources
+}

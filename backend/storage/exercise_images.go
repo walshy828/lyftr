@@ -36,17 +36,37 @@ var imageFetch singleflight.Group
 
 var imageClient = &http.Client{Timeout: 15 * time.Second}
 
+// validateSourceID applies the same check ExerciseImagePath always has: the
+// value comes from our own exercises.source_id column rather than a request,
+// but a poisoned upstream sync must still not be able to write outside the
+// cache directory.
+func validateSourceID(sourceID string) error {
+	if sourceID == "" || !sourceIDPattern.MatchString(sourceID) || strings.Contains(sourceID, "..") {
+		return fmt.Errorf("invalid exercise source id")
+	}
+	return nil
+}
+
 // ExerciseImagePath returns the on-disk path for one frame, after validating
 // both parts. The regexp permits '.', so ".." is rejected explicitly rather
 // than relying on the character class.
 func ExerciseImagePath(baseDir, sourceID string, frame int) (string, error) {
-	if sourceID == "" || !sourceIDPattern.MatchString(sourceID) || strings.Contains(sourceID, "..") {
-		return "", fmt.Errorf("invalid exercise source id")
+	if err := validateSourceID(sourceID); err != nil {
+		return "", err
 	}
 	if frame < 0 || frame > 1 {
 		return "", fmt.Errorf("invalid frame")
 	}
 	return filepath.Join(baseDir, sourceID, strconv.Itoa(frame)+".jpg"), nil
+}
+
+// ExerciseGifPath returns the on-disk path for an exercise's animated GIF
+// (only populated for exercises seeded from config.ExerciseGifSource).
+func ExerciseGifPath(baseDir, sourceID string) (string, error) {
+	if err := validateSourceID(sourceID); err != nil {
+		return "", err
+	}
+	return filepath.Join(baseDir, sourceID, "gif.gif"), nil
 }
 
 // EnsureExerciseImage returns the local path for a frame, downloading it on
@@ -76,8 +96,45 @@ func EnsureExerciseImage(baseDir, baseURL, sourceID string, frame int) (string, 
 	return path, nil
 }
 
+// EnsureExerciseGif returns the local path for an exercise's animated GIF,
+// downloading it from gifURL on first request. Unlike the two-frame photo
+// pair above, the GIF dataset's layout doesn't follow a
+// {baseURL}/{sourceID}/{frame}.jpg convention, so the caller passes the
+// exercise's own stored gif_url rather than a base to reconstruct it from.
+func EnsureExerciseGif(baseDir, sourceID, gifURL string) (string, error) {
+	path, err := ExerciseGifPath(baseDir, sourceID)
+	if err != nil {
+		return "", err
+	}
+	if gifURL == "" {
+		return "", fmt.Errorf("exercise has no gif_url")
+	}
+	if st, err := os.Stat(path); err == nil && st.Size() > 0 {
+		return path, nil
+	}
+
+	_, err, _ = imageFetch.Do(path, func() (any, error) {
+		if st, err := os.Stat(path); err == nil && st.Size() > 0 {
+			return nil, nil
+		}
+		return nil, downloadExerciseMedia(path, gifURL)
+	})
+	if err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 func downloadExerciseImage(path, baseURL, sourceID string, frame int) error {
 	url := fmt.Sprintf("%s/%s/%d.jpg", baseURL, sourceID, frame)
+	return downloadExerciseMedia(path, url)
+}
+
+// downloadExerciseMedia fetches url and writes it to path, atomically. Shared
+// by the two-frame photo cache and the animated-GIF cache (EnsureExerciseGif)
+// below — same size cap, same "don't cache a miss" rule, same content-type
+// sniff (image/* covers both jpg and gif).
+func downloadExerciseMedia(path, url string) error {
 	resp, err := imageClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("fetch exercise image: %w", err)

@@ -405,6 +405,11 @@ CREATE INDEX IF NOT EXISTS idx_program_sets_program_exercise ON program_sets(pro
 	ensureColumn("exercises", "mechanic", `ALTER TABLE exercises ADD COLUMN mechanic TEXT NOT NULL DEFAULT ''`)
 	ensureColumn("exercises", "source_id", `ALTER TABLE exercises ADD COLUMN source_id TEXT NOT NULL DEFAULT ''`)
 
+	// gif_url holds a real animated GIF of the movement, only populated when
+	// the optional Gymvisual-sourced dataset is enabled (EXERCISE_GIF_SOURCE) —
+	// see config.ExerciseGifSource and seed/exercises.go.
+	ensureColumn("exercises", "gif_url", `ALTER TABLE exercises ADD COLUMN gif_url TEXT NOT NULL DEFAULT ''`)
+
 	// Faceted filtering on the library. Honest note: at ~870 rows these fix no
 	// measured problem — the `name LIKE '%q%'` scan dominates and cannot use
 	// them anyway. They're here because they're free and correct by default,

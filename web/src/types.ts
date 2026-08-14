@@ -51,6 +51,8 @@ export interface Exercise {
   video_url?: string
   /** End of the movement. With image_url it animates the lift. */
   image_url_end?: string
+  /** Real animated GIF, only present on libraries seeded with EXERCISE_GIF_SOURCE. */
+  gif_url?: string
   force?: string
   level?: string
   mechanic?: string
