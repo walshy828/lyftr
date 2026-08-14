@@ -6,6 +6,7 @@ import Loading from '../components/Loading'
 import QuickWeighInSheet from '../components/QuickWeighInSheet'
 import { useDashboardData } from '../hooks/useDashboardData'
 import { useWorkoutSession } from '../stores/workoutSession'
+import { useTrainingStats } from '../hooks/useTrainingStats'
 import { useAuthStore } from '../stores/auth'
 import { displayWeight } from '../stores/settings'
 import ThisWeekScorecard from '../components/dashboard/ThisWeekScorecard'
@@ -17,7 +18,7 @@ import ConsistencyHeatmap from '../components/dashboard/ConsistencyHeatmap'
 import TrainingTrendsCard from '../components/dashboard/TrainingTrendsCard'
 import NutritionTodayCard from '../components/dashboard/NutritionTodayCard'
 import NutritionTrendCard from '../components/dashboard/NutritionTrendCard'
-import MuscleBalanceCard from '../components/dashboard/MuscleBalanceCard'
+import MuscleMapCard, { MUSCLE_PERIOD_DAYS, type MusclePeriod } from '../components/dashboard/MuscleMapCard'
 import LastWorkoutCard from '../components/dashboard/LastWorkoutCard'
 
 const TODAY = new Date()
@@ -35,6 +36,10 @@ export default function Dashboard() {
   const { user } = useAuthStore()
   const d = useDashboardData()
   const [sheetOpen, setSheetOpen] = useState(false)
+  // The coverage map has its own window, independent of the dashboard's
+  // trailing year — "what have I skipped this week" is the actionable question.
+  const [musclePeriod, setMusclePeriod] = useState<MusclePeriod>('week')
+  const muscleStats = useTrainingStats(MUSCLE_PERIOD_DAYS[musclePeriod], ['muscles'])
 
   if (d.loading) return <Loading />
 
@@ -138,11 +143,14 @@ export default function Dashboard() {
         metric="duration"
       />
 
-      {/* Last workout + muscle balance */}
-      <div className="grid lg:grid-cols-2 gap-4 min-w-0">
-        <LastWorkoutCard workouts={d.workouts} settings={d.settings} />
-        <MuscleBalanceCard workouts={d.workouts} />
-      </div>
+      {/* Coverage — what got trained, and what didn't */}
+      <MuscleMapCard
+        muscles={muscleStats.stats?.muscles ?? []}
+        period={musclePeriod}
+        onPeriodChange={setMusclePeriod}
+      />
+
+      <LastWorkoutCard workouts={d.workouts} settings={d.settings} />
 
       <QuickWeighInSheet
         isOpen={sheetOpen}

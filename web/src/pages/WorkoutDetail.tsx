@@ -10,6 +10,7 @@ import { useSettingsStore, weightShort, displayWeight, displayVolume, displayDis
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
 import { isCardio, fmtClock } from '../utils/workoutSets'
+import MusclesWorked from '../components/exercise/MusclesWorked'
 import { FeelingBadge, FocusBadge } from '../components/WorkoutBadges'
 
 // "32:10 · 3.10 mi · 5,400 steps" — omits any zero component. The canonical
@@ -229,6 +230,9 @@ export default function WorkoutDetail() {
           <p className="text-sm text-tx-muted mt-3 pt-3 border-t border-surface-border">{workout.notes}</p>
         )}
       </div>
+
+      {/* What this session actually hit */}
+      <MusclesWorked exercises={exs} />
 
       {/* Exercises */}
       {!restOn && (

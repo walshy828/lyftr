@@ -70,6 +70,41 @@ export const ACTIVITY_HEX: Record<ActivityCategory, string> = { Cardio: CARDIO_H
 // its rare presence sits at the rounded top of the bar.
 export const ACTIVITY_ORDER: ActivityCategory[] = ['Cardio', 'Upper', 'Lower', 'Core', 'Full Body']
 
+// ── Muscle-coverage map ────────────────────────────────────────────────
+//
+// This encoding is SEQUENTIAL (how much was this muscle trained), not
+// categorical, so the rule is one hue in monotonic lightness steps rather than
+// distinct hues. Cyan, the brand hue, with the anchor flipped per mode: on a
+// light card more work reads DARKER, on a dark card more work reads BRIGHTER.
+// A single ramp used in both modes would make the busiest muscle the least
+// visible one in whichever mode it wasn't chosen for.
+//
+// "Neglected" is a STATUS color, not another ramp step — it answers a different
+// question ("you have not trained this at all") and must never be mistakable
+// for "trained a little". Validated with the dataviz validator against every
+// ramp step in both modes: worst pair ΔE 14.7 CVD / 24.6 normal (light) and
+// 20.9 / 28.2 (dark) — comfortably clear of the 8 / 15 floors. It ships with a
+// legend and a text label, never as color alone.
+//
+// The three lightest light-mode steps sit below 3:1 on a white card. That WARN
+// is discharged by the per-muscle list rendered beside the figure, which gives
+// every muscle a name and a set count in text — the figure is the overview, the
+// list is the readable record.
+export const MUSCLE_RAMP_LIGHT = ['#67e8f9', '#22d3ee', '#06b6d4', '#0e7490'] as const
+export const MUSCLE_RAMP_DARK = ['#0e7490', '#0891b2', '#06b6d4', '#22d3ee'] as const
+export const MUSCLE_NEGLECT_LIGHT = '#b45309'
+export const MUSCLE_NEGLECT_DARK = '#f59e0b'
+
+/** Bucket a muscle's set count into a ramp index, relative to the user's own busiest muscle. */
+export function muscleIntensity(sets: number, max: number): number {
+  if (sets <= 0 || max <= 0) return -1
+  const ratio = sets / max
+  if (ratio > 0.75) return 3
+  if (ratio > 0.5) return 2
+  if (ratio > 0.25) return 1
+  return 0
+}
+
 // ── Plan / weight-trend colors (shared with WeightPlan.tsx) ─────────────
 export const PLAN_COLOR = '#10b981' // plan line (green)
 export const ACTUAL_COLOR = '#6366f1' // actual weight (indigo)
