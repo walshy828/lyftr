@@ -122,6 +122,15 @@ type Config struct {
 	// of the sqlite data dir so it rides the same docker-compose volume with
 	// no extra mount required.
 	MealPhotoDir string
+
+	// ExerciseImageDir caches the exercise library's movement frames on local
+	// disk, fetched lazily on first request. Two reasons, neither cosmetic:
+	// the PWA is expected to work in a gym with no signal, and hot-linking
+	// ~870 exercises x 2 frames off raw.githubusercontent.com on every page
+	// view is leaning on someone else's bandwidth. Fully warmed it is ~70 MB.
+	// Defaults beside the sqlite file so it rides the same volume, exactly
+	// like MealPhotoDir.
+	ExerciseImageDir string
 }
 
 var C *Config
@@ -172,7 +181,8 @@ func Load() {
 
 		FDCAPIKey: getSecret("FDC_API_KEY", ""),
 
-		MealPhotoDir: getEnv("MEAL_PHOTO_DIR", "data/meal-photos"),
+		MealPhotoDir:     getEnv("MEAL_PHOTO_DIR", "data/meal-photos"),
+		ExerciseImageDir: getEnv("EXERCISE_IMAGE_DIR", "data/exercise-images"),
 	}
 
 	// Demo seeding is opt-in everywhere. It previously defaulted to on outside

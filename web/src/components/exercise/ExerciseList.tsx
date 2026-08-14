@@ -58,9 +58,13 @@ export default function ExerciseList({ exercises, loading, onOpen, renderAction,
                     onClick={() => onOpen(ex)}
                     className="flex-1 min-w-0 flex items-center gap-3 px-3 py-3 text-left"
                   >
+                    {/* Static start frame, served from the local cache. A row
+                        thumbnail is 40px and dozens are on screen at once —
+                        animating them all would be noise, and the movement is
+                        what the detail view is for. */}
                     {ex.image_url ? (
                       <img
-                        src={ex.image_url}
+                        src={`/api/v1/exercises/${ex.id}/image/start`}
                         alt=""
                         loading="lazy"
                         className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-surface-muted"

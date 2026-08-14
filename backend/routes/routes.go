@@ -40,6 +40,14 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		auth.POST("/webauthn/login/finish", h.FinishPasskeyLogin)
 	}
 
+	// Exercise demo frames. The only unauthenticated route outside /health,
+	// /info and /auth, and deliberately so: an <img src> cannot send an
+	// Authorization header, which is the only place middleware.Auth looks. See
+	// the comment on ServeExerciseImage for why an exercise photo is safe to
+	// serve anonymously where a meal photo is not.
+	api.GET("/exercises/:id/image", h.ServeExerciseImage)
+	api.GET("/exercises/:id/image/:frame", h.ServeExerciseImage)
+
 	// Protected routes
 	protected := api.Group("/")
 	protected.Use(middleware.Auth(s))

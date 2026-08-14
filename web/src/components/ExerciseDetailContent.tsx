@@ -7,6 +7,7 @@ import { exerciseAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayWeight } from '../stores/settings'
 import { useTheme } from '../hooks/useTheme'
 import PeriodSelector from './PeriodSelector'
+import ExerciseDemo from './exercise/ExerciseDemo'
 import * as types from '../types'
 import { muscleColor, EQUIPMENT_LABEL, muscleToBodySlugs } from '../utils/exerciseUtils'
 
@@ -41,12 +42,10 @@ export default function ExerciseDetailContent({ exercise }: Props) {
   const [pr, setPR] = useState<types.PersonalRecord | null>(null)
   const [history, setHistory] = useState<types.ExerciseHistoryPoint[]>([])
   const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>('3m')
-  const [imgFailed, setImgFailed] = useState(false)
 
   useEffect(() => {
     setPR(null)
     setHistory([])
-    setImgFailed(false)
     Promise.all([
       exerciseAPI.getPRs(exercise.id).catch(() => null),
       exerciseAPI.getHistory(exercise.id, 50).catch(() => []),
@@ -114,15 +113,10 @@ export default function ExerciseDetailContent({ exercise }: Props) {
         </div>
       </div>
 
-      {/* Image */}
-      {exercise.image_url && !imgFailed && (
-        <img
-          src={exercise.image_url}
-          alt={exercise.name}
-          loading="lazy"
-          onError={() => setImgFailed(true)}
-          className="w-full h-64 object-contain rounded-2xl bg-surface-muted"
-        />
+      {/* Movement demo — crossfades the start and end positions when the
+          library has both frames, otherwise shows whichever one exists. */}
+      {exercise.image_url && (
+        <ExerciseDemo exercise={exercise} className="w-full h-64 rounded-2xl" />
       )}
 
       {/* Watch on YouTube */}

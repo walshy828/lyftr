@@ -32,7 +32,23 @@ export default defineConfig(({ command }) => ({
         // app; data always needs the network.
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         navigateFallbackDenylist: [/^\/api\//],
-        runtimeCaching: [{ urlPattern: /^\/api\//, handler: 'NetworkOnly' }],
+        runtimeCaching: [
+          // Exercise demo frames are the one API response worth keeping: the
+          // bytes for a given (exercise, frame) never change, and looking up
+          // how a movement goes is exactly what you do in a basement gym with
+          // no signal. Ordered before the NetworkOnly catch-all, which would
+          // otherwise match these first.
+          {
+            urlPattern: /^\/api\/v1\/exercises\/\d+\/image(\/|$)/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'exercise-images',
+              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          { urlPattern: /^\/api\//, handler: 'NetworkOnly' },
+        ],
       },
       devOptions: { enabled: true },
     }),

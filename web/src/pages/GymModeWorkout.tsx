@@ -12,6 +12,7 @@ import { useTheme } from '../hooks/useTheme'
 import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore } from '../stores/settings'
 import RestPicker from '../components/RestPicker'
+import ExerciseDemo from '../components/exercise/ExerciseDemo'
 import RestTimerBanner from '../components/RestTimerBanner'
 import ExercisePicker from '../components/ExercisePicker'
 import FeelingPicker from '../components/FeelingPicker'
@@ -77,7 +78,6 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
   } = useWorkoutSession()
   const { settings } = useSettingsStore()
 
-  const [imgFailed, setImgFailed] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [feeling, setFeeling] = useState<0 | 1 | 2 | 3>(0)
@@ -88,8 +88,6 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
   const setPhase = (p: typeof phase) => setGymState(p, activeIdx, activeSetIdx)
   const onSetActiveIdx = (i: number) => setGymState(phase, i, 0)
   const setActiveSetIdx = (i: number) => setGymState(phase, activeIdx, i)
-
-  useEffect(() => { setImgFailed(false) }, [activeIdx])
 
   if (!session) return null
 
@@ -248,7 +246,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
                       <span className={`text-sm font-bold ${done ? 'text-brand-400' : 'text-tx-muted'}`}>{i + 1}</span>
                     </div>
                     {ex.exercise.image_url ? (
-                      <img src={ex.exercise.image_url} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 bg-surface-muted"
+                      <img src={`/api/v1/exercises/${ex.exercise.id}/image/start`} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 bg-surface-muted"
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                     ) : (
                       <div className="w-10 h-10 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
@@ -375,14 +373,11 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
         <TopBar s={session} onBack={() => isFirst ? setPhase('overview') : setGymState('exercise', activeIdx - 1, 0)} />
 
         <div className="flex-1 overflow-y-auto">
-          {/* Hero image */}
-          {exercise.image_url && !imgFailed && (
-            <img
-              src={exercise.image_url}
-              alt={exercise.name}
-              onError={() => setImgFailed(true)}
-              className="w-full h-64 object-contain bg-surface-muted"
-            />
+          {/* Hero demo. The highest-value placement for the animation in the
+              app: this is the screen you look at while standing over the bar
+              deciding how the movement goes. */}
+          {exercise.image_url && (
+            <ExerciseDemo exercise={exercise} className="w-full h-64" />
           )}
 
           <div className="px-5 pt-5 pb-4 space-y-5">
