@@ -15,9 +15,13 @@ interface ProgramCardProps {
   onDelete?: (id: number) => void
   onShareToggle?: (program: types.Program) => void
   onCopy?: (program: types.Program) => void
+  /** Condensed icon+name+count row for grid layouts (e.g. the Plan page's
+   *  routines panel). Edit/delete/share live on the program's own detail
+   *  page instead of a kebab menu here — tapping the card navigates there. */
+  compact?: boolean
 }
 
-export default function ProgramCard({ program, variant, onEdit, onDelete, onShareToggle, onCopy }: ProgramCardProps) {
+export default function ProgramCard({ program, variant, onEdit, onDelete, onShareToggle, onCopy, compact }: ProgramCardProps) {
   const navigate = useNavigate()
   const { session, startSession } = useWorkoutSession()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -127,6 +131,24 @@ export default function ProgramCard({ program, variant, onEdit, onDelete, onShar
   }
 
   const totalSets = program.exercises?.reduce((s, e) => s + (e.sets?.length || 0), 0) || 0
+
+  if (compact) {
+    return (
+      <button
+        className="card w-full flex items-center gap-2.5 p-3 text-left active:scale-[0.99] transition-transform"
+        onClick={() => navigate(`/programs/${program.id}`)}
+      >
+        <div className="w-9 h-9 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
+          <BookOpen className="w-4 h-4 text-brand-500" strokeWidth={2} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-tx-primary truncate">{program.name}</p>
+          <p className="text-xs text-tx-muted">{program.exercises?.length || 0} exercises</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
+      </button>
+    )
+  }
 
   return (
     <div className="card group active:scale-[0.99] transition-transform">

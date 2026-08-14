@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, X, SlidersHorizontal } from 'lucide-react'
+import { Search, X, SlidersHorizontal, Plus } from 'lucide-react'
 import { exerciseAPI } from '../services/api'
 import ExerciseList from '../components/exercise/ExerciseList'
+import AddToRoutineSheet from '../components/AddToRoutineSheet'
 import { PageHeader } from '../components/ui'
 import { EQUIPMENT_LABEL } from '../utils/exerciseUtils'
 import * as types from '../types'
@@ -48,6 +49,7 @@ export default function Exercises() {
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
   const [query, setQuery] = useState(params.get('q') ?? '')
+  const [planTarget, setPlanTarget] = useState<types.Exercise | null>(null)
 
   // The active filter set, derived from the URL rather than mirrored in state —
   // one source of truth, so the back button can't desync the chips from the list.
@@ -216,9 +218,19 @@ export default function Exercises() {
           exercises={exercises}
           loading={loading}
           onOpen={ex => navigate(`/exercises/${ex.id}`)}
+          renderAction={ex => (
+            <button
+              onClick={e => { e.stopPropagation(); setPlanTarget(ex) }}
+              className="btn-secondary btn-sm flex-shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" /> Plan
+            </button>
+          )}
           emptyLabel={activeCount > 0 || query ? 'No exercises match those filters' : 'No exercises found'}
         />
       </div>
+
+      {planTarget && <AddToRoutineSheet exercise={planTarget} onClose={() => setPlanTarget(null)} />}
     </div>
   )
 }

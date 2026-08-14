@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ChevronLeft, ChevronRight, CalendarDays, Check, Play, RotateCcw, X, Plus,
+  ChevronLeft, ChevronRight, CalendarDays, Check, Play, RotateCcw, X, Plus, Dumbbell, Sparkles, Search,
 } from 'lucide-react'
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths,
@@ -9,6 +9,8 @@ import {
 } from 'date-fns'
 import { scheduleAPI, programAPI } from '../services/api'
 import { PageHeader } from '../components/ui'
+import ProgramCard from '../components/ProgramCard'
+import PlanDaySheet from '../components/PlanDaySheet'
 import Loading from '../components/Loading'
 import * as types from '../types'
 
@@ -16,13 +18,14 @@ import * as types from '../types'
 // dashboardMetrics.
 const WEEK_OPTS = { weekStartsOn: 1 as const }
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 // Column order is Monday-first for display; the API speaks Go's time.Weekday,
 // where 0 is Sunday.
 const WEEKDAY_NUMS = [1, 2, 3, 4, 5, 6, 0]
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd')
 
-export default function Schedule() {
+export default function Plan() {
   const navigate = useNavigate()
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [data, setData] = useState<types.ScheduleResponse | null>(null)
@@ -30,8 +33,9 @@ export default function Schedule() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [editingDay, setEditingDay] = useState<number | null>(null)
+  const [openDay, setOpenDay] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [routineSearch, setRoutineSearch] = useState('')
 
   // The grid always shows whole weeks, so it spills into the neighbouring
   // months — fetch the visible range, not the calendar month.
@@ -51,8 +55,12 @@ export default function Schedule() {
     }
   }, [gridStart, gridEnd])
 
+  const loadPrograms = useCallback(() => {
+    programAPI.list({ limit: 100 }).then(setPrograms).catch(() => {})
+  }, [])
+
   useEffect(() => { load() }, [load])
-  useEffect(() => { programAPI.list({ limit: 100 }).then(setPrograms).catch(() => {}) }, [])
+  useEffect(() => { loadPrograms() }, [loadPrograms])
 
   const byDate = useMemo(
     () => new Map((data?.days ?? []).map(d => [d.date, d])),
@@ -63,6 +71,14 @@ export default function Schedule() {
     () => eachDayOfInterval({ start: gridStart, end: gridEnd }),
     [gridStart, gridEnd],
   )
+
+  // Filtered display-only: the day sheet and "just this day" overrides still
+  // need the full, unfiltered `programs` list to resolve assignments.
+  const visibleRoutines = useMemo(() => {
+    const q = routineSearch.trim().toLowerCase()
+    if (!q) return programs
+    return programs.filter(p => p.name.toLowerCase().includes(q))
+  }, [programs, routineSearch])
 
   const mutate = async (fn: () => Promise<unknown>) => {
     setSaving(true)
@@ -77,17 +93,25 @@ export default function Schedule() {
     }
   }
 
-  const toggleRecurring = (weekday: number, programId: number) => {
+  const recurringIds = (weekday: number): number[] =>
+    (data?.recurring?.[String(weekday)] ?? []).map(s => s.program_id)
+
+  const replaceWeekday = (weekday: number, ids: number[]) => {
     const recurring = data?.recurring ?? {}
     const next: Record<string, number[]> = {}
     for (const [k, list] of Object.entries(recurring)) {
       next[k] = list.map(p => p.program_id)
     }
-    const current = next[String(weekday)] ?? []
-    next[String(weekday)] = current.includes(programId)
+    next[String(weekday)] = ids
+    return mutate(() => scheduleAPI.replace(next))
+  }
+
+  const toggleRecurring = (weekday: number, programId: number) => {
+    const current = recurringIds(weekday)
+    const next = current.includes(programId)
       ? current.filter(id => id !== programId)
       : [...current, programId]
-    return mutate(() => scheduleAPI.replace(next))
+    return replaceWeekday(weekday, next)
   }
 
   const selected = selectedDate ? byDate.get(selectedDate) : null
@@ -96,94 +120,92 @@ export default function Schedule() {
 
   return (
     <div className="space-y-4 animate-slide-up">
-      <PageHeader title="Schedule" subtitle="Plan your training week" />
+      <PageHeader
+        title="Plan"
+        subtitle="Your weekly routine"
+        action={
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button onClick={() => navigate('/exercises')} className="btn-ghost btn-sm flex-1 sm:flex-none">
+              <Dumbbell className="w-4 h-4" /> Exercises
+            </button>
+            <button onClick={() => navigate('/programs/ai-new')} className="btn-ghost btn-sm flex-1 sm:flex-none">
+              <Sparkles className="w-4 h-4" /> AI Routine
+            </button>
+          </div>
+        }
+      />
 
       {error && <div className="alert-error text-sm">{error}</div>}
 
-      {/* Weekly pattern — the thing that actually repeats. */}
-      <div className="card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <CalendarDays className="w-4 h-4 text-brand-400" />
-          <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider">Weekly pattern</p>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1.5">
-          {WEEKDAY_NUMS.map((weekday, i) => {
-            const slots = data?.recurring?.[String(weekday)] ?? []
-            const open = editingDay === weekday
-            return (
-              <button
-                key={weekday}
-                onClick={() => setEditingDay(open ? null : weekday)}
-                aria-expanded={open}
-                className={`rounded-xl border p-2 min-h-[4.5rem] text-left transition-colors ${
-                  open
-                    ? 'border-brand-500/50 bg-brand-500/10'
-                    : slots.length > 0
-                      ? 'border-surface-border bg-surface-muted/40 hover:border-brand-500/30'
-                      : 'border-dashed border-surface-border hover:border-brand-500/30'
-                }`}
-              >
-                <p className="text-[10px] font-semibold text-tx-muted uppercase tracking-wider mb-1">
-                  {DAY_LABELS[i]}
-                </p>
-                {slots.length === 0 ? (
-                  <span className="text-[10px] text-tx-muted/60">Rest</span>
-                ) : (
-                  <div className="space-y-0.5">
-                    {slots.map(s => (
-                      <p key={s.program_id} className="text-[10px] font-medium text-brand-300 leading-tight truncate">
-                        {s.name}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </button>
-            )
-          })}
-        </div>
-
-        {editingDay !== null && (
-          <div className="mt-3 pt-3 border-t border-surface-border">
-            <p className="text-xs text-tx-muted mb-2">
-              Programs on {DAY_LABELS[WEEKDAY_NUMS.indexOf(editingDay)]}
-            </p>
-            {programs.length === 0 ? (
-              <p className="text-xs text-tx-muted">
-                No programs yet —{' '}
-                <button onClick={() => navigate('/programs/new')} className="text-brand-400 hover:underline">
-                  create one
-                </button>
-                .
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {programs.map(p => {
-                  const on = (data?.recurring?.[String(editingDay)] ?? []).some(s => s.program_id === p.id)
-                  return (
-                    <button
-                      key={p.id}
-                      disabled={saving}
-                      onClick={() => toggleRecurring(editingDay, p.id)}
-                      aria-pressed={on}
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${
-                        on
-                          ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
-                          : 'bg-surface-muted/40 text-tx-secondary border-transparent hover:border-surface-border'
-                      }`}
-                    >
-                      {on ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                      {p.name}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Week schedule — the weekly pattern that actually repeats. */}
+        <div className="card p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarDays className="w-4 h-4 text-brand-400" />
+            <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider">Week schedule</p>
           </div>
-        )}
+          <div className="space-y-1.5">
+            {WEEKDAY_NUMS.map((weekday, i) => {
+              const slots = data?.recurring?.[String(weekday)] ?? []
+              return (
+                <button
+                  key={weekday}
+                  onClick={() => setOpenDay(weekday)}
+                  className="w-full flex items-center justify-between gap-2 p-3 rounded-xl border border-surface-border bg-surface-muted/30 hover:border-brand-500/30 transition-colors text-left"
+                >
+                  <span className="text-sm font-medium text-tx-primary">{DAY_NAMES[i]}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {slots.length === 0 ? (
+                      <span className="text-xs text-tx-muted flex-shrink-0">Rest</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium bg-brand-500/15 text-brand-300 border border-brand-500/25 truncate max-w-[10rem]">
+                        {slots.map(s => s.name).join(', ')}
+                      </span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Routines — reusable templates you assign to days. */}
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider">Routines</p>
+            <button onClick={() => navigate('/programs/new')} className="btn-secondary btn-sm">
+              <Plus className="w-3.5 h-3.5" /> New
+            </button>
+          </div>
+
+          {programs.length > 0 && (
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-tx-muted pointer-events-none" />
+              <input
+                value={routineSearch}
+                onChange={e => setRoutineSearch(e.target.value)}
+                className="input pl-8 py-1.5 text-sm"
+                placeholder="Search programs…"
+              />
+            </div>
+          )}
+
+          {programs.length === 0 ? (
+            <p className="text-xs text-tx-muted py-2">No routines yet — create one to get started.</p>
+          ) : visibleRoutines.length === 0 ? (
+            <p className="text-xs text-tx-muted py-2">No routines match that search.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {visibleRoutines.map(p => (
+                <ProgramCard key={p.id} program={p} variant="own" compact />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Month view — planned vs actually done. */}
+      {/* Month view — planned vs actually done, including previous weeks. */}
       <div className="card p-4">
         <div className="flex items-center justify-between mb-3">
           <button
@@ -331,6 +353,19 @@ export default function Schedule() {
           </div>
         )}
       </div>
+
+      {openDay !== null && (
+        <PlanDaySheet
+          isOpen={openDay !== null}
+          onClose={() => setOpenDay(null)}
+          dayLabel={DAY_NAMES[WEEKDAY_NUMS.indexOf(openDay)]}
+          programs={programs}
+          assignedIds={recurringIds(openDay)}
+          saving={saving}
+          onToggleProgram={pid => toggleRecurring(openDay, pid)}
+          onSetRest={() => replaceWeekday(openDay, [])}
+        />
+      )}
     </div>
   )
 }

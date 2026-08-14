@@ -14,10 +14,9 @@ import Login from './pages/Login'
 // the initial bundle.
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Workouts = lazy(() => import('./pages/Workouts'))
-const Programs = lazy(() => import('./pages/Programs'))
 const ExerciseDetail = lazy(() => import('./pages/ExerciseDetail'))
 const Exercises = lazy(() => import('./pages/Exercises'))
-const Schedule = lazy(() => import('./pages/Schedule'))
+const Plan = lazy(() => import('./pages/Plan'))
 const Stats = lazy(() => import('./pages/Stats'))
 const AddProgram = lazy(() => import('./pages/AddProgram'))
 const AddAIProgram = lazy(() => import('./pages/AddAIProgram'))
@@ -67,7 +66,9 @@ function App() {
             <Route path="/workouts/new" element={<AddWorkout />} />
             <Route path="/workouts/:id" element={<WorkoutDetail />} />
             <Route path="/workouts/:id/edit" element={<EditWorkout />} />
-            <Route path="/programs" element={<Programs />} />
+            {/* Programs list folded into /plan; keep the bare path resolving
+                for anyone with an old bookmark or link. */}
+            <Route path="/programs" element={<Navigate to="/plan" replace />} />
             <Route path="/programs/new" element={<AddProgram />} />
             <Route path="/programs/ai-new" element={<AddAIProgram />} />
             <Route path="/programs/:id" element={<ProgramDetail />} />
@@ -78,7 +79,9 @@ function App() {
             {/* Before the :exerciseId route is irrelevant here (react-router ranks
                 static segments higher), but keep them adjacent so the pair is obvious. */}
             <Route path="/exercises" element={<Exercises />} />
-            <Route path="/schedule" element={<Schedule />} />
+            <Route path="/plan" element={<Plan />} />
+            {/* Schedule renamed to Plan; keep old links working. */}
+            <Route path="/schedule" element={<Navigate to="/plan" replace />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/exercises/:exerciseId" element={<ExerciseDetail />} />
             <Route path="/food" element={<Food />} />

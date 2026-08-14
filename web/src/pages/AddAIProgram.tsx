@@ -231,7 +231,7 @@ export default function AddAIProgram() {
       </div>
 
       {allResolved && (
-        <button onClick={() => navigate('/programs')} className="btn-primary btn-lg w-full">
+        <button onClick={() => navigate('/plan')} className="btn-primary btn-lg w-full">
           Done
         </button>
       )}

@@ -10,8 +10,8 @@ export default function AddProgram() {
       title="New Program"
       initialData={{ name: '', notes: '', exercises: [] }}
       onSave={async (payload: ProgramFormData) => {
-        await programAPI.create(payload)
-        navigate('/programs')
+        const created = await programAPI.create(payload)
+        navigate(`/programs/${created.id}`)
       }}
       onCancel={() => navigate(-1)}
     />

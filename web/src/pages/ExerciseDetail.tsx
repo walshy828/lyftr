@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Dumbbell } from 'lucide-react'
+import { ArrowLeft, Dumbbell, Plus } from 'lucide-react'
 import { exerciseAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
 import ExerciseDetailContent from '../components/ExerciseDetailContent'
+import AddToRoutineSheet from '../components/AddToRoutineSheet'
 import * as types from '../types'
 import { muscleColorBordered } from '../utils/exerciseUtils'
 
@@ -13,6 +14,7 @@ export default function ExerciseDetail() {
   const { session } = useWorkoutSession()
   const [exercise, setExercise] = useState<types.Exercise | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showPlanSheet, setShowPlanSheet] = useState(false)
 
   useEffect(() => {
     const id = Number(exerciseId)
@@ -54,9 +56,17 @@ export default function ExerciseDetail() {
             {exercise.muscle_group}
           </span>
         </div>
+        <button
+          onClick={() => setShowPlanSheet(true)}
+          className="btn-secondary btn-sm flex-shrink-0 mt-0.5"
+        >
+          <Plus className="w-3.5 h-3.5" /> Plan
+        </button>
       </div>
 
       <ExerciseDetailContent exercise={exercise} />
+
+      {showPlanSheet && <AddToRoutineSheet exercise={exercise} onClose={() => setShowPlanSheet(false)} />}
     </div>
   )
 }

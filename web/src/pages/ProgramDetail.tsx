@@ -70,7 +70,7 @@ export default function ProgramDetail() {
     setDeleting(true)
     try {
       await programAPI.delete(program.id)
-      navigate('/programs', { replace: true })
+      navigate('/plan', { replace: true })
     } catch {
       setDeleting(false)
       setConfirming(false)
@@ -110,7 +110,7 @@ export default function ProgramDetail() {
   if (error || !program) {
     return (
       <div className="space-y-4">
-        <Link to="/programs" className="flex items-center gap-2 text-sm text-tx-muted hover:text-tx-primary transition-colors">
+        <Link to="/plan" className="flex items-center gap-2 text-sm text-tx-muted hover:text-tx-primary transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
         <div className="alert-error">
@@ -128,8 +128,8 @@ export default function ProgramDetail() {
     <div className="space-y-5 animate-slide-up max-w-2xl">
       {/* Back nav */}
       <div className="flex items-center justify-between">
-        <Link to="/programs" className="flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Programs
+        <Link to="/plan" className="flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Plan
         </Link>
         <div className="flex items-center gap-1">
           <button
@@ -156,6 +156,7 @@ export default function ProgramDetail() {
               </button>
               <button
                 onClick={() => setConfirming(true)}
+                aria-label="Delete program"
                 className="p-2 hover:bg-error-500/10 rounded-lg transition-colors"
               >
                 <Trash2 className="w-4 h-4 text-error-400" />

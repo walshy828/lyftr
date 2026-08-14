@@ -52,13 +52,14 @@ test.describe('Programs', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/programs')
+    await page.goto('/plan')
   })
 
-  test('page loads and shows programs or empty state', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /programs/i })).toBeVisible()
-    const hasPrograms = await page.locator('.card').count() > 0
-    const hasEmpty = await page.getByText(/no programs|create your first/i).isVisible().catch(() => false)
+  test('page loads and shows routines or empty state', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: /^plan$/i })).toBeVisible()
+    await expect(page.getByText('Routines')).toBeVisible()
+    const hasPrograms = await page.getByText(SEED_PROGRAM_NAME).isVisible().catch(() => false)
+    const hasEmpty = await page.getByText(/no routines/i).isVisible().catch(() => false)
     expect(hasPrograms || hasEmpty).toBe(true)
   })
 
@@ -85,7 +86,7 @@ test.describe('Programs', () => {
     await page.locator('input[placeholder="135"]').first().fill('225')
 
     await page.getByRole('button', { name: /save program/i }).click()
-    await page.waitForURL('/programs')
+    await page.waitForURL(/\/programs\/\d+$/)
     await expect(page.getByText(E2E_PROGRAM_NAME).first()).toBeVisible()
   })
 
@@ -109,7 +110,7 @@ test.describe('Programs', () => {
   })
 
   test('search input stays focused while typing', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /programs/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^plan$/i })).toBeVisible()
     const searchInput = page.getByPlaceholder(/search programs/i)
     await searchInput.click()
     await searchInput.type('S')
@@ -122,12 +123,11 @@ test.describe('Programs', () => {
   })
 
   test('start program creates workout session', async ({ page }) => {
-    const startButtons = page.getByRole('button', { name: /start workout/i })
-    if (await startButtons.count() === 0) {
-      test.skip()
-      return
-    }
-    await startButtons.first().click()
+    // Quick-start lives on the program's own detail page — the Plan page's
+    // compact routine cards just link through to it (see ProgramCard's
+    // `compact` variant).
+    await page.goto(`/programs/${programId}`)
+    await page.getByRole('button', { name: /start workout/i }).click()
     await expect(page).toHaveURL(/\/workout\/(active|start|add)|\/workouts/)
   })
 
@@ -145,23 +145,16 @@ test.describe('Programs', () => {
   })
 
   test('delete program shows confirm and cancels', async ({ page }) => {
-    // Wait for programs to load before checking for buttons
-    await expect(page.getByText(SEED_PROGRAM_NAME)).toBeVisible({ timeout: 5000 })
+    // Delete lives on the program's own detail page now — the Plan page's
+    // compact routine cards link straight through instead of carrying a
+    // kebab menu (see ProgramCard's `compact` variant).
+    await page.goto(`/programs/${programId}`)
+    await expect(page.getByRole('heading', { name: SEED_PROGRAM_NAME })).toBeVisible({ timeout: 5000 })
 
-    // On mobile the delete button is behind a kebab (⋯) menu — open it first if present
-    const optionsBtn = page.getByRole('button', { name: /options/i }).first()
-    if (await optionsBtn.isVisible()) {
-      await optionsBtn.click()
-      await expect(page.getByRole('button', { name: /delete program/i })).toBeVisible({ timeout: 3000 })
-      await page.getByRole('button', { name: /delete program/i }).first().click()
-    } else {
-      const deleteButtons = page.getByRole('button', { name: /^delete$/i })
-      await expect(deleteButtons.first()).toBeVisible({ timeout: 3000 })
-      await deleteButtons.first().click()
-    }
-    await expect(page.getByText(/this cannot be undone/i)).toBeVisible({ timeout: 5000 })
+    await page.getByRole('button', { name: /delete program/i }).click()
+    await expect(page.getByText(/will be permanently deleted/i)).toBeVisible({ timeout: 5000 })
     await page.getByRole('button', { name: /cancel/i }).click()
-    await expect(page.getByText(/this cannot be undone/i)).not.toBeVisible()
+    await expect(page.getByText(/will be permanently deleted/i)).not.toBeVisible()
   })
 
   test('edit program preserves existing data', async ({ page }) => {
@@ -213,7 +206,7 @@ test.describe('Programs', () => {
       await expect(exerciseNames.nth(1)).toHaveText(firstBefore || '')
 
       await page.getByRole('button', { name: /save changes/i }).click()
-      await page.waitForURL('/programs')
+      await page.waitForURL(`/programs/${reorderProgramId}`)
 
       const getResp = await request.get(`${API}/programs/${reorderProgramId}`, { headers })
       const program = (await getResp.json()).data

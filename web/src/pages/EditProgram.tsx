@@ -35,7 +35,7 @@ export default function EditProgram() {
 
   useEffect(() => {
     const programId = Number(id)
-    if (!programId) { navigate('/programs'); return }
+    if (!programId) { navigate('/plan'); return }
     programAPI.get(programId)
       .then(p => {
         const map: Record<number, types.Exercise> = {}
@@ -130,7 +130,7 @@ export default function EditProgram() {
         })),
       }
       await programAPI.update(Number(id), payload)
-      navigate('/programs')
+      navigate(`/programs/${id}`)
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to update program')
     } finally {
