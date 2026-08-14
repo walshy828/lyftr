@@ -8,6 +8,7 @@ import { useSettingsStore, weightShort, displayWeight } from '../stores/settings
 import { useTheme } from '../hooks/useTheme'
 import PeriodSelector from './PeriodSelector'
 import ExerciseDemo from './exercise/ExerciseDemo'
+import { hasExerciseImage } from '../utils/exerciseMedia'
 import * as types from '../types'
 import { muscleColor, EQUIPMENT_LABEL, muscleToBodySlugs } from '../utils/exerciseUtils'
 
@@ -115,7 +116,7 @@ export default function ExerciseDetailContent({ exercise }: Props) {
 
       {/* Movement demo — crossfades the start and end positions when the
           library has both frames, otherwise shows whichever one exists. */}
-      {exercise.image_url && (
+      {hasExerciseImage(exercise, 'start') && (
         <ExerciseDemo exercise={exercise} className="w-full h-64 rounded-2xl" />
       )}
 

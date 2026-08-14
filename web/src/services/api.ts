@@ -21,6 +21,15 @@ const resolveAPIBase = () => {
   return apiUrl(base)
 }
 
+/**
+ * Absolute URL for a REST path, honouring the configured backend.
+ *
+ * Needed for anything the browser fetches outside axios — notably <img src>,
+ * which would otherwise resolve a relative path against the frontend's origin
+ * and miss a remote backend entirely.
+ */
+export const apiAssetUrl = (path: string) => `${resolveAPIBase()}${path}`
+
 // Turn an axios error into an actionable message. Network/CORS/connection failures
 // (no response) and proxy misconfig (404/405) are distinguished from real auth and
 // server errors, so connectivity problems don't masquerade as "Registration failed."

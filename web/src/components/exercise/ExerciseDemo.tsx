@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Dumbbell, Pause, Play } from 'lucide-react'
+import { exerciseImageSources, type Frame } from '../../utils/exerciseMedia'
 import * as types from '../../types'
 
 /** How long each frame holds before crossing to the other, in ms. */
 const FRAME_MS = 1100
 
+type MediaExercise = Pick<types.Exercise, 'id' | 'name' | 'image_url' | 'image_url_end' | 'source_id'>
+
 interface Props {
-  exercise: Pick<types.Exercise, 'id' | 'name' | 'image_url' | 'image_url_end'>
+  exercise: MediaExercise
   className?: string
   /** Suppresses the play/pause control for small thumbnails. */
   compact?: boolean
@@ -25,34 +28,44 @@ function prefersReducedMotion(): boolean {
  * exercise represented by a still photo of someone mid-rep. Alternating the
  * pair shows the actual movement: what travels, and how far.
  *
- * Frames are served from the backend's local cache rather than by upstream URL,
- * so they work offline once seen.
- *
- * The animation is two stacked images with a CSS opacity transition driven by
- * one interval — no per-frame JS, so it costs nothing while scrolling a list of
- * them.
+ * Each frame has a list of candidate sources (local cache first, upstream URL
+ * as a fallback) and walks it on error, so a library that hasn't been synced
+ * yet still renders — see exerciseImageSources.
  */
 export default function ExerciseDemo({ exercise, className = '', compact }: Props) {
   const [showEnd, setShowEnd] = useState(false)
   const [paused, setPaused] = useState(prefersReducedMotion)
-  const [failed, setFailed] = useState<Record<number, boolean>>({})
-  const startedRef = useRef(false)
+  // Index into each frame's candidate source list; past the end means the frame
+  // has no working source.
+  const [attempt, setAttempt] = useState<Record<Frame, number>>({ start: 0, end: 0 })
 
-  // Only exercises with two usable frames animate. Some upstream entries ship
-  // one image, and a "cross-fade" between a frame and itself is just a photo
-  // that occasionally dims.
-  const hasEnd = !!exercise.image_url_end && !failed[1]
-  const animatable = hasEnd && !failed[0]
+  const sources = useMemo(() => ({
+    start: exerciseImageSources(exercise, 'start'),
+    end: exerciseImageSources(exercise, 'end'),
+  }), [exercise])
+
+  // Reset when the exercise changes, or a previous failure would suppress the
+  // new one's images.
+  useEffect(() => { setAttempt({ start: 0, end: 0 }); setShowEnd(false) }, [exercise.id])
+
+  const srcFor = (frame: Frame): string | null => sources[frame][attempt[frame]] ?? null
+  const startSrc = srcFor('start')
+  const endSrc = srcFor('end')
+
+  // Only a genuine pair animates. Some entries ship one frame, and crossfading
+  // a frame with itself is just a photo that occasionally dims.
+  const animatable = !!startSrc && !!endSrc
 
   useEffect(() => {
     if (!animatable || paused) return
     const id = setInterval(() => setShowEnd(v => !v), FRAME_MS)
-    startedRef.current = true
     return () => clearInterval(id)
   }, [animatable, paused])
 
-  // Both frames missing — nothing to show but the placeholder.
-  if (failed[0] && !hasEnd) {
+  const onFrameError = (frame: Frame) =>
+    setAttempt(a => ({ ...a, [frame]: a[frame] + 1 }))
+
+  if (!startSrc && !endSrc) {
     return (
       <div className={`flex items-center justify-center bg-brand-500/10 border border-brand-500/20 ${className}`}>
         <Dumbbell className="w-1/4 h-1/4 text-brand-500" />
@@ -60,26 +73,30 @@ export default function ExerciseDemo({ exercise, className = '', compact }: Prop
     )
   }
 
-  const src = (frame: 'start' | 'end') => `/api/v1/exercises/${exercise.id}/image/${frame}`
-
   return (
     <div className={`relative overflow-hidden bg-surface-muted ${className}`}>
-      <img
-        src={src('start')}
-        alt={`${exercise.name}, starting position`}
-        loading="lazy"
-        onError={() => setFailed(f => ({ ...f, 0: true }))}
-        className="absolute inset-0 w-full h-full object-contain transition-opacity duration-500"
-        style={{ opacity: animatable && showEnd ? 0 : 1 }}
-      />
-      {hasEnd && (
+      {startSrc && (
         <img
-          src={src('end')}
+          // Keyed by src so React remounts on fallback rather than reusing the
+          // element that already errored.
+          key={startSrc}
+          src={startSrc}
+          alt={`${exercise.name}, starting position`}
+          loading="lazy"
+          onError={() => onFrameError('start')}
+          className="absolute inset-0 w-full h-full object-contain transition-opacity duration-500"
+          style={{ opacity: animatable && showEnd ? 0 : 1 }}
+        />
+      )}
+      {endSrc && (
+        <img
+          key={endSrc}
+          src={endSrc}
           alt={`${exercise.name}, end position`}
           loading="lazy"
-          onError={() => setFailed(f => ({ ...f, 1: true }))}
+          onError={() => onFrameError('end')}
           className="absolute inset-0 w-full h-full object-contain transition-opacity duration-500"
-          style={{ opacity: animatable && showEnd ? 1 : 0 }}
+          style={{ opacity: animatable ? (showEnd ? 1 : 0) : startSrc ? 0 : 1 }}
         />
       )}
 

@@ -1,8 +1,31 @@
-import { useRef, useCallback, type ReactNode } from 'react'
+import { useRef, useState, useCallback, type ReactNode } from 'react'
 import { Dumbbell } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { muscleColorBordered, EQUIPMENT_LABEL } from '../../utils/exerciseUtils'
+import { exerciseImageSources, hasExerciseImage } from '../../utils/exerciseMedia'
 import * as types from '../../types'
+
+/**
+ * A row thumbnail that walks its candidate sources on error. The local cache
+ * can't serve exercises whose source_id hasn't been backfilled by a sync, so
+ * the upstream URL has to stay available as a fallback.
+ */
+function ExerciseThumb({ exercise }: { exercise: types.Exercise }) {
+  const sources = exerciseImageSources(exercise, 'start')
+  const [attempt, setAttempt] = useState(0)
+  const src = sources[attempt]
+  if (!src) return null
+  return (
+    <img
+      key={src}
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setAttempt(a => a + 1)}
+      className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-surface-muted"
+    />
+  )
+}
 
 interface Props {
   exercises: types.Exercise[]
@@ -58,18 +81,11 @@ export default function ExerciseList({ exercises, loading, onOpen, renderAction,
                     onClick={() => onOpen(ex)}
                     className="flex-1 min-w-0 flex items-center gap-3 px-3 py-3 text-left"
                   >
-                    {/* Static start frame, served from the local cache. A row
-                        thumbnail is 40px and dozens are on screen at once —
-                        animating them all would be noise, and the movement is
-                        what the detail view is for. */}
-                    {ex.image_url ? (
-                      <img
-                        src={`/api/v1/exercises/${ex.id}/image/start`}
-                        alt=""
-                        loading="lazy"
-                        className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-surface-muted"
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                      />
+                    {/* Static start frame. A row thumbnail is 40px and dozens
+                        are on screen at once — animating them all would be
+                        noise, and the movement is what the detail view is for. */}
+                    {hasExerciseImage(ex, 'start') ? (
+                      <ExerciseThumb exercise={ex} />
                     ) : (
                       <div className="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
                         <Dumbbell className="w-4 h-4 text-brand-500" />

@@ -13,6 +13,7 @@ import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore } from '../stores/settings'
 import RestPicker from '../components/RestPicker'
 import ExerciseDemo from '../components/exercise/ExerciseDemo'
+import { hasExerciseImage } from '../utils/exerciseMedia'
 import RestTimerBanner from '../components/RestTimerBanner'
 import ExercisePicker from '../components/ExercisePicker'
 import FeelingPicker from '../components/FeelingPicker'
@@ -245,14 +246,9 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-surface-muted border border-surface-border flex items-center justify-center">
                       <span className={`text-sm font-bold ${done ? 'text-brand-400' : 'text-tx-muted'}`}>{i + 1}</span>
                     </div>
-                    {ex.exercise.image_url ? (
-                      <img src={`/api/v1/exercises/${ex.exercise.id}/image/start`} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 bg-surface-muted"
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
-                        <Dumbbell className="w-4 h-4 text-brand-500" />
-                      </div>
-                    )}
+                    {/* ExerciseDemo handles its own fallbacks, including the
+                        placeholder icon when an exercise has no artwork. */}
+                    <ExerciseDemo exercise={ex.exercise} compact className="w-10 h-10 rounded-xl flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-tx-primary truncate">{ex.exercise.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
@@ -376,7 +372,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
           {/* Hero demo. The highest-value placement for the animation in the
               app: this is the screen you look at while standing over the bar
               deciding how the movement goes. */}
-          {exercise.image_url && (
+          {hasExerciseImage(exercise, 'start') && (
             <ExerciseDemo exercise={exercise} className="w-full h-64" />
           )}
 

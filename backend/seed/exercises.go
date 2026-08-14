@@ -47,17 +47,33 @@ func GetSeedStatus(db *sql.DB) SeedStatus {
 	return SeedStatus{Count: count, InProgress: seeding.Load()}
 }
 
-// Exercises seeds on first run if the table is empty (async to avoid blocking startup).
+// Exercises seeds on first run if the table is empty, and backfills a library
+// that predates a column the seed now populates. Both run in the background so
+// startup isn't blocked on a network fetch.
 func Exercises(db *sql.DB) {
 	var count int
 	db.QueryRow(`SELECT COUNT(*) FROM exercises`).Scan(&count)
-	if count > 0 {
-		log.Printf("seed: %d exercises already in database, skipping sync", count)
+	if count == 0 {
+		log.Println("seed: exercises table empty - syncing from free-exercise-db in background...")
+		go fetchAndStoreAsync(db)
 		return
 	}
 
-	log.Println("seed: exercises table empty - syncing from free-exercise-db in background...")
-	go fetchAndStoreAsync(db)
+	// A library seeded before source_id / image_url_end existed has the rows but
+	// not the data, and the columns only fill in on a sync. Without this, adding
+	// a column to the seed silently degrades every existing install until
+	// somebody finds the admin sync button — which is not a migration, it's a
+	// support ticket. The upsert is keyed on name, so this refreshes in place
+	// and never duplicates.
+	var stale int
+	db.QueryRow(`SELECT COUNT(*) FROM exercises WHERE source_id = ''`).Scan(&stale)
+	if stale > 0 {
+		log.Printf("seed: %d/%d exercises predate the current schema - backfilling in background...", stale, count)
+		go fetchAndStoreAsync(db)
+		return
+	}
+
+	log.Printf("seed: %d exercises already in database, skipping sync", count)
 }
 
 func fetchAndStoreAsync(db *sql.DB) {
