@@ -111,7 +111,18 @@ export default function ExerciseLibraryMigration() {
     }
   }
 
-  if (!status) return null
+  // A failed initial load (most commonly: this account isn't in ADMIN_EMAILS,
+  // so /admin/exercise-migration/status 403s) must still say something —
+  // silently rendering nothing here previously made a real permissions/config
+  // problem indistinguishable from "the feature doesn't exist".
+  if (!status) {
+    return error ? (
+      <div className="py-3 flex items-center gap-2 text-xs text-error-400">
+        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+        {error}
+      </div>
+    ) : null
+  }
 
   return (
     <div className="py-3 space-y-3">
