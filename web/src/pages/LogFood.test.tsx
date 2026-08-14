@@ -24,6 +24,14 @@ vi.mock('../services/api', () => ({
   },
 }))
 
+// The real scanner opens a camera stream, which jsdom has none of. Standing in
+// a button for it keeps the scan → lookup → portion-picker path testable.
+vi.mock('../components/BarcodeScanner', () => ({
+  default: ({ onResult }: { onResult: (code: string) => void }) => (
+    <button onClick={() => onResult('048500018002')}>Simulate scan</button>
+  ),
+}))
+
 import { foodAPI, savedFoodsAPI } from '../services/api'
 
 function renderLogFood(initialPath = '/food/log?meal=breakfast&date=2026-01-01') {
@@ -249,6 +257,67 @@ describe('LogFood portions', () => {
     expect(payload.serving_size_grams).toBe(14)
   })
 
+  it('logs a scanned drink by the half cup, exactly, with no density involved', async () => {
+    // A drink's panel states only millilitres, so before volume units existed
+    // this food had no basis at all and offered nothing but a 0.5-step
+    // multiplier. Cups convert against ml directly — no density, no estimate.
+    ;(foodAPI.barcode as any).mockResolvedValue({
+      name: 'Orange Juice', brand: 'Tropicana',
+      calories: 110, protein: 2, carbs: 26, fat: 0, fiber: 0, sugar: 22, sodium: 0, cholesterol: 0,
+      serving_size: '240 ml', serving_size_grams: 0, serving_size_ml: 240,
+      barcode: '048500018002', source: 'off', label_accurate: true,
+    })
+
+    renderLogFood()
+    fireEvent.click(await screen.findByRole('button', { name: /barcode/i }))
+    fireEvent.click(await screen.findByText('Simulate scan'))
+
+    fireEvent.change(await screen.findByLabelText('Unit'), { target: { value: 'cup' } })
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '0.5' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /log food/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    // Half a cup is 120 of the 240 ml serving — half the macros, precisely.
+    expect(payload.calories).toBeCloseTo(55, 1)
+    expect(payload.carbs).toBeCloseTo(13, 1)
+    expect(payload.servings).toBe(0.5)
+    expect(payload.serving_size).toBe('cup')
+    expect(payload.serving_size_ml).toBe(240)
+    // No mass was ever published for this juice, and an assumed one is not
+    // recorded as though it were the product's own.
+    expect(payload.serving_size_grams).toBe(0)
+  })
+
+  it('offers cups on a mass-based food and says the conversion is an estimate', async () => {
+    ;(foodAPI.search as any).mockResolvedValue([
+      {
+        name: 'All-Purpose Flour', calories: 364, protein: 10, carbs: 76, fat: 1, fiber: 3,
+        serving_size: 'per 100g', serving_size_grams: 100, source: 'fdc',
+      },
+    ])
+
+    renderLogFood()
+    fireEvent.change(await screen.findByPlaceholderText(/search your foods/i), { target: { value: 'flour' } })
+    fireEvent.click(await screen.findByText('All-Purpose Flour'))
+
+    fireEvent.change(await screen.findByLabelText('Unit'), { target: { value: 'cup' } })
+    // Nobody published a density for this flour, so the cup rests on 1 g/ml and
+    // the user is told so rather than shown a confident 240 g.
+    await waitFor(() => expect(screen.getByText(/1 cup ≈ 240 g \(estimated\)/)).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /log food/i }))
+
+    await waitFor(() => expect(foodAPI.log).toHaveBeenCalled())
+    const payload = (foodAPI.log as any).mock.calls[0][0]
+    expect(payload.calories).toBeCloseTo(873.6, 1) // 364 per 100 g × 240 g
+    expect(payload.servings).toBe(1)
+    expect(payload.serving_size).toBe('cup')
+    expect(payload.serving_size_grams).toBe(0) // estimated, so not asserted as fact
+    expect(payload.serving_size_ml).toBe(240)
+  })
+
   it('reopens a logged entry on the unit it was logged with', async () => {
     // The stored trio (servings / serving_size / serving_size_grams) must
     // describe one another, or editing a tbsp of mayo reopens as a fraction of
@@ -335,8 +404,9 @@ describe('LogFood portions', () => {
     // The weight only adds units — the serving option's own mass *is* the basis,
     // so the multiplier stays 1 and the calorie total must not move.
     const unitSelect = await screen.findByLabelText('Unit')
-    await waitFor(() => expect(unitSelect.querySelectorAll('option')).toHaveLength(3))
-    expect([...unitSelect.querySelectorAll('option')].map(o => o.textContent)).toEqual(['1/4 cup', 'g', 'oz'])
+    await waitFor(() => expect(unitSelect.querySelectorAll('option')).toHaveLength(8))
+    expect([...unitSelect.querySelectorAll('option')].map(o => o.textContent))
+      .toEqual(['1/4 cup', 'g', 'oz', 'tsp', 'tbsp', 'fl oz', 'cup', 'ml'])
     expect((screen.getAllByRole('spinbutton')[0] as HTMLInputElement).value).toBe('120')
 
     fireEvent.change(unitSelect, { target: { value: 'g' } })
@@ -365,7 +435,7 @@ describe('LogFood portions', () => {
     fireEvent.change(gramsInput, { target: { value: '30' } })
 
     const unitSelect = await screen.findByLabelText('Unit')
-    await waitFor(() => expect(unitSelect.querySelectorAll('option')).toHaveLength(3))
+    await waitFor(() => expect(unitSelect.querySelectorAll('option')).toHaveLength(8))
     fireEvent.change(unitSelect, { target: { value: 'g' } })
 
     // Clearing the weight destroys the g option the picker is sitting on; the

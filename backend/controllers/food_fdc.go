@@ -179,6 +179,10 @@ func fdcFoodToResult(f fdcFood) models.FoodSearchResult {
 	}
 
 	servingGrams := fdcServingGrams(f.ServingSize, f.ServingSizeUnit)
+	// A drink's declared serving is a volume, not a mass — FDC states "240 mlt"
+	// and nothing else. Reading only the mass left those foods with no basis at
+	// all, so nothing but a bare multiplier could be offered for them.
+	servingML := fdcServingML(f.ServingSize, f.ServingSizeUnit)
 
 	var portions []models.FoodPortion
 	seen := map[string]bool{}
@@ -188,11 +192,19 @@ func fdcFoodToResult(f fdcFood) models.FoodSearchResult {
 			return
 		}
 		seen[strings.ToLower(label)] = true
-		portions = append(portions, models.FoodPortion{Label: label, Grams: grams})
+		// A measure that names a volume ("1 cup", "8 fl oz") pairs its gram
+		// weight with a volume, which is this food's density as USDA measured
+		// it — the client turns that into exact cup and spoon units.
+		portions = append(portions, models.FoodPortion{Label: label, Grams: grams, ML: portionML(label)})
 	}
 
 	// Branded foods carry a single declared serving rather than a measure list.
 	servingLabel := usableServingLabel(tidyHouseholdServing(f.HouseholdServingFullText), servingGrams)
+	if servingLabel == "" && servingML > 0 {
+		// No mass to fall back on, but the volume describes the serving just as
+		// well: "240 ml" beats an unlabelled "1 serving".
+		servingLabel = fmt.Sprintf("%g %s", f.ServingSize, canonicalUnit(f.ServingSizeUnit))
+	}
 	if servingGrams > 0 && servingLabel != "" {
 		addPortion(servingLabel, servingGrams)
 	}
@@ -229,6 +241,7 @@ func fdcFoodToResult(f fdcFood) models.FoodSearchResult {
 			r.ServingSize = "1 serving"
 		}
 		r.ServingSizeGrams = servingGrams
+		r.ServingSizeML = servingML
 		return r
 	}
 

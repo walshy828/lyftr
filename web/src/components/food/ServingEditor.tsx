@@ -4,7 +4,8 @@ import { Pencil } from 'lucide-react'
 interface ServingEditorProps {
   servingSize: string
   servingSizeGrams: number
-  onChange: (servingSize: string, servingSizeGrams: number) => void
+  servingSizeML: number
+  onChange: (servingSize: string, servingSizeGrams: number, servingSizeML: number) => void
   /** 'md' is the compact quick-log layout, 'lg' the full review view. */
   size?: 'md' | 'lg'
 }
@@ -18,10 +19,12 @@ interface ServingEditorProps {
  * logged entry mean something, and supplying its weight unlocks the exact
  * units for free.
  *
- * Weight is optional on purpose. Blank means unknown, which is better than a
- * guessed number — the basis divides into every macro shown after it.
+ * Weight and volume are optional on purpose. Blank means unknown, which is
+ * better than a guessed number — the basis divides into every macro shown after
+ * it. Filling both states this food's density, which upgrades its cup and spoon
+ * units from estimates to exact conversions.
  */
-export default function ServingEditor({ servingSize, servingSizeGrams, onChange, size = 'lg' }: ServingEditorProps) {
+export default function ServingEditor({ servingSize, servingSizeGrams, servingSizeML, onChange, size = 'lg' }: ServingEditorProps) {
   const [open, setOpen] = useState(false)
 
   if (!open) {
@@ -41,33 +44,47 @@ export default function ServingEditor({ servingSize, servingSizeGrams, onChange,
 
   return (
     <div className="space-y-1.5 pt-1">
-      <div className="grid grid-cols-[1fr_auto] gap-2.5">
+      <div>
+        <label className="label mb-1.5 block">1 serving is</label>
+        <input
+          type="text"
+          value={servingSize}
+          onChange={e => onChange(e.target.value, servingSizeGrams, servingSizeML)}
+          placeholder="e.g. 1/4 cup"
+          maxLength={100}
+          aria-label="Serving size"
+          className={`input w-full ${inputHeight}`}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2.5">
         <div>
-          <label className="label mb-1.5 block">1 serving is</label>
-          <input
-            type="text"
-            value={servingSize}
-            onChange={e => onChange(e.target.value, servingSizeGrams)}
-            placeholder="e.g. 1/4 cup"
-            maxLength={100}
-            aria-label="Serving size"
-            className={`input w-full ${inputHeight}`}
-          />
-        </div>
-        <div className="w-24">
           <label className="label mb-1.5 block">Weight (g)</label>
           <input
             type="number"
             value={servingSizeGrams || ''}
-            onChange={e => onChange(servingSize, Math.max(0, Number(e.target.value) || 0))}
+            onChange={e => onChange(servingSize, Math.max(0, Number(e.target.value) || 0), servingSizeML)}
             placeholder="—"
             min={0}
             aria-label="Serving weight in grams"
             className={`input w-full tabular-nums ${inputHeight}`}
           />
         </div>
+        <div>
+          <label className="label mb-1.5 block">Volume (ml)</label>
+          <input
+            type="number"
+            value={servingSizeML || ''}
+            onChange={e => onChange(servingSize, servingSizeGrams, Math.max(0, Number(e.target.value) || 0))}
+            placeholder="—"
+            min={0}
+            aria-label="Serving volume in millilitres"
+            className={`input w-full tabular-nums ${inputHeight}`}
+          />
+        </div>
       </div>
-      <p className="text-xs text-tx-muted">Weight is optional — adding it lets you log by g or oz.</p>
+      <p className="text-xs text-tx-muted">
+        Both optional — either one unlocks the unit picker, and filling both makes cups and spoons exact for this food.
+      </p>
     </div>
   )
 }

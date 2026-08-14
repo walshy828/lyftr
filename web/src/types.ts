@@ -278,6 +278,8 @@ export interface FoodLog {
   serving_size?: string
   /** Mass of one serving in grams; 0/undefined means unknown or not mass-based. */
   serving_size_grams?: number
+  /** Volume of one serving in ml, for foods measured by volume rather than mass. */
+  serving_size_ml?: number
   barcode?: string
   image_url?: string
   source?: 'off' | 'fdc' | 'saved' | 'manual' | 'photo' | 'ai'
@@ -311,6 +313,12 @@ export interface DailyStats {
 export interface FoodPortion {
   label: string
   grams: number
+  /**
+   * The volume the label names, when it names one — the 15 in "1 tbsp". A
+   * portion carrying both numbers is this food's published density, which is
+   * what makes cups and spoons exact units for it rather than estimates.
+   */
+  ml?: number
 }
 
 /**
@@ -334,6 +342,8 @@ export interface FoodSearchResult {
   serving_size: string
   /** Mass the quoted nutrition numbers describe; 0/undefined means unknown. */
   serving_size_grams?: number
+  /** Volume those same numbers describe, for volume-based foods; 0 = unknown. */
+  serving_size_ml?: number
   portions?: FoodPortion[]
   image_url?: string
   source: 'off' | 'fdc' | 'saved' | 'manual' | 'photo' | 'ai'
@@ -407,6 +417,7 @@ export interface SavedFood {
   cholesterol?: number
   serving_size: string
   serving_size_grams?: number
+  serving_size_ml?: number
   barcode?: string
   image_url?: string
 }

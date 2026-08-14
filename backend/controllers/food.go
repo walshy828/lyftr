@@ -291,6 +291,36 @@ type offProduct struct {
 	Nutriments  offNutrients `json:"nutriments"`
 	ServingSize string       `json:"serving_size"`
 	ImageURL    string       `json:"image_url"`
+
+	// ServingQuantity is OFF's parsed numeric form of serving_size, in the unit
+	// named by ServingQuantityUnit ("g" or "ml"). It is frequently populated for
+	// products whose free-text serving_size we can't read — "1 bouteille",
+	// "environ 3 biscuits" — so it recovers a basis the text alone would lose.
+	ServingQuantity     offNumber `json:"serving_quantity"`
+	ServingQuantityUnit string    `json:"serving_quantity_unit"`
+}
+
+// offNumber accepts a JSON number or a numeric string. Open Food Facts is
+// contributor-populated and types the same field either way depending on how
+// the record was written, so a plain float64 silently fails to unmarshal the
+// whole product on the string form.
+type offNumber float64
+
+func (n *offNumber) UnmarshalJSON(b []byte) error {
+	var f float64
+	if err := json.Unmarshal(b, &f); err == nil {
+		*n = offNumber(f)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		// Anything else (null, an object) just means "not stated".
+		return nil
+	}
+	if parsed, err := strconv.ParseFloat(strings.TrimSpace(s), 64); err == nil {
+		*n = offNumber(parsed)
+	}
+	return nil
 }
 
 type offNutrients struct {
@@ -330,7 +360,7 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 	useServing := p.Nutriments.EnergyKcalServing > 0 && strings.TrimSpace(p.ServingSize) != ""
 	var cal, pro, carb, fat, fiber, sugar, sodium, cholesterol float64
 	var servingLabel string
-	var servingGrams float64
+	var servingGrams, servingML float64
 	var portions []models.FoodPortion
 	if useServing {
 		cal = p.Nutriments.EnergyKcalServing
@@ -342,13 +372,14 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		sodium = offGramsToMg(p.Nutriments.SodiumServing)
 		cholesterol = offGramsToMg(p.Nutriments.CholesterolServing)
 		servingLabel = p.ServingSize
-		// OFF serving_size is free text ("30 g (2 tbsp)"). Recover a gram basis
-		// where we can, and surface the household measure it names — that's the
-		// only portion data OFF carries.
-		mass, measure := parseServingMass(p.ServingSize)
-		servingGrams = mass
-		if measure != "" && mass > 0 {
-			portions = append(portions, models.FoodPortion{Label: measure, Grams: mass})
+		// OFF serving_size is free text ("30 g (2 tbsp)", "1 cup (240 ml)").
+		// Recover whichever basis it states — mass, volume, or both — and
+		// surface the household measure it names, the only portion data OFF
+		// carries.
+		mass, ml, measure := parseServingSize(p.ServingSize)
+		servingGrams, servingML = mass, ml
+		if measure != "" && (mass > 0 || ml > 0) {
+			portions = append(portions, models.FoodPortion{Label: measure, Grams: mass, ML: portionML(measure)})
 		}
 	} else {
 		cal = p.Nutriments.EnergyKcal100g
@@ -362,9 +393,28 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		servingLabel = "per 100g"
 		servingGrams = 100
 		// The label OFF couldn't attach to per-serving numbers may still name a
-		// mass we can offer as a portion — e.g. "15 g" on a condiment.
-		if mass, _ := parseServingMass(p.ServingSize); mass > 0 {
-			portions = append(portions, models.FoodPortion{Label: strings.TrimSpace(p.ServingSize), Grams: mass})
+		// portion — "15 g" on a condiment, "240 ml" on a drink. The mass form
+		// converts against the 100 g basis directly; the volume form needs this
+		// food's density, which the pair of numbers supplies when it has both.
+		if mass, ml, _ := parseServingSize(p.ServingSize); mass > 0 || ml > 0 {
+			portions = append(portions, models.FoodPortion{Label: strings.TrimSpace(p.ServingSize), Grams: mass, ML: ml})
+		}
+	}
+
+	// serving_quantity is OFF's own parse of the serving into a plain number.
+	// It fills the gap left by a serving_size we couldn't read at all — a
+	// "1 bouteille" whose serving_quantity is 500 ml — and never overrides a
+	// basis the label itself stated.
+	if q := float64(p.ServingQuantity); q > 0 {
+		switch canonicalUnit(p.ServingQuantityUnit) {
+		case "g":
+			if useServing && servingGrams == 0 {
+				servingGrams = q
+			}
+		case "ml":
+			if useServing && servingML == 0 {
+				servingML = q
+			}
 		}
 	}
 
@@ -381,6 +431,7 @@ func offProductToResult(p offProduct) models.FoodSearchResult {
 		Cholesterol:      cholesterol,
 		ServingSize:      servingLabel,
 		ServingSizeGrams: servingGrams,
+		ServingSizeML:    servingML,
 		Portions:         portions,
 		ImageURL:         imageURL,
 		Barcode:          strings.TrimSpace(p.Code),
@@ -529,7 +580,7 @@ func searchOFF(ctx context.Context, q string, limit int) ([]models.FoodSearchRes
 	// recipes, different labels, and no way for the user to tell them apart in
 	// a result list. The US label is the one on the box in their kitchen.
 	searchURL := fmt.Sprintf(
-		"https://search.openfoodfacts.org/search?q=%s&lang=en&cc=us&page_size=%d&page=1&fields=code,product_name,brands,nutriments,serving_size,image_url",
+		"https://search.openfoodfacts.org/search?q=%s&lang=en&cc=us&page_size=%d&page=1&fields=code,product_name,brands,nutriments,serving_size,serving_quantity,serving_quantity_unit,image_url",
 		url.QueryEscape(q+` countries_tags:"en:united-states"`), limit,
 	)
 	// The query itself is not logged: it's a record of what the user eats, and
@@ -900,6 +951,7 @@ func savedFoodFromLog(l models.FoodLog) models.SaveFoodRequest {
 		Cholesterol:      div(l.Cholesterol),
 		ServingSize:      l.ServingSize,
 		ServingSizeGrams: l.ServingSizeGrams,
+		ServingSizeML:    l.ServingSizeML,
 		Barcode:          l.Barcode,
 		ImageURL:         l.ImageURL,
 	}

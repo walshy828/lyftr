@@ -344,12 +344,16 @@ type FoodLog struct {
 	// ServingSizeGrams is the mass of one serving, so re-opening this entry can
 	// restore the amount/unit picker instead of falling back to a bare
 	// multiplier. 0 means unknown or not mass-based.
-	ServingSizeGrams float64   `json:"serving_size_grams" db:"serving_size_grams"`
-	Barcode          string    `json:"barcode,omitempty" db:"barcode"`
-	ImageURL         string    `json:"image_url,omitempty" db:"image_url"`
-	Source           string    `json:"source,omitempty" db:"source"` // "off" | "fdc" | "saved" | "manual" | "photo" | "ai"
-	LoggedAt         time.Time `json:"logged_at" db:"logged_at"`
-	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+	ServingSizeGrams float64 `json:"serving_size_grams" db:"serving_size_grams"`
+	// ServingSizeML is the same for volume, and is how a liquid logged by the
+	// cup or fluid ounce reopens on that unit. Foods normally carry one basis or
+	// the other; both are set only when the source stated both. 0 = unknown.
+	ServingSizeML float64   `json:"serving_size_ml" db:"serving_size_ml"`
+	Barcode       string    `json:"barcode,omitempty" db:"barcode"`
+	ImageURL      string    `json:"image_url,omitempty" db:"image_url"`
+	Source        string    `json:"source,omitempty" db:"source"` // "off" | "fdc" | "saved" | "manual" | "photo" | "ai"
+	LoggedAt      time.Time `json:"logged_at" db:"logged_at"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
 // RecentFood is a food the user logs often: the most-recent logged entry for a
@@ -375,6 +379,7 @@ type SavedFood struct {
 	Cholesterol      float64   `json:"cholesterol" db:"cholesterol"`
 	ServingSize      string    `json:"serving_size" db:"serving_size"`
 	ServingSizeGrams float64   `json:"serving_size_grams" db:"serving_size_grams"`
+	ServingSizeML    float64   `json:"serving_size_ml" db:"serving_size_ml"`
 	Barcode          string    `json:"barcode,omitempty" db:"barcode"`
 	ImageURL         string    `json:"image_url,omitempty" db:"image_url"`
 	CreatedAt        time.Time `json:"created_at" db:"created_at"`
@@ -388,6 +393,11 @@ type SavedFood struct {
 type FoodPortion struct {
 	Label string  `json:"label"`
 	Grams float64 `json:"grams"`
+	// ML is the volume the label names, when it names one — the 15 in
+	// "1 tbsp". A portion carrying both is this food's published density, which
+	// is what lets the client offer cups and spoons as exact units for it
+	// instead of falling back to an assumed 1 g/ml.
+	ML float64 `json:"ml,omitempty"`
 }
 
 type FoodSearchResult struct {
@@ -404,10 +414,13 @@ type FoodSearchResult struct {
 	ServingSize string  `json:"serving_size"`
 	// ServingSizeGrams is the mass the quoted nutrition numbers represent, so
 	// the client can rescale to any amount exactly. 0 = unknown/not mass-based.
-	ServingSizeGrams float64       `json:"serving_size_grams,omitempty"`
-	Portions         []FoodPortion `json:"portions,omitempty"`
-	ImageURL         string        `json:"image_url,omitempty"`
-	Source           string        `json:"source"` // "off" | "fdc" | "saved" | "manual" | "photo"
+	ServingSizeGrams float64 `json:"serving_size_grams,omitempty"`
+	// ServingSizeML is the volume those same numbers represent, for foods
+	// measured by volume rather than mass. 0 = unknown/not volume-based.
+	ServingSizeML float64       `json:"serving_size_ml,omitempty"`
+	Portions      []FoodPortion `json:"portions,omitempty"`
+	ImageURL      string        `json:"image_url,omitempty"`
+	Source        string        `json:"source"` // "off" | "fdc" | "saved" | "manual" | "photo"
 
 	// LabelAccurate marks a result whose numbers came off a real Nutrition
 	// Facts panel — USDA Branded labelNutrients, or an Open Food Facts record
@@ -1014,6 +1027,7 @@ type LogFoodRequest struct {
 	Servings         float64   `json:"servings" validate:"gte=0"`
 	ServingSize      string    `json:"serving_size"`
 	ServingSizeGrams float64   `json:"serving_size_grams" validate:"gte=0"`
+	ServingSizeML    float64   `json:"serving_size_ml" validate:"gte=0"`
 	Barcode          string    `json:"barcode"`
 	ImageURL         string    `json:"image_url"`
 	Source           string    `json:"source" validate:"omitempty,oneof=off fdc manual photo saved ai"`
@@ -1053,6 +1067,7 @@ type SaveFoodRequest struct {
 	Cholesterol      float64 `json:"cholesterol" validate:"gte=0"`
 	ServingSize      string  `json:"serving_size"`
 	ServingSizeGrams float64 `json:"serving_size_grams" validate:"gte=0"`
+	ServingSizeML    float64 `json:"serving_size_ml" validate:"gte=0"`
 	Barcode          string  `json:"barcode"`
 	ImageURL         string  `json:"image_url"`
 }
@@ -1070,6 +1085,7 @@ type UpdateSavedFoodRequest struct {
 	Cholesterol      float64 `json:"cholesterol" validate:"gte=0"`
 	ServingSize      string  `json:"serving_size"`
 	ServingSizeGrams float64 `json:"serving_size_grams" validate:"gte=0"`
+	ServingSizeML    float64 `json:"serving_size_ml" validate:"gte=0"`
 	Barcode          string  `json:"barcode"`
 	ImageURL         string  `json:"image_url"`
 }

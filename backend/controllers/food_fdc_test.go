@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,6 +74,151 @@ func TestParseServingMass(t *testing.T) {
 		if measure != tc.wantMeasure {
 			t.Errorf("parseServingMass(%q) measure = %q, want %q", tc.in, measure, tc.wantMeasure)
 		}
+	}
+}
+
+func TestParseLeadingVolume(t *testing.T) {
+	cases := []struct {
+		in   string
+		want float64
+	}{
+		{"240 ml", 240},
+		{"1 cup", 240},
+		{"2 tbsp", 30},
+		{"1/2 cup", 120}, // household measures are written in fractions
+		{"8 fl oz", 240},
+		{"8 fl. oz", 240},
+		{"1 fluid ounce", 30},
+		{"1 l", 1000},
+		{"30 g", 0},       // mass, not volume
+		{"1.5 oz", 0},     // a dry ounce is a mass; only "fl oz" is a volume
+		{"", 0},           // empty
+		{"1 bottle", 0},   // unparseable
+		{"0 ml", 0},       // zero is not a usable basis
+		{"1 cupboard", 0}, // must not match "cup" inside a longer word
+	}
+
+	for _, tc := range cases {
+		got, _ := parseLeadingVolume(tc.in)
+		if diff := got - tc.want; diff > 0.0001 || diff < -0.0001 {
+			t.Errorf("parseLeadingVolume(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestParseServingSize(t *testing.T) {
+	cases := []struct {
+		in          string
+		wantGrams   float64
+		wantML      float64
+		wantMeasure string
+	}{
+		// The density case: one serving stated in both dimensions, and the
+		// parenthetical is a measure name as well as a volume.
+		{"14 g (1 tbsp)", 14, 15, "1 tbsp"},
+		{"30 g (2 tbsp)", 30, 30, "2 tbsp"},
+		// A drink: volume only, and the parenthetical merely restates it.
+		{"1 cup (240 ml)", 0, 240, ""},
+		{"240 ml", 0, 240, ""},
+		// Mass only, exactly as before.
+		{"45g", 45, 0, ""},
+		{"28 g (28 g)", 28, 0, ""},
+		// A measure we can't convert at all is still worth naming.
+		{"1 bar (2 pieces)", 0, 0, "2 pieces"},
+		{"", 0, 0, ""},
+	}
+
+	for _, tc := range cases {
+		grams, ml, measure := parseServingSize(tc.in)
+		if diff := grams - tc.wantGrams; diff > 0.0001 || diff < -0.0001 {
+			t.Errorf("parseServingSize(%q) grams = %v, want %v", tc.in, grams, tc.wantGrams)
+		}
+		if diff := ml - tc.wantML; diff > 0.0001 || diff < -0.0001 {
+			t.Errorf("parseServingSize(%q) ml = %v, want %v", tc.in, ml, tc.wantML)
+		}
+		if measure != tc.wantMeasure {
+			t.Errorf("parseServingSize(%q) measure = %q, want %q", tc.in, measure, tc.wantMeasure)
+		}
+	}
+}
+
+func TestFdcServingML(t *testing.T) {
+	cases := []struct {
+		size float64
+		unit string
+		want float64
+	}{
+		{240, "MLT", 240}, // FDC's UN/CEFACT code for millilitres
+		{240, "ml", 240},
+		{1, "LTR", 1000},
+		{20, "g", 0}, // mass: no volume without a density
+		{0, "ml", 0},
+		{20, "widgets", 0},
+	}
+	for _, tc := range cases {
+		got := fdcServingML(tc.size, tc.unit)
+		if diff := got - tc.want; diff > 0.0001 || diff < -0.0001 {
+			t.Errorf("fdcServingML(%v, %q) = %v, want %v", tc.size, tc.unit, got, tc.want)
+		}
+	}
+}
+
+func TestOffProductToResult_volumeServingKeepsMLBasis(t *testing.T) {
+	// The motivating case for volume support: a drink whose panel states only
+	// millilitres. Before, this produced no basis at all and the client could
+	// offer nothing but a bare servings multiplier.
+	p := offProduct{
+		ProductName: "Orange Juice",
+		ServingSize: "240 ml",
+		Nutriments:  offNutrients{EnergyKcalServing: 110},
+	}
+	got := offProductToResult(p)
+
+	if got.ServingSizeML != 240 {
+		t.Errorf("serving_size_ml = %v, want 240", got.ServingSizeML)
+	}
+	if got.ServingSizeGrams != 0 {
+		t.Errorf("serving_size_grams = %v, want 0 — no density was published", got.ServingSizeGrams)
+	}
+}
+
+func TestOffProductToResult_servingQuantityRecoversAnUnreadableLabel(t *testing.T) {
+	// serving_size is free text OFF contributors write in any language; when we
+	// can't read it, OFF's own parse of it often still says how much a serving
+	// is. Without this the product has no basis at all.
+	p := offProduct{
+		ProductName:         "Limonade",
+		ServingSize:         "1 bouteille",
+		ServingQuantity:     500,
+		ServingQuantityUnit: "ml",
+		Nutriments:          offNutrients{EnergyKcalServing: 210},
+	}
+	got := offProductToResult(p)
+
+	if got.ServingSizeML != 500 {
+		t.Errorf("serving_size_ml = %v, want 500", got.ServingSizeML)
+	}
+}
+
+func TestOffNumber_acceptsStringOrNumber(t *testing.T) {
+	// OFF types the same field either way depending on how the record was
+	// written; a plain float64 fails the whole product on the string form.
+	var p offProduct
+	if err := json.Unmarshal([]byte(`{"serving_quantity":"30"}`), &p); err != nil {
+		t.Fatalf("unmarshal string form: %v", err)
+	}
+	if p.ServingQuantity != 30 {
+		t.Errorf("serving_quantity = %v, want 30", p.ServingQuantity)
+	}
+	if err := json.Unmarshal([]byte(`{"serving_quantity":30}`), &p); err != nil {
+		t.Fatalf("unmarshal number form: %v", err)
+	}
+	if p.ServingQuantity != 30 {
+		t.Errorf("serving_quantity = %v, want 30", p.ServingQuantity)
+	}
+	// Junk must not fail the product — it just means "not stated".
+	if err := json.Unmarshal([]byte(`{"serving_quantity":"about a cup"}`), &p); err != nil {
+		t.Fatalf("unmarshal junk form: %v", err)
 	}
 }
 
@@ -230,6 +376,14 @@ func TestFdcFoodToResult_volumeServingGivesNoGramBasis(t *testing.T) {
 
 	if got.ServingSizeGrams != 0 {
 		t.Errorf("serving_size_grams = %v, want 0 for a volume serving", got.ServingSizeGrams)
+	}
+	// The volume, though, is a perfectly good basis: cups and fluid ounces
+	// convert against it exactly, no density anywhere in the arithmetic.
+	if got.ServingSizeML != 240 {
+		t.Errorf("serving_size_ml = %v, want 240", got.ServingSizeML)
+	}
+	if got.ServingSize != "240 ml" {
+		t.Errorf("serving size = %q, want %q", got.ServingSize, "240 ml")
 	}
 	if len(got.Portions) != 0 {
 		t.Errorf("portions = %+v, want none for a volume serving", got.Portions)

@@ -12,7 +12,7 @@ import { MACRO_COLORS } from '../utils/macroColors'
 import { filterFoods, normalizeFoodName } from '../utils/foodMatch'
 import {
   buildUnitOptions, findUnit, amountToServings, formatServingLabel,
-  matchUnitForLabel, SERVING_UNIT_ID, type UnitOption,
+  matchUnitForLabel, portionBasis, SERVING_UNIT_ID, type UnitOption,
 } from '../utils/portions'
 import BarcodeScanner from '../components/BarcodeScanner'
 import NutritionLabelCamera from '../components/NutritionLabelCamera'
@@ -76,6 +76,7 @@ function entryToResult(e: types.FoodLog): types.FoodSearchResult {
     cholesterol: (e.cholesterol ?? 0) / s,
     serving_size: e.serving_size ?? '',
     serving_size_grams: e.serving_size_grams,
+    serving_size_ml: e.serving_size_ml,
     image_url: e.image_url,
     barcode: e.barcode,
     // label_accurate is deliberately not inferred here: a stored entry records
@@ -92,6 +93,7 @@ function savedToResult(s: types.SavedFood): types.FoodSearchResult {
     fat: s.fat, fiber: s.fiber, sugar: s.sugar, sodium: s.sodium, cholesterol: s.cholesterol,
     serving_size: s.serving_size,
     serving_size_grams: s.serving_size_grams,
+    serving_size_ml: s.serving_size_ml,
     image_url: s.image_url, source: 'saved',
   }
 }
@@ -113,12 +115,19 @@ function manualResult(name = ''): types.FoodSearchResult {
  */
 function initPortion(result: types.FoodSearchResult, servings: number): { amount: number; unitId: string } {
   const options = buildUnitOptions(result)
-  const basis = result.serving_size_grams ?? 0
-  if (basis <= 0) return { amount: servings, unitId: SERVING_UNIT_ID }
+  const basis = portionBasis(result)
+  if (basis.grams <= 0 && basis.ml <= 0) return { amount: servings, unitId: SERVING_UNIT_ID }
 
   const unit = matchUnitForLabel(options, result.serving_size)
   if (unit.id === SERVING_UNIT_ID) return { amount: servings, unitId: SERVING_UNIT_ID }
-  return { amount: +((servings * basis) / unit.grams).toFixed(2), unitId: unit.id }
+  // Invert amountToServings in whichever dimension the unit and basis share, so
+  // a drink logged in cups reopens on cups rather than routing through a mass
+  // it may not even have.
+  const perUnit = basis.ml > 0 && (unit.ml ?? 0) > 0
+    ? (unit.ml as number) / basis.ml
+    : unit.grams / basis.grams
+  if (!(perUnit > 0)) return { amount: servings, unitId: SERVING_UNIT_ID }
+  return { amount: +(servings / perUnit).toFixed(2), unitId: unit.id }
 }
 
 /** Divider naming where the rows beneath it came from. */
@@ -468,7 +477,11 @@ export default function LogFood() {
         // exactly what was eaten either way.
         servings: amount,
         serving_size: unit.id === SERVING_UNIT_ID ? (selected.serving_size ?? '') : unit.label,
-        serving_size_grams: unit.grams,
+        // An estimated gram weight is not recorded as if it were a fact: the
+        // volume it came from is exact and reopens the entry on the same unit,
+        // so nothing is lost by leaving the mass unknown.
+        serving_size_grams: unit.gramsEstimated ? 0 : unit.grams,
+        serving_size_ml: unit.ml ?? 0,
         image_url: selected.image_url ?? '',
         // Carrying the scanned code through means a logged entry can be matched
         // back to its product later — barcode was previously always empty,
@@ -488,6 +501,7 @@ export default function LogFood() {
             carbs: selected.carbs, fat: selected.fat, fiber: selected.fiber ?? 0,
             serving_size: selected.serving_size ?? '',
             serving_size_grams: selected.serving_size_grams ?? 0,
+            serving_size_ml: selected.serving_size_ml ?? 0,
             barcode: selected.barcode ?? '',
             image_url: capturedImageUrl,
           }).catch(() => {})
@@ -523,6 +537,12 @@ export default function LogFood() {
   // only the control the user drives it with has changed.
   const unitOptions: UnitOption[] = useMemo(
     () => selected ? buildUnitOptions(selected) : [{ id: SERVING_UNIT_ID, label: '1 serving', grams: 0 }],
+    [selected],
+  )
+  // What one basis of this food is, in grams and ml — the divisor behind every
+  // macro shown below.
+  const basis = useMemo(
+    () => selected ? portionBasis(selected) : { grams: 0, ml: 0, estimated: false },
     [selected],
   )
 
@@ -564,15 +584,15 @@ export default function LogFood() {
   }
 
   const unit = findUnit(unitOptions, unitId)
-  const servings = amountToServings(amount, unit, selected?.serving_size_grams ?? 0)
+  const servings = amountToServings(amount, unit, basis)
 
   const setPortion = (nextAmount: number, nextUnitId: string) => {
     setAmount(nextAmount)
     setUnitId(nextUnitId)
   }
 
-  const setServing = (serving_size: string, serving_size_grams: number) => {
-    setSelected(s => s && ({ ...s, serving_size, serving_size_grams }))
+  const setServing = (serving_size: string, serving_size_grams: number, serving_size_ml: number) => {
+    setSelected(s => s && ({ ...s, serving_size, serving_size_grams, serving_size_ml }))
   }
 
   const cal = selected ? Math.round(selected.calories * servings) : 0
@@ -983,6 +1003,7 @@ export default function LogFood() {
             <ServingEditor
               servingSize={selected.serving_size ?? ''}
               servingSizeGrams={selected.serving_size_grams ?? 0}
+              servingSizeML={selected.serving_size_ml ?? 0}
               onChange={setServing}
               size="lg"
             />
@@ -1091,6 +1112,7 @@ export default function LogFood() {
             <ServingEditor
               servingSize={selected.serving_size ?? ''}
               servingSizeGrams={selected.serving_size_grams ?? 0}
+              servingSizeML={selected.serving_size_ml ?? 0}
               onChange={setServing}
               size="md"
             />

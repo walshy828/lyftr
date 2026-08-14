@@ -84,6 +84,12 @@ func alterMigrations() {
 	ensureColumn("food_logs", "serving_size_grams", `ALTER TABLE food_logs ADD COLUMN serving_size_grams REAL NOT NULL DEFAULT 0`)
 	ensureColumn("saved_foods", "serving_size_grams", `ALTER TABLE saved_foods ADD COLUMN serving_size_grams REAL NOT NULL DEFAULT 0`)
 
+	// The same for volume, so a drink logged as "1 cup" reopens on cups. A food
+	// measured by volume has no mass basis at all — its panel states only ml —
+	// so the gram column above cannot stand in for this one.
+	ensureColumn("food_logs", "serving_size_ml", `ALTER TABLE food_logs ADD COLUMN serving_size_ml REAL NOT NULL DEFAULT 0`)
+	ensureColumn("saved_foods", "serving_size_ml", `ALTER TABLE saved_foods ADD COLUMN serving_size_ml REAL NOT NULL DEFAULT 0`)
+
 	// Food preferences for the AI meal recommender (#mealRecommend): free-text
 	// comma lists fed into the recommendation prompt. Allergies are treated as
 	// a hard exclusion, dislikes/likes as soft taste signals.

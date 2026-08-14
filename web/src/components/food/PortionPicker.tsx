@@ -24,9 +24,11 @@ export default function PortionPicker({ options, amount, unitId, onChange, size 
   const hint = formatUnitHint(unit)
   const totalGrams = amountToGrams(amount, unit)
 
-  // Grams tick in useful increments; servings and household measures in halves.
-  const step = unit.id === 'g' ? 5 : unit.id === 'oz' ? 0.5 : 0.5
-  const min = unit.id === 'g' ? 1 : 0.5
+  // Grams and millilitres tick in useful increments; cups get quarters, since
+  // a quarter cup is a measuring cup people own and half a step of 0.5 isn't
+  // reachable from the stepper at all. Everything else moves in halves.
+  const step = unit.id === 'g' || unit.id === 'ml' ? 5 : unit.id === 'cup' ? 0.25 : 0.5
+  const min = unit.id === 'g' || unit.id === 'ml' ? 1 : unit.id === 'cup' ? 0.25 : 0.5
 
   const bump = (delta: number) => {
     const next = Math.max(min, +(amount + delta).toFixed(2))
@@ -77,10 +79,13 @@ export default function PortionPicker({ options, amount, unitId, onChange, size 
       </div>
 
       {(hint || totalGrams > 0) && (
-        <p className="text-xs text-tx-muted tabular-nums">
+        // An estimated conversion is tinted, not just worded: it's the one cue
+        // that the gram figure — and so every macro above it — is our
+        // arithmetic on an assumed 1 g/ml rather than the product's own label.
+        <p className={`text-xs tabular-nums ${unit.estimated ? 'text-amber-400/90' : 'text-tx-muted'}`}>
           {hint}
           {hint && totalGrams > 0 && <span className="mx-1.5">·</span>}
-          {totalGrams > 0 && <span>{Math.round(totalGrams)} g total</span>}
+          {totalGrams > 0 && <span>{unit.gramsEstimated ? '≈' : ''}{Math.round(totalGrams)} g total</span>}
         </p>
       )}
     </div>
