@@ -22,8 +22,21 @@ function cardioSummary(set: types.Set, unit: string): string {
   return parts.join(' · ') || '—'
 }
 
-function SetChip({ set, isBest, unit }: { set: types.Set; isBest: boolean; unit: string }) {
+function SetChip({ set, isBest, unit, effortScale }: {
+  set: types.Set
+  isBest: boolean
+  unit: string
+  effortScale: types.UserSettings['track_effort']
+}) {
   const skipped = set.completed === false
+  // Effort is always stored on the RPE scale; render it back on whichever
+  // scale the user reads in, so a set rated as "2 in reserve" doesn't come
+  // back as "8".
+  const effort = set.rpe && set.rpe > 0 && effortScale
+    ? effortScale === 'rir'
+      ? `${+(10 - set.rpe).toFixed(1)} RIR`
+      : `RPE ${+set.rpe.toFixed(1)}`
+    : null
   return (
     <div className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold tabular-nums leading-none flex items-center gap-1 ${
       skipped
@@ -33,6 +46,7 @@ function SetChip({ set, isBest, unit }: { set: types.Set; isBest: boolean; unit:
         : 'bg-surface-raised text-tx-secondary'
     }`}>
       {set.reps > 0 ? set.reps : '—'} × {set.weight > 0 ? `${displayWeight(set.weight, unit)} ${unit}` : 'BW'}
+      {effort && <span className="font-normal text-tx-muted">· {effort}</span>}
       {skipped && <span className="font-normal">· skipped</span>}
     </div>
   )
@@ -277,7 +291,13 @@ export default function WorkoutDetail() {
                 <div className="flex items-center gap-2 px-4 pb-4 pt-3 border-t border-surface-border/50">
                   <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
                     {sets.map((set, i) => (
-                      <SetChip key={i} set={set} isBest={set.weight === maxWeightLbs && maxWeightLbs > 0} unit={wUnit} />
+                      <SetChip
+                        key={i}
+                        set={set}
+                        isBest={set.weight === maxWeightLbs && maxWeightLbs > 0}
+                        unit={wUnit}
+                        effortScale={settings.track_effort}
+                      />
                     ))}
                   </div>
                   {restOn && (ex.rest_seconds === 0

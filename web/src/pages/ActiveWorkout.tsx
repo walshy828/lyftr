@@ -15,6 +15,7 @@ import { workoutAPI } from '../services/api'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
 import { isCardio } from '../utils/workoutSets'
+import EffortPicker from '../components/EffortPicker'
 
 function ExerciseNotes({ exIdx, notes, onSave }: { exIdx: number; notes: string; onSave: (i: number, v: string) => void }) {
   const [editing, setEditing] = useState(false)
@@ -61,10 +62,12 @@ function formatElapsed(seconds: number) {
 
 export default function ActiveWorkout() {
   const navigate = useNavigate()
-  const { session, updateSet, updateExerciseNotes, completeSet, addSet, removeSet, removeExercise, addExercise, buildPayload, cancelSession, openGym } =
+  const { session, updateSet, updateExerciseNotes, completeSet, setEffort, addSet, removeSet, removeExercise, addExercise, buildPayload, cancelSession, openGym } =
     useWorkoutSession()
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
+  // '' (off) is the default, so this is null for anyone who hasn't opted in.
+  const effortScale = settings.track_effort || null
 
   const [elapsed, setElapsed] = useState(0)
   const [confirmCancel, setConfirmCancel] = useState(false)
@@ -346,8 +349,8 @@ export default function ActiveWorkout() {
                   {!cardio && ex.sets.map((set, setIdx) => {
                     const isNextSet = isActive && !set.completed && ex.sets.slice(0, setIdx).every(s => s.completed)
                     return (
+                      <div key={setIdx} className="space-y-1">
                       <div
-                        key={setIdx}
                         className={`grid grid-cols-[2rem_1fr_1fr_3.5rem_2rem] gap-2 items-stretch rounded-xl border transition-all duration-200 ${
                           set.completed
                             ? 'bg-brand-500/10 border-brand-500/20'
@@ -408,6 +411,20 @@ export default function ActiveWorkout() {
                         >
                           <X className="w-3.5 h-3.5 text-tx-muted/40 group-hover/del:text-error-400 transition-colors" />
                         </button>
+                      </div>
+
+                      {/* Effort rating, only once the set is done — asking how
+                          hard a set was before it's been performed makes no
+                          sense, and it keeps the row uncluttered while lifting. */}
+                      {effortScale && set.completed && (
+                        <div className="pl-2 pb-1">
+                          <EffortPicker
+                            scale={effortScale}
+                            value={set.rpe}
+                            onChange={stored => setEffort(exIdx, setIdx, stored)}
+                          />
+                        </div>
+                      )}
                       </div>
                     )
                   })}

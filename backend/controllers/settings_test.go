@@ -186,3 +186,66 @@ func TestUpdateSettings_explicitZeroRespected(t *testing.T) {
 	assertNum(t, d, "carb_target", 250)
 	assertNum(t, d, "fat_target", 65)
 }
+
+func TestUpdateSettings_trackEffort(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	// Off by default: sets.rpe has always existed, but capture is opt-in.
+	c, w := newContext(uid, http.MethodGet, "/api/v1/settings", nil)
+	th.GetSettings(c)
+	if got := settingsData(t, w)["track_effort"]; got != "" {
+		t.Fatalf("expected effort tracking off by default, got %v", got)
+	}
+
+	for _, scale := range []string{"rpe", "rir"} {
+		c, w := newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"track_effort": scale})
+		th.UpdateSettings(c)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d: %s", scale, w.Code, w.Body.String())
+		}
+		if got := settingsData(t, w)["track_effort"]; got != scale {
+			t.Errorf("expected track_effort %q, got %v", scale, got)
+		}
+	}
+
+	// "" is a real value — turning the feature back off — not an absent field.
+	// A naive `omitempty,oneof` tag would reject exactly this request.
+	c, w = newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"track_effort": ""})
+	th.UpdateSettings(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("turning effort tracking off must be accepted, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := settingsData(t, w)["track_effort"]; got != "" {
+		t.Errorf("expected track_effort cleared, got %v", got)
+	}
+}
+
+func TestUpdateSettings_rejectsUnknownEffortScale(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	c, w := newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"track_effort": "borg"})
+	th.UpdateSettings(c)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an unknown scale, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// A partial update that doesn't mention track_effort must leave it alone —
+// the #37 COALESCE contract, applied to the new column.
+func TestUpdateSettings_trackEffortSurvivesPartialUpdate(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	c, _ := newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"track_effort": "rir"})
+	th.UpdateSettings(c)
+
+	c, w := newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"calorie_target": 2500})
+	th.UpdateSettings(c)
+	d := settingsData(t, w)
+	if got := d["track_effort"]; got != "rir" {
+		t.Errorf("an unrelated partial update cleared track_effort: %v", got)
+	}
+	assertNum(t, d, "calorie_target", 2500)
+}

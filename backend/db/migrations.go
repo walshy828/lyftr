@@ -307,6 +307,19 @@ CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_
 	// setting cannot be used to mint an unbounded credential.
 	ensureColumn("user_settings", "session_max_days", `ALTER TABLE user_settings ADD COLUMN session_max_days INTEGER NOT NULL DEFAULT 30`)
 
+	// Whether the session UI asks for a per-set effort rating, and on which
+	// scale: '' (off), 'rpe' (1-10 exertion) or 'rir' (reps left in reserve).
+	//
+	// Only the presentation differs — both store one number in sets.rpe, with
+	// RIR converted as 10 - rir. Two columns would let the two representations
+	// drift apart for the same set.
+	//
+	// Defaults to off. The sets.rpe column has existed (unused) since the
+	// schema was written; turning capture on for everyone would put a control
+	// in front of lifters who never asked for one, and an empty column reads as
+	// "not rated" either way.
+	ensureColumn("user_settings", "track_effort", `ALTER TABLE user_settings ADD COLUMN track_effort TEXT NOT NULL DEFAULT ''`)
+
 	// Device sessions close the gap between the two revocation levers above:
 	// revoked_tokens kills one token (which rotation replaces a moment later)
 	// and token_version kills every device at once. A row here tracks one chain

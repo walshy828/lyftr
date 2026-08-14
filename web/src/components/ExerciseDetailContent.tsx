@@ -186,15 +186,32 @@ export default function ExerciseDetailContent({ exercise }: Props) {
         const chartData = [...filteredHistory].reverse().map(h => ({
           date: format(new Date(h.date), 'M/d'),
           weight: displayWeight(h.max_weight, wUnit),
+          e1rm: h.best_e1rm > 0 ? displayWeight(h.best_e1rm, wUnit) : null,
         }))
+        // Bodyweight and cardio work has no load to extrapolate, so the server
+        // sends 0 — plotting that would draw a flat line along the axis and
+        // imply the lifter is making no progress.
+        const hasE1RM = chartData.some(d => d.e1rm !== null)
         return (
           <div className="card p-4">
             <div className="flex items-center justify-between mb-3 gap-2">
               <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider">
-                Weight Progression
+                {hasE1RM ? 'Strength Progression' : 'Weight Progression'}
               </p>
               <PeriodSelector options={HISTORY_PERIODS} value={historyPeriod} onChange={setHistoryPeriod} />
             </div>
+            {hasE1RM && (
+              <div className="flex items-center gap-3 mb-2">
+                <span className="inline-flex items-center gap-1.5 text-[10px] text-tx-muted">
+                  <span className="w-2.5 h-0.5 rounded-full" style={{ background: '#0891b2' }} />
+                  Max weight
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-[10px] text-tx-muted">
+                  <span className="w-2.5 h-0.5 rounded-full" style={{ background: '#a78bfa' }} />
+                  Est. 1RM
+                </span>
+              </div>
+            )}
             {chartData.length < 2 ? (
               <div className="flex items-center justify-center h-[110px] text-tx-muted text-sm">No data for this period</div>
             ) : (
@@ -214,7 +231,10 @@ export default function ExerciseDetailContent({ exercise }: Props) {
                     borderRadius: 8,
                     fontSize: 11,
                   }}
-                  formatter={(v: number) => [`${v} ${wUnit}`, 'Max weight']}
+                  formatter={(v: number, name: string) => [
+                    `${v} ${wUnit}`,
+                    name === 'e1rm' ? 'Est. 1RM' : 'Max weight',
+                  ]}
                 />
                 <Line
                   type="monotone"
@@ -224,6 +244,22 @@ export default function ExerciseDetailContent({ exercise }: Props) {
                   dot={{ r: 3, fill: '#0891b2' }}
                   activeDot={{ r: 4 }}
                 />
+                {/* Estimated 1RM tells the story max weight can't: working a rep
+                    range at a fixed load looks flat on max weight, but is real
+                    progress. connectNulls keeps a bodyweight session from
+                    breaking the line. */}
+                {hasE1RM && (
+                  <Line
+                    type="monotone"
+                    dataKey="e1rm"
+                    stroke="#a78bfa"
+                    strokeWidth={2}
+                    strokeDasharray="4 3"
+                    dot={{ r: 2.5, fill: '#a78bfa' }}
+                    activeDot={{ r: 4 }}
+                    connectNulls
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
             )}

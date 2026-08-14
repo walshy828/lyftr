@@ -318,11 +318,23 @@ type ExercisePR struct {
 }
 
 // ExerciseHistoryPoint is a per-workout rollup for an exercise's progress chart.
+//
+// Alongside the volume aggregates it carries that session's BEST set and its
+// estimated 1RM. Max weight alone hides real progress: 5x135 and 10x135 have
+// the same max but are not the same session, and a lifter working through a rep
+// range looks flat until the day the weight moves. e1RM makes that visible.
 type ExerciseHistoryPoint struct {
 	Date        string  `json:"date"`
 	MaxWeight   float64 `json:"max_weight"`
 	TotalVolume float64 `json:"total_volume"`
 	SetsCount   int     `json:"sets_count"`
+	TotalReps   int     `json:"total_reps"`
+	// BestE1RM is 0 for bodyweight and cardio work, where there is no load to
+	// extrapolate from. The client hides the series rather than plotting zeros.
+	BestE1RM   float64 `json:"best_e1rm"`
+	BestWeight float64 `json:"best_weight"`
+	BestReps   int     `json:"best_reps"`
+	WorkoutID  int64   `json:"workout_id"`
 }
 
 // PRForExercise returns the user's PR set for an exercise, or sql.ErrNoRows if
@@ -342,16 +354,43 @@ func (s *WorkoutStore) PRForExercise(uid, exerciseID int64) (ExercisePR, error) 
 	return pr, err
 }
 
+// e1rmExpr is Epley's formula in SQL, matching utils.Epley1RM exactly —
+// including the reps <= 1 case, where the weight lifted IS the maximum and
+// extrapolating it would inflate a real measurement by 3.3%. The two must stay
+// in step: this ranks the best set, and utils.Epley1RM labels the PR card.
+const e1rmExpr = `CASE WHEN s.reps <= 1 THEN s.weight ELSE s.weight * (1 + s.reps / 30.0) END`
+
+// HistoryForExercise returns one point per workout: the session's volume
+// aggregates plus its single best set, ranked by estimated 1RM.
+//
+// Window functions do the per-workout aggregation and the best-set pick in one
+// pass, so this stays a single query rather than a rollup followed by an N+1
+// lookup of each workout's top set.
 func (s *WorkoutStore) HistoryForExercise(uid, exerciseID int64, limit int) ([]ExerciseHistoryPoint, error) {
 	rows, err := s.db.Query(`
-		SELECT w.started_at, MAX(s.weight), SUM(s.reps * s.weight), COUNT(s.id)
-		FROM sets s
-		JOIN workout_exercises we ON we.id = s.workout_exercise_id
-		JOIN workouts w ON w.id = we.workout_id
-		WHERE w.user_id = ? AND we.exercise_id = ? AND s.is_warmup = 0
-		GROUP BY w.id
-		ORDER BY w.started_at DESC
-		LIMIT ?
+		WITH ranked AS (
+			SELECT w.id                                  AS workout_id,
+			       w.started_at                          AS started_at,
+			       s.weight                              AS best_weight,
+			       s.reps                                AS best_reps,
+			       `+e1rmExpr+`                          AS best_e1rm,
+			       ROW_NUMBER() OVER (PARTITION BY w.id
+			                          ORDER BY `+e1rmExpr+` DESC, s.weight DESC, s.reps DESC) AS rn,
+			       MAX(s.weight)          OVER (PARTITION BY w.id) AS max_weight,
+			       SUM(s.reps * s.weight) OVER (PARTITION BY w.id) AS total_volume,
+			       COUNT(*)               OVER (PARTITION BY w.id) AS sets_count,
+			       SUM(s.reps)            OVER (PARTITION BY w.id) AS total_reps
+			  FROM sets s
+			  JOIN workout_exercises we ON we.id = s.workout_exercise_id
+			  JOIN workouts w           ON w.id  = we.workout_id
+			 WHERE w.user_id = ? AND we.exercise_id = ? AND s.is_warmup = 0
+		)
+		SELECT started_at, max_weight, total_volume, sets_count, total_reps,
+		       best_e1rm, best_weight, best_reps, workout_id
+		  FROM ranked
+		 WHERE rn = 1
+		 ORDER BY started_at DESC
+		 LIMIT ?
 	`, uid, exerciseID, limit)
 	if err != nil {
 		return nil, err
@@ -360,7 +399,8 @@ func (s *WorkoutStore) HistoryForExercise(uid, exerciseID int64, limit int) ([]E
 	history := []ExerciseHistoryPoint{}
 	for rows.Next() {
 		var p ExerciseHistoryPoint
-		if err := rows.Scan(&p.Date, &p.MaxWeight, &p.TotalVolume, &p.SetsCount); err != nil {
+		if err := rows.Scan(&p.Date, &p.MaxWeight, &p.TotalVolume, &p.SetsCount, &p.TotalReps,
+			&p.BestE1RM, &p.BestWeight, &p.BestReps, &p.WorkoutID); err != nil {
 			return nil, err
 		}
 		history = append(history, p)

@@ -73,6 +73,12 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		utils.BadRequest(c, fmt.Sprintf("session_max_days may not exceed %d on this server", config.MaxSessionDays()))
 		return
 	}
+	// Same reason as plan_history_start: "" is the meaningful "turn it off"
+	// value, which an `omitempty,oneof` tag would reject.
+	if req.TrackEffort != nil && !models.ValidTrackEffort(*req.TrackEffort) {
+		utils.BadRequest(c, `track_effort must be "", "rpe" or "rir"`)
+		return
+	}
 	s, err := h.s.User.UpsertSettings(uid, req)
 	if utils.DBError(c, err) {
 		return

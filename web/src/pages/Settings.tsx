@@ -100,6 +100,24 @@ export default function Settings() {
     }
   }
 
+  // Per-set effort capture. Saved immediately rather than on the form's Save,
+  // because it changes what the workout screen looks like — a user toggling it
+  // wants to go and see the difference, not remember to save first.
+  const [effortSaving, setEffortSaving] = useState(false)
+  const trackEffort = storedSettings.track_effort ?? ''
+
+  const handleTrackEffort = async (scale: types.UserSettings['track_effort']) => {
+    if (scale === trackEffort) return
+    setEffortSaving(true)
+    try {
+      await updateSettings({ track_effort: scale })
+    } catch (err: any) {
+      setError(apiErrorMessage(err, 'Could not save that preference.'))
+    } finally {
+      setEffortSaving(false)
+    }
+  }
+
   // How long a remembered device stays signed in. The server enforces its own
   // MAX_SESSION_DAYS ceiling and answers 400 when a choice exceeds it, so the
   // error is surfaced rather than the options being filtered — the client has
@@ -485,6 +503,28 @@ export default function Settings() {
                 }`}
               >
                 {mode === 'list' ? 'List' : 'Gym Mode'}
+              </button>
+            ))}
+          </div>
+        </SettingRow>
+
+        <SettingRow
+          label="Track effort"
+          description="Rate how hard each set felt — RPE (1–10 exertion) or RIR (reps left in reserve)"
+        >
+          <div className="flex gap-1 bg-surface-overlay rounded-lg p-1 border border-surface-border">
+            {([['Off', ''], ['RPE', 'rpe'], ['RIR', 'rir']] as const).map(([label, val]) => (
+              <button
+                key={label}
+                disabled={effortSaving}
+                onClick={() => handleTrackEffort(val)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all disabled:opacity-50 ${
+                  trackEffort === val
+                    ? 'bg-surface-raised border border-surface-border text-tx-primary shadow-sm'
+                    : 'text-tx-muted hover:text-tx-primary'
+                }`}
+              >
+                {label}
               </button>
             ))}
           </div>

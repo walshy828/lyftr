@@ -63,7 +63,7 @@ func (h *Handler) GetExercisePRs(c *gin.Context) {
 	utils.OK(c, gin.H{
 		"weight":        pr.Weight,
 		"reps":          pr.Reps,
-		"estimated_1rm": pr.Weight * (1 + float64(pr.Reps)/30.0),
+		"estimated_1rm": utils.Epley1RM(pr.Weight, pr.Reps),
 		"date":          pr.Date,
 		"workout_id":    pr.WorkoutID,
 	})

@@ -46,6 +46,12 @@ type UserSettings struct {
 	// every use, so a value stored before the ceiling was lowered can't
 	// outlive it.
 	SessionMaxDays int `json:"session_max_days" db:"session_max_days"`
+	// TrackEffort is whether the session UI collects a per-set effort rating,
+	// and on which scale: "" (off), "rpe" (1-10 exertion) or "rir" (reps in
+	// reserve). Both scales persist to the same sets.rpe column — RIR is stored
+	// as 10 - rir — so the stored number means one thing regardless of how it
+	// was entered.
+	TrackEffort string `json:"track_effort" db:"track_effort"`
 }
 
 // DefaultUserSettings is the single source of truth for a brand-new user's
@@ -1115,6 +1121,16 @@ type UpdateSettingsRequest struct {
 	// upper bound is enforced in the controller against the operator's
 	// MAX_SESSION_DAYS rather than as a tag, since the ceiling is configurable.
 	SessionMaxDays *int `json:"session_max_days" validate:"omitempty,gte=1"`
+	// TrackEffort accepts "" (off) as a meaningful value, so it can't use
+	// `omitempty,oneof=...` — that tag would reject the very value that turns
+	// the feature back off. The allowed set is checked explicitly instead.
+	TrackEffort *string `json:"track_effort"`
+}
+
+// ValidTrackEffort reports whether v is a supported effort scale. "" is valid
+// and means the per-set effort control is hidden.
+func ValidTrackEffort(v string) bool {
+	return v == "" || v == "rpe" || v == "rir"
 }
 
 type Program struct {

@@ -96,7 +96,7 @@ func (s *UserStore) UpdateName(uid int64, name string) (models.User, error) {
 	return s.GetMe(uid)
 }
 
-const userSettingsSelect = `SELECT user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes, plan_history_start, ai_health_insights_opt_in, session_max_days FROM user_settings`
+const userSettingsSelect = `SELECT user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes, plan_history_start, ai_health_insights_opt_in, session_max_days, track_effort FROM user_settings`
 
 // GetSettings returns the user's settings row, or sql.ErrNoRows if none (the
 // controller owns the default fallback).
@@ -105,7 +105,7 @@ func (s *UserStore) GetSettings(uid int64) (models.UserSettings, error) {
 	err := s.db.QueryRow(userSettingsSelect+` WHERE user_id = ?`, uid).
 		Scan(&st.UserID, &st.WeightUnit, &st.CalorieTarget, &st.ProteinTarget, &st.CarbTarget, &st.FatTarget,
 			&st.CholesterolTarget, &st.SodiumTarget, &st.FoodAllergies, &st.FoodDislikes, &st.FoodLikes, &st.PlanHistoryStart,
-			&st.AIHealthInsightsOptIn, &st.SessionMaxDays)
+			&st.AIHealthInsightsOptIn, &st.SessionMaxDays, &st.TrackEffort)
 	return st, err
 }
 
@@ -121,8 +121,8 @@ func (s *UserStore) UpsertSettings(uid int64, req models.UpdateSettingsRequest) 
 	d := models.DefaultUserSettings(uid)
 	var st models.UserSettings
 	err := s.db.QueryRow(
-		`INSERT INTO user_settings (user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes, plan_history_start, ai_health_insights_opt_in, session_max_days)
-		 VALUES (?, COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?))
+		`INSERT INTO user_settings (user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes, plan_history_start, ai_health_insights_opt_in, session_max_days, track_effort)
+		 VALUES (?, COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?))
 		 ON CONFLICT(user_id) DO UPDATE SET
 		   weight_unit        = COALESCE(?, user_settings.weight_unit),
 		   calorie_target     = COALESCE(?, user_settings.calorie_target),
@@ -136,8 +136,9 @@ func (s *UserStore) UpsertSettings(uid int64, req models.UpdateSettingsRequest) 
 		   food_likes         = COALESCE(?, user_settings.food_likes),
 		   plan_history_start = COALESCE(?, user_settings.plan_history_start),
 		   ai_health_insights_opt_in = COALESCE(?, user_settings.ai_health_insights_opt_in),
-		   session_max_days   = COALESCE(?, user_settings.session_max_days)
-		 RETURNING user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes, plan_history_start, ai_health_insights_opt_in, session_max_days`,
+		   session_max_days   = COALESCE(?, user_settings.session_max_days),
+		   track_effort       = COALESCE(?, user_settings.track_effort)
+		 RETURNING user_id, weight_unit, calorie_target, protein_target, carb_target, fat_target, cholesterol_target, sodium_target, food_allergies, food_dislikes, food_likes, plan_history_start, ai_health_insights_opt_in, session_max_days, track_effort`,
 		uid,
 		req.WeightUnit, d.WeightUnit,
 		req.CalorieTarget, d.CalorieTarget,
@@ -152,13 +153,14 @@ func (s *UserStore) UpsertSettings(uid int64, req models.UpdateSettingsRequest) 
 		req.PlanHistoryStart, d.PlanHistoryStart,
 		req.AIHealthInsightsOptIn, d.AIHealthInsightsOptIn,
 		req.SessionMaxDays, d.SessionMaxDays,
+		req.TrackEffort, d.TrackEffort,
 		req.WeightUnit, req.CalorieTarget, req.ProteinTarget, req.CarbTarget, req.FatTarget,
 		req.CholesterolTarget, req.SodiumTarget,
 		req.FoodAllergies, req.FoodDislikes, req.FoodLikes,
-		req.PlanHistoryStart, req.AIHealthInsightsOptIn, req.SessionMaxDays,
+		req.PlanHistoryStart, req.AIHealthInsightsOptIn, req.SessionMaxDays, req.TrackEffort,
 	).Scan(&st.UserID, &st.WeightUnit, &st.CalorieTarget, &st.ProteinTarget, &st.CarbTarget, &st.FatTarget,
 		&st.CholesterolTarget, &st.SodiumTarget, &st.FoodAllergies, &st.FoodDislikes, &st.FoodLikes, &st.PlanHistoryStart,
-		&st.AIHealthInsightsOptIn, &st.SessionMaxDays)
+		&st.AIHealthInsightsOptIn, &st.SessionMaxDays, &st.TrackEffort)
 	if err != nil {
 		return models.UserSettings{}, err
 	}

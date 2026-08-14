@@ -66,6 +66,9 @@ const DEFAULTS: types.UserSettings = {
   food_likes: '',
   plan_history_start: '',
   session_max_days: 30,
+  // Effort capture is opt-in: it adds a control to every completed set, and
+  // most lifters don't want one.
+  track_effort: '',
   ...clientPrefs(),
 }
 

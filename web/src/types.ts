@@ -25,6 +25,12 @@ export interface UserSettings {
   ai_health_insights_opt_in: boolean
   /** How long a device the user chose to remember stays signed in. Bounded server-side by MAX_SESSION_DAYS. */
   session_max_days: number
+  /**
+   * Whether the session UI collects a per-set effort rating, and on which
+   * scale. Both persist to the same `set.rpe` field — RIR is stored inverted
+   * as `10 - rir` — so the number means one thing however it was entered.
+   */
+  track_effort: '' | 'rpe' | 'rir'
   workout_layout?: 'list' | 'gym'
   // Client-only (localStorage, not persisted server-side):
   rest_enabled?: boolean        // master rest-timer on/off
@@ -811,6 +817,12 @@ export interface ActiveSessionSet {
   actual_duration?: number
   actual_distance?: number
   actual_steps?: number
+  /**
+   * Per-set effort, stored on the RPE scale (1-10) regardless of which scale
+   * the user entered it on; RIR is converted as `10 - rir`. 0/absent means
+   * "not rated". Only collected when settings.track_effort is on.
+   */
+  rpe?: number
   completed: boolean
 }
 
@@ -856,6 +868,15 @@ export interface ExerciseHistoryPoint {
   max_weight: number
   total_volume: number
   sets_count: number
+  total_reps: number
+  /**
+   * Estimated 1RM of the session's best set. 0 for bodyweight and cardio work,
+   * where there is no load to extrapolate — plot nothing rather than a zero.
+   */
+  best_e1rm: number
+  best_weight: number
+  best_reps: number
+  workout_id: number
 }
 
 /** One local calendar day's training rollup. Days with no training are absent. */

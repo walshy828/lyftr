@@ -51,6 +51,8 @@ interface WorkoutSessionStore {
   startSession: (name: string, exercises: types.ActiveSessionExercise[], programId?: number) => void
   updateSet: (exIdx: number, setIdx: number, field: 'actual_reps' | 'actual_weight' | 'actual_duration' | 'actual_distance' | 'actual_steps', val: number) => void
   completeSet: (exIdx: number, setIdx: number) => void
+  /** Rate a set's effort. `stored` is on the RPE scale; 0 clears the rating. */
+  setEffort: (exIdx: number, setIdx: number, stored: number) => void
   updateExerciseNotes: (exIdx: number, notes: string) => void
   addSet: (exIdx: number) => void
   removeSet: (exIdx: number, setIdx: number) => void
@@ -253,6 +255,21 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     scheduleSync(true)
   },
 
+  setEffort: (exIdx, setIdx, stored) => {
+    const session = get().session
+    if (!session) return
+    const exercises = session.exercises.map((ex, i) =>
+      i !== exIdx ? ex : {
+        ...ex,
+        sets: ex.sets.map((s, j) => j === setIdx ? { ...s, rpe: stored } : s),
+      }
+    )
+    const updated = { ...session, exercises }
+    saveLocal(updated)
+    set({ session: updated })
+    scheduleSync()
+  },
+
   updateExerciseNotes: (exIdx, notes) => {
     const session = get().session
     if (!session) return
@@ -357,6 +374,9 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
           duration: s.actual_duration || 0,
           distance: s.actual_distance || 0,
           steps: s.actual_steps || 0,
+          // Already on the RPE scale (RIR was inverted at entry), so it needs
+          // no conversion here. 0 means "not rated".
+          rpe: s.rpe || 0,
           completed: s.completed,
         })),
       })),
