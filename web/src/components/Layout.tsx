@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Home, Dumbbell, Apple, HeartPulse, CalendarDays, BarChart3, List,
+  Home, Apple, HeartPulse, CalendarDays, BarChart3, List,
   LogOut, Moon, Sun, User,
   Shield, Timer, ChevronRight,
 } from 'lucide-react'
@@ -17,11 +17,11 @@ import RestTimerBanner from './RestTimerBanner'
 import Logo from './Logo'
 
 const NAV = [
-  { path: '/',            label: 'Home',     icon: Home },
-  { path: '/plan',        label: 'Plan',     icon: CalendarDays },
-  { path: '/workout/start', label: 'Start',  icon: Dumbbell, accent: true },
-  { path: '/stats',       label: 'Stats',    icon: BarChart3 },
-  { path: '/workouts',    label: 'Workouts', icon: List },
+  { path: '/',        label: 'Home',   icon: Home },
+  { path: '/plan',    label: 'Plan',   icon: CalendarDays },
+  { path: '/food',    label: 'Food',   icon: Apple },
+  { path: '/health',  label: 'Health', icon: HeartPulse },
+  { path: '/stats',   label: 'Stats',  icon: BarChart3 },
 ]
 
 function formatElapsed(seconds: number) {
@@ -147,20 +147,12 @@ function UserMenu() {
               Settings
             </Link>
             <Link
-              to="/food"
+              to="/workouts"
               onClick={() => setOpen(false)}
               className="flex items-center gap-3 px-4 py-2.5 text-sm text-tx-secondary hover:text-tx-primary hover:bg-surface-muted/50 transition-colors"
             >
-              <Apple className="w-4 h-4 text-tx-muted flex-shrink-0" />
-              Food
-            </Link>
-            <Link
-              to="/health"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-3 px-4 py-2.5 text-sm text-tx-secondary hover:text-tx-primary hover:bg-surface-muted/50 transition-colors"
-            >
-              <HeartPulse className="w-4 h-4 text-tx-muted flex-shrink-0" />
-              Health
+              <List className="w-4 h-4 text-tx-muted flex-shrink-0" />
+              Workouts
             </Link>
             <button
               onClick={toggleTheme}
@@ -240,17 +232,8 @@ export default function Layout() {
         <ActiveSessionBar />
         <nav className="border-t border-surface-border bg-surface-base/95 backdrop-blur-sm">
           <div className="max-w-6xl mx-auto flex">
-            {NAV.map(({ path, label, icon: Icon, accent }) => {
+            {NAV.map(({ path, label, icon: Icon }) => {
               const active = pathname === path
-              if (accent) {
-                return (
-                  <Link key={path} to={path} className="nav-item flex-1" aria-label={label}>
-                    <span className="w-9 h-9 -mt-4 rounded-full bg-brand-500 hover:bg-brand-600 shadow-lg shadow-brand-500/40 flex items-center justify-center transition-colors">
-                      <Icon className="w-5 h-5 text-white" strokeWidth={2.25} />
-                    </span>
-                  </Link>
-                )
-              }
               return (
                 <Link key={path} to={path} className={`nav-item flex-1 ${active ? 'active' : ''}`}>
                   <Icon className="w-5 h-5" strokeWidth={active ? 2.5 : 1.75} />

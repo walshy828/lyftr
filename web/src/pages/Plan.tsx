@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ChevronLeft, ChevronRight, CalendarDays, Check, Play, RotateCcw, X, Plus, Dumbbell, Sparkles, Search,
+  ChevronLeft, ChevronRight, CalendarDays, Check, Play, RotateCcw, X, Plus, Dumbbell, Sparkles, Search, Footprints,
 } from 'lucide-react'
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths,
   eachDayOfInterval, isSameMonth, isToday, isSameDay, parseISO,
 } from 'date-fns'
 import { scheduleAPI, programAPI } from '../services/api'
+import { useWorkoutSession } from '../stores/workoutSession'
 import { PageHeader } from '../components/ui'
 import ProgramCard from '../components/ProgramCard'
 import PlanDaySheet from '../components/PlanDaySheet'
+import QuickCardioModal from '../components/QuickCardioModal'
 import Loading from '../components/Loading'
 import * as types from '../types'
 
@@ -27,6 +29,8 @@ const iso = (d: Date) => format(d, 'yyyy-MM-dd')
 
 export default function Plan() {
   const navigate = useNavigate()
+  const { session } = useWorkoutSession()
+  const [showQuickCardio, setShowQuickCardio] = useState(false)
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [data, setData] = useState<types.ScheduleResponse | null>(null)
   const [programs, setPrograms] = useState<types.Program[]>([])
@@ -136,6 +140,23 @@ export default function Plan() {
       />
 
       {error && <div className="alert-error text-sm">{error}</div>}
+
+      {/* Log something right now — no need to go through a routine or the
+          weekly pattern for an ad-hoc session. */}
+      <div className="flex items-center gap-2">
+        <button onClick={() => setShowQuickCardio(true)} className="btn-secondary btn-sm flex-1">
+          <Footprints className="w-4 h-4" /> Cardio
+        </button>
+        <button onClick={() => navigate('/workouts/new')} className="btn-secondary btn-sm flex-1 min-w-0">
+          <Plus className="w-4 h-4" />
+          <span><span className="hidden sm:inline">Log </span>Workout</span>
+        </button>
+        <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm flex-1">
+          <Play className="w-4 h-4" /> {session ? 'Resume' : 'Start'}
+        </button>
+      </div>
+
+      {showQuickCardio && <QuickCardioModal onClose={() => setShowQuickCardio(false)} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Week schedule — the weekly pattern that actually repeats. */}
