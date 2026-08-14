@@ -258,3 +258,67 @@ func LocalToday(tzOffset int) string {
 	}
 	return time.Now().UTC().Add(time.Duration(tzOffset) * time.Minute).Format("2006-01-02")
 }
+
+// PersonalRecord is an exercise's best set, with the date it was achieved.
+type PersonalRecord struct {
+	ExerciseID   int64   `json:"exercise_id"`
+	ExerciseName string  `json:"exercise_name"`
+	MuscleGroup  string  `json:"muscle_group"`
+	Weight       float64 `json:"weight"`
+	Reps         int     `json:"reps"`
+	E1RM         float64 `json:"estimated_1rm"`
+	Date         string  `json:"date"`
+	WorkoutID    int64   `json:"workout_id"`
+}
+
+// RecentPRs returns each exercise's current best set, most recently achieved
+// first — "what have I actually got stronger at lately".
+//
+// Ranked by estimated 1RM rather than raw weight, matching the exercise history
+// chart: a heavier single is not automatically a better set than a set of ten.
+// Ordering by the DATE of the record (not by its size) is what makes this a
+// feed rather than a leaderboard — a lifetime best from two years ago is not
+// news, and would otherwise permanently occupy the top.
+//
+// One window-function query over the user's working sets.
+func (s *WorkoutStore) RecentPRs(uid int64, limit int) ([]PersonalRecord, error) {
+	rows, err := s.db.Query(`
+		WITH ranked AS (
+			SELECT we.exercise_id                       AS exercise_id,
+			       e.name                               AS name,
+			       e.muscle_group                       AS muscle_group,
+			       s.weight                             AS weight,
+			       s.reps                               AS reps,
+			       `+e1rmExpr+`                         AS e1rm,
+			       w.started_at                         AS started_at,
+			       w.id                                 AS workout_id,
+			       ROW_NUMBER() OVER (PARTITION BY we.exercise_id
+			                          ORDER BY `+e1rmExpr+` DESC, s.weight DESC, w.started_at ASC) AS rn
+			  FROM sets s
+			  JOIN workout_exercises we ON we.id = s.workout_exercise_id
+			  JOIN workouts w           ON w.id  = we.workout_id
+			  JOIN exercises e          ON e.id  = we.exercise_id
+			 WHERE w.user_id = ? AND s.is_warmup = 0 AND s.completed = 1 AND s.weight > 0
+		)
+		SELECT exercise_id, name, muscle_group, weight, reps, e1rm, started_at, workout_id
+		  FROM ranked
+		 WHERE rn = 1
+		 ORDER BY started_at DESC
+		 LIMIT ?
+	`, uid, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	prs := []PersonalRecord{}
+	for rows.Next() {
+		var p PersonalRecord
+		if err := rows.Scan(&p.ExerciseID, &p.ExerciseName, &p.MuscleGroup, &p.Weight, &p.Reps,
+			&p.E1RM, &p.Date, &p.WorkoutID); err != nil {
+			return nil, err
+		}
+		prs = append(prs, p)
+	}
+	return prs, rows.Err()
+}

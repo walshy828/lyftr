@@ -144,3 +144,24 @@ func parseInclude(raw string) map[string]bool {
 	}
 	return out
 }
+
+// GetRecentPRs lists each exercise's current best set, newest record first.
+//
+//	GET /api/v1/workouts/prs?limit=
+func (h *Handler) GetRecentPRs(c *gin.Context) {
+	uid := middleware.UserID(c)
+
+	limit := 20
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
+		if l > 100 {
+			l = 100
+		}
+		limit = l
+	}
+
+	prs, err := h.s.Workout.RecentPRs(uid, limit)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, prs)
+}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { AlertCircle, Play, Timer, ArrowRight, Utensils } from 'lucide-react'
+import { AlertCircle, Play, Timer, ArrowRight, Utensils, BarChart3 } from 'lucide-react'
 import { useNavigate, Link } from 'react-router-dom'
 import Loading from '../components/Loading'
 import QuickWeighInSheet from '../components/QuickWeighInSheet'
@@ -68,6 +68,9 @@ export default function Dashboard() {
         <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-shrink-0">
           <button onClick={() => navigate('/food/log')} className="btn-secondary btn-sm flex-1 sm:flex-none">
             <Utensils className="w-3.5 h-3.5" /> Log Food
+          </button>
+          <button onClick={() => navigate('/stats')} className="btn-secondary btn-sm flex-1 sm:flex-none">
+            <BarChart3 className="w-3.5 h-3.5" /> Stats
           </button>
           <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm flex-1 sm:flex-none">
             <Play className="w-3.5 h-3.5" /> {session ? 'Resume' : 'Start'}

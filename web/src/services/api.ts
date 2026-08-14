@@ -229,6 +229,9 @@ export const workoutAPI = {
         tz_offset: -new Date().getTimezoneOffset(),
       },
     }).then(res => unwrap(res)),
+  /** Each exercise's current best set, most recently achieved first. */
+  prs: (limit = 20) =>
+    api.get<{ data: types.RecentPR[] }>('/workouts/prs', { params: { limit } }).then(res => unwrap(res)),
 }
 
 let _exerciseCache: types.Exercise[] | null = null

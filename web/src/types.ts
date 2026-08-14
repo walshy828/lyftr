@@ -870,6 +870,18 @@ export interface PersonalRecord {
   workout_id: number
 }
 
+/** An exercise's current best set, with when it was achieved. */
+export interface RecentPR {
+  exercise_id: number
+  exercise_name: string
+  muscle_group: string
+  weight: number
+  reps: number
+  estimated_1rm: number
+  date: string
+  workout_id: number
+}
+
 /** One program's slot on a scheduled day. */
 export interface ScheduledProgram {
   program_id: number

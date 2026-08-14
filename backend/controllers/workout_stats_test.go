@@ -418,3 +418,69 @@ func TestWorkoutStats_emptyHistory(t *testing.T) {
 		t.Errorf("expected the default weight unit, got %v", data["weight_unit"])
 	}
 }
+
+// A PR is ranked by estimated 1RM, not raw weight, and the feed is ordered by
+// WHEN the record was set — a lifetime best from two years ago is not news and
+// must not permanently occupy the top.
+func TestRecentPRs(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	bench := namedExercise(t, "Bench Press", "chest")
+	squat := namedExercise(t, "Squat", "quadriceps")
+
+	// An old, very heavy bench PR...
+	seedWorkoutOn(t, uid, bench, "2026-01-10T12:00:00Z", 600, [][2]float64{{10, 225}}) // e1RM 300
+	// ...beaten on weight but not on e1RM by a later single.
+	seedWorkoutOn(t, uid, bench, "2026-02-10T12:00:00Z", 600, [][2]float64{{1, 250}}) // e1RM 250
+	// A recent squat record.
+	seedWorkoutOn(t, uid, squat, "2026-06-01T12:00:00Z", 600, [][2]float64{{5, 315}})
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/workouts/prs", nil)
+	th.GetRecentPRs(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != 2 {
+		t.Fatalf("expected one PR per exercise, got %d", len(data))
+	}
+
+	// Newest record first.
+	first := data[0].(map[string]any)
+	if first["exercise_name"] != "Squat" {
+		t.Errorf("expected the most recent record first, got %v", first["exercise_name"])
+	}
+
+	second := data[1].(map[string]any)
+	if second["exercise_name"] != "Bench Press" {
+		t.Fatalf("expected Bench Press second, got %v", second["exercise_name"])
+	}
+	// The 10x225 set wins on e1RM despite 250 being the heavier weight.
+	if got := second["reps"].(float64); got != 10 {
+		t.Errorf("expected the 10-rep set to be the PR, got reps %v", got)
+	}
+	if got := second["weight"].(float64); got != 225 {
+		t.Errorf("expected weight 225, got %v", got)
+	}
+	if got := second["estimated_1rm"].(float64); got != 300 {
+		t.Errorf("expected e1RM 300, got %v", got)
+	}
+}
+
+func TestRecentPRs_excludesUnweightedAndOtherUsers(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	other := otherUser(t)
+	ex := namedExercise(t, "Pull Up", "lats")
+
+	seedWorkoutOn(t, uid, ex, "2026-06-01T12:00:00Z", 600, [][2]float64{{12, 0}}) // bodyweight
+	seedWorkoutOn(t, other, ex, "2026-06-02T12:00:00Z", 600, [][2]float64{{5, 100}})
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/workouts/prs", nil)
+	th.GetRecentPRs(c)
+
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != 0 {
+		t.Errorf("expected no PRs (bodyweight has no load, and another user's must not leak): %v", data)
+	}
+}
