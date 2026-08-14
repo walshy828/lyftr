@@ -1,25 +1,10 @@
-import { useRef, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { useRef, useState, useEffect, type ReactNode } from 'react'
 import { Dumbbell } from 'lucide-react'
-import { useVirtualizer } from '@tanstack/react-virtual'
 import { muscleColorBordered, EQUIPMENT_LABEL } from '../../utils/exerciseUtils'
 import { exerciseImageSources, hasExerciseImage } from '../../utils/exerciseMedia'
 import * as types from '../../types'
 
-// Tailwind's `sm` breakpoint — matched in JS because the virtualizer needs to
-// know the column count to size each row's slice of exercises, and a CSS
-// media query can't tell it that.
-const TWO_COL_QUERY = '(min-width: 640px)'
-
-function useColumnCount(): 1 | 2 {
-  const [cols, setCols] = useState<1 | 2>(() => (typeof window !== 'undefined' && window.matchMedia(TWO_COL_QUERY).matches ? 2 : 1))
-  useEffect(() => {
-    const mql = window.matchMedia(TWO_COL_QUERY)
-    const onChange = () => setCols(mql.matches ? 2 : 1)
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
-  }, [])
-  return cols
-}
+const PAGE_SIZE = 20
 
 /** A card thumbnail that walks its candidate sources on error — same fallback
  *  chain as the list view's ExerciseThumb, just larger. */
@@ -46,7 +31,7 @@ function ExerciseCard({ exercise, onOpen, renderAction }: {
   renderAction?: (exercise: types.Exercise) => ReactNode
 }) {
   return (
-    <div className="h-full w-full flex items-center gap-2 rounded-xl border border-surface-border bg-surface-elevated hover:bg-surface-muted transition-colors">
+    <div className="w-full flex items-center gap-2 rounded-xl border border-surface-border bg-surface-elevated hover:bg-surface-muted transition-colors">
       <button
         type="button"
         onClick={() => onOpen(exercise)}
@@ -84,33 +69,45 @@ interface Props {
   onOpen: (exercise: types.Exercise) => void
   renderAction?: (exercise: types.Exercise) => ReactNode
   emptyLabel?: string
-  /** Rendered as the first tile, spanning both columns of the first row. */
+  /** Rendered as its own full-width tile above the grid. */
   leadingCard?: ReactNode
 }
 
 /**
- * The exercise browse page's card grid — two columns on screens wide enough
- * for it, one on mobile. Virtualized by ROW (a pair of exercises), not by
- * individual card: the catalog is ~1300 rows, so rendering everything at once
- * costs a visible stall on a phone, same reasoning as the picker's
- * ExerciseList. react-virtual has no native grid mode, so pairing indices
- * into rows before handing them to useVirtualizer gets the same effect.
+ * The exercise browse page's card grid. Flows with the page (the page itself
+ * scrolls — there's no bounded inner scroll container) and reveals results
+ * 20 at a time: only the first page renders up front, and a sentinel below
+ * the grid pulls in the next page once it scrolls near the viewport. That
+ * keeps the DOM small (~1300 rows would all mount at once otherwise)
+ * without the complexity of virtualizing a fixed-height widget.
+ *
+ * `visibleCount` resets to PAGE_SIZE whenever `exercises` is a new array
+ * (the parent re-filters on every search/tab change) — a fresh filter
+ * should restart the feed from the top, not keep whatever page depth the
+ * previous filter had scrolled to.
  */
 export default function ExerciseGrid({ exercises, loading, onOpen, renderAction, emptyLabel = 'No exercises found', leadingCard }: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const cols = useColumnCount()
-  const rowCount = Math.ceil(exercises.length / cols)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  const virtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: useCallback(() => 76, []),
-    overscan: 6,
-  })
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [exercises])
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setVisibleCount(c => Math.min(c + PAGE_SIZE, exercises.length))
+    }, { rootMargin: '600px 0px' }) // load well before the sentinel is actually on screen
+    io.observe(el)
+    return () => io.disconnect()
+  }, [exercises])
+
+  const visible = exercises.slice(0, visibleCount)
+  const hasMore = visibleCount < exercises.length
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      {leadingCard && <div className="p-3 pb-0">{leadingCard}</div>}
+    <div>
+      {leadingCard && <div className="mb-2">{leadingCard}</div>}
       {loading && exercises.length === 0 ? (
         <div className="flex items-center justify-center py-16 text-tx-muted text-sm">
           <Dumbbell className="w-5 h-5 mr-2 animate-pulse text-brand-500" />
@@ -119,25 +116,18 @@ export default function ExerciseGrid({ exercises, loading, onOpen, renderAction,
       ) : exercises.length === 0 ? (
         <div className="flex items-center justify-center py-16 text-tx-muted text-sm">{emptyLabel}</div>
       ) : (
-        <div className="p-3 relative" style={{ height: virtualizer.getTotalSize() }}>
-          {virtualizer.getVirtualItems().map(row => {
-            const rowItems = exercises.slice(row.index * cols, row.index * cols + cols)
-            return (
-              <div
-                key={row.key}
-                className="grid gap-2"
-                style={{
-                  position: 'absolute', top: row.start, left: 0, right: 0, height: row.size, padding: '0.25rem 0',
-                  gridTemplateColumns: `repeat(${cols}, 1fr)`,
-                }}
-              >
-                {rowItems.map(ex => (
-                  <ExerciseCard key={ex.id} exercise={ex} onOpen={onOpen} renderAction={renderAction} />
-                ))}
-              </div>
-            )
-          })}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {visible.map(ex => (
+              <ExerciseCard key={ex.id} exercise={ex} onOpen={onOpen} renderAction={renderAction} />
+            ))}
+          </div>
+          {hasMore && (
+            <div ref={sentinelRef} className="flex items-center justify-center py-6 text-tx-muted text-xs">
+              <Dumbbell className="w-3.5 h-3.5 mr-2 animate-pulse text-brand-500" /> Loading more…
+            </div>
+          )}
+        </>
       )}
     </div>
   )

@@ -5,7 +5,7 @@ import { exerciseAPI } from '../services/api'
 import ExerciseGrid from '../components/exercise/ExerciseGrid'
 import CreateExerciseSheet from '../components/exercise/CreateExerciseSheet'
 import AddToRoutineSheet from '../components/AddToRoutineSheet'
-import { PageHeader } from '../components/ui'
+import { PageHeader, HScrollTabs } from '../components/ui'
 import { BODY_PART_GROUPS, EQUIPMENT_LABEL, bodyPartOf, type BodyPartGroup } from '../utils/exerciseUtils'
 import * as types from '../types'
 
@@ -21,12 +21,17 @@ const PART_TABS: { key: string; label: string }[] = [
 /**
  * Browse the whole exercise library.
  *
- * Rebuilt to match an openGym-style layout: always-visible body-part and
- * equipment tab rows instead of a collapsible filter panel, and a card grid
- * instead of a single-column list. All filtering happens client-side against
- * the full (cached) catalog — ~1300 rows is cheap to filter in JS and this
- * lets body-part tabs use the coarse BODY_PART_GROUPS buckets, which the
- * backend's muscle_group column doesn't natively group by.
+ * openGym-style layout: always-visible body-part and equipment tab rows
+ * (each locked to one row — HScrollTabs makes it swipeable on touch and
+ * paged with chevrons on desktop) instead of a collapsible filter panel, and
+ * a card grid instead of a single-column list. All filtering happens
+ * client-side against the full (cached) catalog — ~1300 rows is cheap to
+ * filter in JS and this lets body-part tabs use the coarse BODY_PART_GROUPS
+ * buckets, which the backend's muscle_group column doesn't natively group by.
+ *
+ * The page scrolls normally (no inner scroll widget) and ExerciseGrid reveals
+ * matches 20 at a time as you scroll toward the bottom, rather than
+ * virtualizing a fixed-height container.
  *
  * Selections live in the URL so a filtered view is linkable and survives a
  * back-navigation from an exercise's detail page.
@@ -98,11 +103,7 @@ export default function Exercises() {
   const activeCount = exercises.length
 
   return (
-    // A DEFINITE height, not a min-height. The grid inside virtualizes against
-    // its scroll container, and a container free to grow reports the full
-    // content as visible — which renders every row and defeats the point.
-    // dvh so mobile browser chrome collapsing doesn't clip the list.
-    <div className="animate-slide-up flex flex-col" style={{ height: 'calc(100dvh - 11rem)' }}>
+    <div className="animate-slide-up">
       <PageHeader
         title="Exercises"
         subtitle={loading ? 'Loading…' : `${activeCount} exercise${activeCount === 1 ? '' : 's'} with animations`}
@@ -128,13 +129,13 @@ export default function Exercises() {
         )}
       </div>
 
-      <div className="flex items-center gap-1.5 flex-wrap mb-2">
+      <HScrollTabs className="mb-2">
         {PART_TABS.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setPart(key)}
             aria-pressed={part === key}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
               part === key
                 ? 'bg-brand-500 text-white'
                 : 'bg-surface-muted text-tx-secondary hover:bg-surface-overlay'
@@ -143,13 +144,13 @@ export default function Exercises() {
             {label}
           </button>
         ))}
-      </div>
+      </HScrollTabs>
 
-      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+      <HScrollTabs className="mb-4">
         <button
           onClick={() => setEquipment('')}
           aria-pressed={!equipment}
-          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+          className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
             !equipment ? 'bg-brand-500 text-white' : 'bg-surface-muted text-tx-secondary hover:bg-surface-overlay'
           }`}
         >
@@ -160,50 +161,45 @@ export default function Exercises() {
             key={value}
             onClick={() => setEquipment(value)}
             aria-pressed={equipment === value}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
               equipment === value ? 'bg-brand-500 text-white' : 'bg-surface-muted text-tx-secondary hover:bg-surface-overlay'
             }`}
           >
             {EQUIPMENT_LABEL[value] || value}
           </button>
         ))}
-      </div>
+      </HScrollTabs>
 
-      {/* min-h-0 is load-bearing: a flex child defaults to min-height:auto,
-          which lets it grow to its content and re-breaks the bounded scroll
-          container the virtualizer depends on. */}
-      <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
-        <ExerciseGrid
-          exercises={filtered}
-          loading={loading}
-          onOpen={ex => navigate(`/exercises/${ex.id}`)}
-          renderAction={ex => (
-            <button
-              onClick={e => { e.stopPropagation(); setPlanTarget(ex) }}
-              className="btn-secondary btn-sm flex-shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" /> Plan
-            </button>
-          )}
-          emptyLabel={part !== 'all' || equipment || query ? 'No exercises match those filters' : 'No exercises found'}
-          leadingCard={
-            <button
-              type="button"
-              onClick={() => setCreating(true)}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-dashed border-surface-border bg-surface-elevated hover:bg-surface-muted transition-colors text-left"
-            >
-              <div className="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
-                <Sparkles className="w-4 h-4 text-brand-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-tx-primary">Create your own exercise</p>
-                <p className="text-xs text-tx-muted">name + body part, no animation</p>
-              </div>
-              <Plus className="w-4 h-4 text-tx-muted flex-shrink-0" />
-            </button>
-          }
-        />
-      </div>
+      <ExerciseGrid
+        exercises={filtered}
+        loading={loading}
+        onOpen={ex => navigate(`/exercises/${ex.id}`)}
+        renderAction={ex => (
+          <button
+            onClick={e => { e.stopPropagation(); setPlanTarget(ex) }}
+            className="btn-secondary btn-sm flex-shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" /> Plan
+          </button>
+        )}
+        emptyLabel={part !== 'all' || equipment || query ? 'No exercises match those filters' : 'No exercises found'}
+        leadingCard={
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-dashed border-surface-border bg-surface-elevated hover:bg-surface-muted transition-colors text-left"
+          >
+            <div className="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-4 h-4 text-brand-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-tx-primary">Create your own exercise</p>
+              <p className="text-xs text-tx-muted">name + body part, no animation</p>
+            </div>
+            <Plus className="w-4 h-4 text-tx-muted flex-shrink-0" />
+          </button>
+        }
+      />
 
       {planTarget && <AddToRoutineSheet exercise={planTarget} onClose={() => setPlanTarget(null)} />}
       {creating && (
