@@ -140,6 +140,24 @@ func (s *ExerciseStore) Facets() (map[string][]FacetValue, error) {
 	return out, rows.Err()
 }
 
+// Create inserts a user-defined exercise with no animation media, tagged
+// source=custom so it survives WipeAndReseed/Sync like the lyftr cardio
+// carve-out does (see seed.SourceCustom).
+func (s *ExerciseStore) Create(name, muscleGroup, equipment string) (models.Exercise, error) {
+	res, err := s.db.Exec(
+		`INSERT INTO exercises (name, muscle_group, category, equipment, source) VALUES (?, ?, 'strength', ?, ?)`,
+		name, muscleGroup, equipment, seed.SourceCustom,
+	)
+	if err != nil {
+		return models.Exercise{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return models.Exercise{}, err
+	}
+	return s.Get(id)
+}
+
 func (s *ExerciseStore) Count() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM exercises`).Scan(&n)

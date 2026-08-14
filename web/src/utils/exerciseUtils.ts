@@ -135,3 +135,41 @@ export function computeWorkoutFocus(workout: FocusSource): WorkoutFocus | null {
   const [topRegion, topShare] = shares.sort((a, b) => b[1] - a[1])[0]
   return topShare >= 0.65 ? (topRegion as WorkoutFocus) : 'balanced'
 }
+
+// Body-part tabs for the exercise browse page (/exercises) — the familiar
+// ExerciseDB-style taxonomy (Back, Chest, Upper Arms, ...), collapsing the
+// finer free-exercise-db muscle_group values that back MUSCLE_COLORS above.
+// Distinct from MuscleRegion (upper/lower/core), which is a 3-bucket summary
+// for a whole workout's "focus" badge, not a browse filter.
+export interface BodyPartGroup {
+  key: string
+  label: string
+  muscleGroups: string[]
+}
+
+export const BODY_PART_GROUPS: BodyPartGroup[] = [
+  { key: 'back', label: 'Back', muscleGroups: ['back', 'lats', 'traps', 'upper back', 'middle back', 'lower back'] },
+  { key: 'chest', label: 'Chest', muscleGroups: ['chest'] },
+  { key: 'shoulders', label: 'Shoulders', muscleGroups: ['shoulders', 'deltoids'] },
+  { key: 'upper_arms', label: 'Upper Arms', muscleGroups: ['biceps', 'triceps'] },
+  { key: 'lower_arms', label: 'Lower Arms', muscleGroups: ['forearms', 'forearm'] },
+  { key: 'upper_legs', label: 'Upper Legs', muscleGroups: ['quadriceps', 'hamstrings', 'hamstring', 'glutes', 'gluteal', 'legs', 'adductors', 'abductors'] },
+  { key: 'lower_legs', label: 'Lower Legs', muscleGroups: ['calves'] },
+  { key: 'waist', label: 'Waist', muscleGroups: ['abdominals', 'abs', 'core', 'obliques'] },
+  { key: 'neck', label: 'Neck', muscleGroups: ['neck'] },
+]
+
+const MUSCLE_TO_BODY_PART: Record<string, string> = Object.fromEntries(
+  BODY_PART_GROUPS.flatMap(g => g.muscleGroups.map(m => [m, g.key]))
+)
+
+/**
+ * Which body-part tab an exercise belongs under. Cardio exercises get their
+ * own tab regardless of muscle_group (Row is "back", Swim is "full body",
+ * etc. — none of that is meaningful to someone browsing by cardio).
+ * Falls back to 'other' for anything unmapped rather than dropping it.
+ */
+export function bodyPartOf(exercise: { muscle_group: string; category: string }): string {
+  if (exercise.category === 'cardio') return 'cardio'
+  return MUSCLE_TO_BODY_PART[exercise.muscle_group?.toLowerCase()] ?? 'other'
+}

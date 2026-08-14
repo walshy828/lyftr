@@ -3,6 +3,7 @@ package controllers
 import (
 	"database/sql"
 	"strconv"
+	"strings"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/stores"
@@ -39,6 +40,37 @@ func (h *Handler) ListExercises(c *gin.Context) {
 // maxExerciseListLimit comfortably exceeds the whole catalog (~870), so a
 // client asking for "everything" gets everything.
 const maxExerciseListLimit = 2000
+
+// CreateExercise adds a user-defined exercise: name + body part only, no
+// animation media. It joins the same global, shared catalog every other
+// exercise lives in (this is a single-user self-hosted app) so it shows up
+// in search/filters/the picker immediately.
+func (h *Handler) CreateExercise(c *gin.Context) {
+	var body struct {
+		Name        string `json:"name"`
+		MuscleGroup string `json:"muscle_group"`
+		Equipment   string `json:"equipment"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		utils.BadRequest(c, "invalid request body")
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	body.MuscleGroup = strings.TrimSpace(body.MuscleGroup)
+	if body.Name == "" || body.MuscleGroup == "" {
+		utils.BadRequest(c, "name and muscle_group are required")
+		return
+	}
+	e, err := h.s.Exercise.Create(body.Name, body.MuscleGroup, strings.TrimSpace(body.Equipment))
+	if utils.IsUniqueViolation(err) {
+		utils.Conflict(c, "an exercise with that name already exists")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.Created(c, e)
+}
 
 // GetExerciseFacets returns the distinct filter values with counts, so the
 // browse page can render chips without hardcoding a taxonomy owned upstream.

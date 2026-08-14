@@ -1,41 +1,32 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, X, SlidersHorizontal, Plus } from 'lucide-react'
+import { Search, X, Plus, Sparkles } from 'lucide-react'
 import { exerciseAPI } from '../services/api'
-import ExerciseList from '../components/exercise/ExerciseList'
+import ExerciseGrid from '../components/exercise/ExerciseGrid'
+import CreateExerciseSheet from '../components/exercise/CreateExerciseSheet'
 import AddToRoutineSheet from '../components/AddToRoutineSheet'
 import { PageHeader } from '../components/ui'
-import { EQUIPMENT_LABEL } from '../utils/exerciseUtils'
+import { BODY_PART_GROUPS, EQUIPMENT_LABEL, bodyPartOf, type BodyPartGroup } from '../utils/exerciseUtils'
 import * as types from '../types'
 
-// Ordered by how people actually narrow a search: what equipment is free, then
-// what they want to train, then how hard it is.
-const FACET_ORDER: { key: types.ExerciseFacetKey; label: string }[] = [
-  { key: 'equipment', label: 'Equipment' },
-  { key: 'muscle_group', label: 'Muscle' },
-  { key: 'level', label: 'Level' },
-  { key: 'mechanic', label: 'Type' },
-  { key: 'force', label: 'Force' },
+// Alphabetical, matching how ExerciseDB-style browse UIs order body-part
+// tabs — "Cardio" isn't a BODY_PART_GROUPS entry (it's driven by category,
+// not muscle_group) so it's spliced in here rather than in that shared list.
+const PART_TABS: { key: string; label: string }[] = [
+  { key: 'all', label: 'All' },
+  ...[...BODY_PART_GROUPS, { key: 'cardio', label: 'Cardio', muscleGroups: [] } satisfies BodyPartGroup]
+    .sort((a, b) => a.label.localeCompare(b.label)),
 ]
-
-// Upstream values are lowercase and only some equipment has a friendly label
-// ("body only" -> "Bodyweight"), so anything unmapped still gets title-cased
-// rather than sitting next to the mapped chips in lowercase.
-function titleCase(v: string): string {
-  return v.replace(/\b\w/g, ch => ch.toUpperCase())
-}
-
-function chipLabel(key: types.ExerciseFacetKey, value: string): string {
-  if (key === 'equipment' && EQUIPMENT_LABEL[value]) return EQUIPMENT_LABEL[value]
-  return titleCase(value)
-}
 
 /**
  * Browse the whole exercise library.
  *
- * The backend has supported these filters for a long time but nothing ever
- * exposed them — discovery only happened through the in-session picker, which
- * searches by name. "What can I do with just dumbbells" was unanswerable.
+ * Rebuilt to match an openGym-style layout: always-visible body-part and
+ * equipment tab rows instead of a collapsible filter panel, and a card grid
+ * instead of a single-column list. All filtering happens client-side against
+ * the full (cached) catalog — ~1300 rows is cheap to filter in JS and this
+ * lets body-part tabs use the coarse BODY_PART_GROUPS buckets, which the
+ * backend's muscle_group column doesn't natively group by.
  *
  * Selections live in the URL so a filtered view is linkable and survives a
  * back-navigation from an exercise's detail page.
@@ -45,57 +36,30 @@ export default function Exercises() {
   const [params, setParams] = useSearchParams()
 
   const [exercises, setExercises] = useState<types.Exercise[]>([])
-  const [facets, setFacets] = useState<types.ExerciseFacets>({})
+  const [equipmentFacet, setEquipmentFacet] = useState<{ value: string; count: number }[]>([])
   const [loading, setLoading] = useState(true)
-  const [showFilters, setShowFilters] = useState(false)
   const [query, setQuery] = useState(params.get('q') ?? '')
   const [planTarget, setPlanTarget] = useState<types.Exercise | null>(null)
+  const [creating, setCreating] = useState(false)
 
-  // The active filter set, derived from the URL rather than mirrored in state —
-  // one source of truth, so the back button can't desync the chips from the list.
-  const active = useMemo(() => {
-    const out: types.ExerciseQuery = {}
-    for (const { key } of FACET_ORDER) {
-      const v = params.get(key)
-      if (v) out[key] = v
-    }
-    return out
-  }, [params])
+  const part = params.get('part') || 'all'
+  const equipment = params.get('equipment') || ''
 
-  const activeCount = Object.keys(active).length
-
-  useEffect(() => { exerciseAPI.facets().then(setFacets).catch(() => {}) }, [])
-
-  // Debounced so typing doesn't fire a request per keystroke. The filter params
-  // are part of the key, so a chip tap re-runs it too.
-  useEffect(() => {
-    let cancelled = false
+  const loadExercises = useCallback(() => {
     setLoading(true)
-    const t = setTimeout(() => {
-      exerciseAPI
-        .list({ ...active, q: query || undefined, limit: 2000 })
-        .then(data => { if (!cancelled) setExercises(data || []) })
-        .catch(() => { if (!cancelled) setExercises([]) })
-        .finally(() => { if (!cancelled) setLoading(false) })
-    }, 250)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [query, active])
+    exerciseAPI.list({ limit: 2000 })
+      .then(setExercises)
+      .catch(() => setExercises([]))
+      .finally(() => setLoading(false))
+  }, [])
 
-  const toggleFacet = (key: types.ExerciseFacetKey, value: string) => {
-    const next = new URLSearchParams(params)
-    if (next.get(key) === value) next.delete(key)
-    else next.set(key, value)
-    setParams(next, { replace: true })
-  }
+  useEffect(() => { loadExercises() }, [loadExercises])
+  useEffect(() => {
+    exerciseAPI.facets().then(f => setEquipmentFacet(f.equipment ?? [])).catch(() => {})
+  }, [])
 
-  const clearAll = () => {
-    const next = new URLSearchParams()
-    if (query) next.set('q', query)
-    setParams(next, { replace: true })
-  }
-
-  // Keep `q` in the URL so a shared link reproduces the whole view, but write it
-  // on a delay — one history entry per keystroke would bury the back button.
+  // Keep `q` in the URL so a shared link reproduces the whole view, but write
+  // it on a delay — one history entry per keystroke would bury the back button.
   useEffect(() => {
     const t = setTimeout(() => {
       const next = new URLSearchParams(params)
@@ -107,115 +71,110 @@ export default function Exercises() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query])
 
+  const setPart = (key: string) => {
+    const next = new URLSearchParams(params)
+    if (key === 'all') next.delete('part')
+    else next.set('part', key)
+    setParams(next, { replace: true })
+  }
+
+  const setEquipment = (value: string) => {
+    const next = new URLSearchParams(params)
+    if (params.get('equipment') === value) next.delete('equipment')
+    else next.set('equipment', value)
+    setParams(next, { replace: true })
+  }
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return exercises.filter(ex => {
+      if (q && !ex.name.toLowerCase().includes(q)) return false
+      if (part !== 'all' && bodyPartOf(ex) !== part) return false
+      if (equipment && ex.equipment !== equipment) return false
+      return true
+    })
+  }, [exercises, query, part, equipment])
+
+  const activeCount = exercises.length
+
   return (
-    // A DEFINITE height, not a min-height. The list inside virtualizes against
+    // A DEFINITE height, not a min-height. The grid inside virtualizes against
     // its scroll container, and a container free to grow reports the full
-    // content as visible — which renders all ~870 rows and defeats the point.
+    // content as visible — which renders every row and defeats the point.
     // dvh so mobile browser chrome collapsing doesn't clip the list.
     <div className="animate-slide-up flex flex-col" style={{ height: 'calc(100dvh - 11rem)' }}>
       <PageHeader
         title="Exercises"
-        subtitle={loading ? 'Loading…' : `${exercises.length} exercise${exercises.length === 1 ? '' : 's'}`}
+        subtitle={loading ? 'Loading…' : `${activeCount} exercise${activeCount === 1 ? '' : 's'} with animations`}
       />
 
-      <div className="flex items-center gap-2 mb-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-tx-muted pointer-events-none" />
-          <input
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search exercises…"
-            className="input pl-10 w-full"
-          />
-          {query && (
-            <button
-              onClick={() => setQuery('')}
-              aria-label="Clear search"
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-surface-muted"
-            >
-              <X className="w-3.5 h-3.5 text-tx-muted" />
-            </button>
-          )}
-        </div>
-        <button
-          onClick={() => setShowFilters(v => !v)}
-          aria-expanded={showFilters}
-          className={`btn-secondary btn-sm flex-shrink-0 ${activeCount > 0 ? 'border-brand-500/40 text-brand-400' : ''}`}
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          Filters
-          {activeCount > 0 && (
-            <span className="ml-0.5 px-1.5 rounded-full bg-brand-500 text-white text-[10px] font-bold tabular-nums">
-              {activeCount}
-            </span>
-          )}
-        </button>
+      <div className="relative mb-3">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-tx-muted pointer-events-none" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search exercises…"
+          className="input pl-10 w-full"
+        />
+        {query && (
+          <button
+            onClick={() => setQuery('')}
+            aria-label="Clear search"
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-surface-muted"
+          >
+            <X className="w-3.5 h-3.5 text-tx-muted" />
+          </button>
+        )}
       </div>
 
-      {/* Active filters stay visible when the panel is closed, so a filtered
-          list is never silently filtered. */}
-      {activeCount > 0 && !showFilters && (
-        <div className="flex items-center gap-1.5 flex-wrap mb-3">
-          {(Object.entries(active) as [types.ExerciseFacetKey, string][]).map(([key, value]) => (
-            <button
-              key={key}
-              onClick={() => toggleFacet(key, value)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-brand-500/15 text-brand-300 border border-brand-500/25 hover:bg-brand-500/25 transition-colors"
-            >
-              {chipLabel(key, value)}
-              <X className="w-3 h-3" />
-            </button>
-          ))}
-          <button onClick={clearAll} className="text-xs text-tx-muted hover:text-tx-secondary px-1">
-            Clear all
+      <div className="flex items-center gap-1.5 flex-wrap mb-2">
+        {PART_TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setPart(key)}
+            aria-pressed={part === key}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              part === key
+                ? 'bg-brand-500 text-white'
+                : 'bg-surface-muted text-tx-secondary hover:bg-surface-overlay'
+            }`}
+          >
+            {label}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
 
-      {showFilters && (
-        <div className="card p-3 mb-3 space-y-3">
-          {FACET_ORDER.map(({ key, label }) => {
-            const values = facets[key]
-            if (!values?.length) return null
-            return (
-              <div key={key}>
-                <p className="text-[10px] font-semibold text-tx-muted uppercase tracking-wider mb-1.5">{label}</p>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {values.map(({ value, count }) => {
-                    const selected = active[key] === value
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => toggleFacet(key, value)}
-                        aria-pressed={selected}
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
-                          selected
-                            ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
-                            : 'bg-surface-muted/40 text-tx-secondary border-transparent hover:border-surface-border'
-                        }`}
-                      >
-                        {chipLabel(key, value)}
-                        <span className="text-tx-muted tabular-nums">{count}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-          {activeCount > 0 && (
-            <button onClick={clearAll} className="btn-ghost btn-sm">Clear all filters</button>
-          )}
-        </div>
-      )}
+      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+        <button
+          onClick={() => setEquipment('')}
+          aria-pressed={!equipment}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+            !equipment ? 'bg-brand-500 text-white' : 'bg-surface-muted text-tx-secondary hover:bg-surface-overlay'
+          }`}
+        >
+          Any equipment
+        </button>
+        {equipmentFacet.map(({ value }) => (
+          <button
+            key={value}
+            onClick={() => setEquipment(value)}
+            aria-pressed={equipment === value}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              equipment === value ? 'bg-brand-500 text-white' : 'bg-surface-muted text-tx-secondary hover:bg-surface-overlay'
+            }`}
+          >
+            {EQUIPMENT_LABEL[value] || value}
+          </button>
+        ))}
+      </div>
 
       {/* min-h-0 is load-bearing: a flex child defaults to min-height:auto,
           which lets it grow to its content and re-breaks the bounded scroll
           container the virtualizer depends on. */}
       <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
-        <ExerciseList
-          exercises={exercises}
+        <ExerciseGrid
+          exercises={filtered}
           loading={loading}
           onOpen={ex => navigate(`/exercises/${ex.id}`)}
           renderAction={ex => (
@@ -226,11 +185,33 @@ export default function Exercises() {
               <Plus className="w-3.5 h-3.5" /> Plan
             </button>
           )}
-          emptyLabel={activeCount > 0 || query ? 'No exercises match those filters' : 'No exercises found'}
+          emptyLabel={part !== 'all' || equipment || query ? 'No exercises match those filters' : 'No exercises found'}
+          leadingCard={
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl border border-dashed border-surface-border bg-surface-elevated hover:bg-surface-muted transition-colors text-left"
+            >
+              <div className="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-4 h-4 text-brand-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-tx-primary">Create your own exercise</p>
+                <p className="text-xs text-tx-muted">name + body part, no animation</p>
+              </div>
+              <Plus className="w-4 h-4 text-tx-muted flex-shrink-0" />
+            </button>
+          }
         />
       </div>
 
       {planTarget && <AddToRoutineSheet exercise={planTarget} onClose={() => setPlanTarget(null)} />}
+      {creating && (
+        <CreateExerciseSheet
+          onClose={() => setCreating(false)}
+          onCreated={() => { setCreating(false); loadExercises() }}
+        />
+      )}
     </div>
   )
 }

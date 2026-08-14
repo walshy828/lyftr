@@ -34,6 +34,10 @@ const (
 	SourceFree      = "free"
 	SourceGymvisual = "gymvisual"
 	SourceLyftr     = "lyftr"
+	// SourceCustom marks a user-created exercise (see ExerciseStore.Create).
+	// Like SourceLyftr, it must survive pruneUnreferenced even when unused by
+	// any workout/program yet.
+	SourceCustom = "custom"
 )
 
 var seeding atomic.Bool
@@ -197,14 +201,15 @@ func WipeAndReseed(db *sql.DB) error {
 // references and that aren't part of the lyftr-native carve-out. With
 // foreign_keys enforced, deleting a referenced row is (correctly) rejected —
 // referenced rows are refreshed in place by the ON CONFLICT(name) upsert
-// instead. source != 'lyftr' is belt-and-suspenders alongside "unreferenced":
-// the cardio carve-out (seedLyftrCardio) must survive a reset even if
-// briefly unused. Shared by WipeAndReseed and RepointAndPrune-adjacent
-// callers that need the exact same guard (see stores.ExerciseMigrationStore.
-// RepointAndPrune, which scopes it further to one source).
+// instead. source NOT IN ('lyftr', 'custom') is belt-and-suspenders alongside
+// "unreferenced": the cardio carve-out (seedLyftrCardio) and user-created
+// exercises must survive a reset even if briefly unused. Shared by
+// WipeAndReseed and RepointAndPrune-adjacent callers that need the exact
+// same guard (see stores.ExerciseMigrationStore.RepointAndPrune, which
+// scopes it further to one source).
 func pruneUnreferenced(db *sql.DB) error {
 	_, err := db.Exec(`DELETE FROM exercises
-		WHERE source != 'lyftr'
+		WHERE source NOT IN ('lyftr', 'custom')
 		  AND id NOT IN (SELECT exercise_id FROM workout_exercises)
 		  AND id NOT IN (SELECT exercise_id FROM program_exercises)`)
 	return err

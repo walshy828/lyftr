@@ -165,8 +165,9 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.POST("schedule/overrides", h.SetScheduleOverride)
 		protected.DELETE("schedule/overrides/:date", h.ClearScheduleOverride)
 
-		// Exercises (read-only for users)
+		// Exercises (mostly read-only for users; POST adds a custom entry)
 		protected.GET("exercises", h.ListExercises)
+		protected.POST("exercises", h.CreateExercise)
 		// Named sub-path before the :id wildcard, or the wildcard swallows it.
 		protected.GET("exercises/facets", h.GetExerciseFacets)
 		protected.GET("exercises/:id", h.GetExercise)
