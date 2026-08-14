@@ -12,10 +12,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// maxWorkoutListLimit bounds a single page of workout history. Each row carries
+// its exercises and sets, so this is a memory ceiling, not a paranoia knob.
+const maxWorkoutListLimit = 200
+
 func (h *Handler) ListWorkouts(c *gin.Context) {
 	uid := middleware.UserID(c)
 	f := stores.WorkoutFilter{Limit: 20, Query: c.Query("q")}
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
+	// Clamp rather than ignore. The old `l <= 100` guard silently dropped an
+	// over-limit request back to the default of 20, so the dashboard asking for
+	// 150 got 20 — and every "all-time" training metric it computed was wrong.
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
+		if l > maxWorkoutListLimit {
+			l = maxWorkoutListLimit
+		}
 		f.Limit = l
 	}
 	if o, err := strconv.Atoi(c.Query("offset")); err == nil && o >= 0 {

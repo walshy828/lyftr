@@ -251,31 +251,77 @@ func TestUpdateWorkout_preservesStartedAt(t *testing.T) {
 	}
 }
 
-func TestListWorkouts_limitCap(t *testing.T) {
+// An over-limit request must be CLAMPED to the ceiling, not discarded. The
+// original guard (`l > 0 && l <= 100`) silently dropped an out-of-range limit
+// back to the default of 20 — so the dashboard asking for 150 quietly received
+// 20 workouts, and every metric it derived from them was computed over a
+// fraction of the user's history. Each case here seeds more rows than the
+// default so a regression to the default is distinguishable from a correct clamp.
+func TestListWorkouts_limitClamps(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)
 
-	// Insert 5 workouts
-	for i := 0; i < 5; i++ {
+	const seeded = 25
+	for i := 0; i < seeded; i++ {
 		db.DB.Exec(
 			`INSERT INTO workouts (user_id, name, started_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
 			uid, fmt.Sprintf("Workout %d", i),
 		)
 	}
 
-	// Request with limit=200 (above cap of 100)
-	c, w := newContext(uid, http.MethodGet, "/api/v1/workouts?limit=200", nil)
-	c.Request.URL.RawQuery = "limit=200"
+	cases := []struct {
+		name  string
+		query string
+		want  int
+	}{
+		{"above ceiling clamps, does not fall back to default", "limit=1000", seeded},
+		{"dashboard's request is honoured", "limit=150", seeded},
+		{"explicit small limit is respected", "limit=10", 10},
+		{"no limit uses the default", "", 20},
+		{"garbage falls back to the default", "limit=abc", 20},
+		{"zero falls back to the default", "limit=0", 20},
+		{"negative falls back to the default", "limit=-5", 20},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := newContext(uid, http.MethodGet, "/api/v1/workouts?"+tc.query, nil)
+			c.Request.URL.RawQuery = tc.query
+			th.ListWorkouts(c)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			data := decodeResponse(t, w)["data"].([]any)
+			if len(data) != tc.want {
+				t.Errorf("%s: expected %d workouts, got %d", tc.query, tc.want, len(data))
+			}
+		})
+	}
+}
+
+// The ceiling itself is real, not just a number in a comment.
+func TestListWorkouts_limitCeiling(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	for i := 0; i < maxWorkoutListLimit+10; i++ {
+		db.DB.Exec(
+			`INSERT INTO workouts (user_id, name, started_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+			uid, fmt.Sprintf("Workout %d", i),
+		)
+	}
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/workouts?limit=9999", nil)
+	c.Request.URL.RawQuery = "limit=9999"
 	th.ListWorkouts(c)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	// Should still return results (capped at 100, but we only have 5)
-	resp := decodeResponse(t, w)
-	data := resp["data"].([]any)
-	if len(data) != 5 {
-		t.Errorf("expected 5 workouts, got %d", len(data))
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != maxWorkoutListLimit {
+		t.Errorf("expected %d workouts (the ceiling), got %d", maxWorkoutListLimit, len(data))
 	}
 }
 
