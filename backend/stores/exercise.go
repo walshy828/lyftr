@@ -23,14 +23,14 @@ type ExerciseFilter struct {
 
 // "force" is quoted throughout: it isn't reserved in SQLite, but it reads like
 // a keyword and quoting costs nothing.
-const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url, image_url_end, gif_url, "force", level, mechanic, source_id FROM exercises`
+const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url, image_url_end, gif_url, "force", level, mechanic, source_id, source FROM exercises`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanExercise(row scanner, e *models.Exercise) error {
 	var secondaryRaw string
 	if err := row.Scan(&e.ID, &e.Name, &e.MuscleGroup, &secondaryRaw, &e.Category, &e.Equipment, &e.Description,
-		&e.ImageURL, &e.ImageEndURL, &e.GifURL, &e.Force, &e.Level, &e.Mechanic, &e.SourceID); err != nil {
+		&e.ImageURL, &e.ImageEndURL, &e.GifURL, &e.Force, &e.Level, &e.Mechanic, &e.SourceID, &e.Source); err != nil {
 		return err
 	}
 	json.Unmarshal([]byte(secondaryRaw), &e.SecondaryMuscles)

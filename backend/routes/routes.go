@@ -198,6 +198,10 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 			admin.POST("/sync-exercises", h.SyncExercises)
 			admin.GET("/seed-status", h.ExerciseSeedStatus)
 			admin.POST("/reset-exercises", h.ResetExercises)
+
+			admin.GET("/exercise-migration/status", h.GetExerciseMigrationStatus)
+			admin.POST("/exercise-migration/preview", h.PreviewExerciseMigration)
+			admin.POST("/exercise-migration/:id/confirm", h.ConfirmExerciseMigration)
 		}
 	}
 }

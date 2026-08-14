@@ -151,6 +151,38 @@ type DraftProgram struct {
 	Exercises []DraftProgramExercise `json:"exercises"`
 }
 
+// MatchCandidate is one exercise the model may match an in-use exercise to —
+// the target library's catalog, keyed by name rather than ID since the target
+// library's rows don't exist in the database yet at match time (the
+// exercise-migration preview runs before the new library is seeded; see
+// controllers/exercise_migration.go and seed.FetchCatalog).
+type MatchCandidate struct {
+	Name, MuscleGroup, Equipment, Category string
+}
+
+// MatchExercisesRequest carries the exercises a user actually has logged
+// history against (referenced by a workout or program) that need a new home
+// in the target library, plus the full target catalog to choose from. Like
+// GenerateProgramRequest.Catalog, the controller assembles both slices
+// server-side so the provider stays stateless and never invents an exercise.
+type MatchExercisesRequest struct {
+	InUse   []ExerciseRef
+	Catalog []MatchCandidate
+}
+
+// ExerciseMatch is the model's proposed mapping for one in-use exercise.
+// MatchedName is empty when nothing in the catalog is a good match — the
+// caller must not invent a fallback for that case, it's a deliberate signal
+// to leave that exercise's history unmigrated (see the exercise-migration
+// confirm flow's "leave unmigrated" handling for anything below "high"
+// confidence or with no match at all).
+type ExerciseMatch struct {
+	OldExerciseID int64  `json:"old_exercise_id"`
+	MatchedName   string `json:"matched_name,omitempty"`
+	Confidence    string `json:"confidence"` // "high" | "medium" | "low"
+	Reasoning     string `json:"reasoning,omitempty"`
+}
+
 // GenerateWeightPlanRequest carries everything the model needs to propose a
 // weight-loss nutrition plan. BMI and the healthy weight range are computed
 // deterministically by the controller (utils.BMI/HealthyWeightRangeLbs) and
@@ -351,6 +383,16 @@ type Provider interface {
 	// persisting any draft the user accepts. Implementations should return
 	// exactly req.NumberOfDays program drafts.
 	GenerateProgram(ctx context.Context, req GenerateProgramRequest) ([]DraftProgram, error)
+
+	// MatchExercises proposes, for each in-use exercise in req.InUse, the
+	// best-matching exercise (by name) in req.Catalog — used by the exercise-
+	// migration flow when switching the active library. Implementations must
+	// only return names that appear verbatim in req.Catalog (never invent one)
+	// and must return an empty MatchedName with confidence "low" when nothing
+	// is a good match, rather than forcing a bad one. Always return exactly
+	// len(req.InUse) results, one per input, so the caller can align by index
+	// or OldExerciseID without guessing which inputs were dropped.
+	MatchExercises(ctx context.Context, req MatchExercisesRequest) ([]ExerciseMatch, error)
 
 	// GenerateWeightPlan proposes daily nutrition targets and a week-by-week
 	// expected-weight trajectory toward req.TargetWeight, honoring a safe
@@ -664,6 +706,55 @@ func draftProgramJSONSchema() map[string]any {
 			},
 		},
 		"required":             []string{"programs"},
+		"additionalProperties": false,
+	}
+}
+
+// matchExercisesPrompt builds the shared MatchExercises prompt — one builder
+// used by all three providers so their prompts can't drift apart. The old
+// (in-use) exercises are listed with their real ID so the response can be
+// correlated back; the target catalog is listed by name only, since it isn't
+// persisted yet at match time.
+func matchExercisesPrompt(req MatchExercisesRequest) string {
+	var b strings.Builder
+	b.WriteString("You are migrating a workout-tracking app's exercise library from one dataset to another. For each \"exercise to match\" below, find the single best-matching exercise in the \"target catalog\" — same movement/muscle group/equipment, even if the name, capitalization, or wording differs (the two datasets use unrelated naming conventions, e.g. \"Barbell Bench Press\" vs \"barbell bench press v. 2\").\n\n")
+	b.WriteString("Rules: matched_name MUST be copied verbatim (exact case and punctuation) from the target catalog below, or left empty if nothing is a genuinely equivalent movement — do not force a mismatched pick just to fill the field, and never invent a name that isn't in the catalog. Set confidence to \"high\" only when you're confident it's the same or a near-identical movement, \"medium\" for a reasonable substitute, \"low\" for a weak guess or no match at all. Give a one-sentence reasoning. Return exactly one result per exercise to match, in any order, each carrying its old_exercise_id.\n\n")
+
+	b.WriteString("Exercises to match (id: name (muscle_group, equipment, category)):\n")
+	for _, e := range req.InUse {
+		fmt.Fprintf(&b, "%d: %s (%s, %s, %s)\n", e.ID, e.Name, e.MuscleGroup, e.Equipment, e.Category)
+	}
+
+	b.WriteString("\nTarget catalog (name (muscle_group, equipment, category)):\n")
+	for _, c := range req.Catalog {
+		fmt.Fprintf(&b, "%s (%s, %s, %s)\n", c.Name, c.MuscleGroup, c.Equipment, c.Category)
+	}
+	return b.String()
+}
+
+// exerciseMatchJSONSchema is the JSON schema all three providers' structured
+// output requests should target for MatchExercises.
+func exerciseMatchJSONSchema() map[string]any {
+	matchSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"old_exercise_id": map[string]any{"type": "integer"},
+			"matched_name":    map[string]any{"type": "string"},
+			"confidence":      map[string]any{"type": "string", "enum": []string{"high", "medium", "low"}},
+			"reasoning":       map[string]any{"type": "string"},
+		},
+		"required":             []string{"old_exercise_id", "matched_name", "confidence", "reasoning"},
+		"additionalProperties": false,
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"matches": map[string]any{
+				"type":  "array",
+				"items": matchSchema,
+			},
+		},
+		"required":             []string{"matches"},
 		"additionalProperties": false,
 	}
 }

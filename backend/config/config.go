@@ -132,16 +132,26 @@ type Config struct {
 	// like MealPhotoDir.
 	ExerciseImageDir string
 
-	// ExerciseGifSource switches the library seed from free-exercise-db
-	// (default) to hasaneyldrm/exercises-dataset, which ships a real animated
-	// GIF per exercise instead of a two-frame photo crossfade. Opt-in and off
-	// by default: that dataset's media is copyrighted by Gymvisual and
-	// redistributing it requires a license from them (see its NOTICE/README) —
-	// self-hosters who want it are expected to review those terms themselves
-	// before setting EXERCISE_GIF_SOURCE=true. Flipping this after the library
-	// is already seeded from the other source doesn't replace existing rows;
-	// pair it with an admin "reset exercises" to get a clean swap.
-	ExerciseGifSource bool
+	// ExerciseLibrarySource picks which upstream dataset seeds the exercise
+	// library: "free" (free-exercise-db, default — a two-frame photo
+	// crossfade) or "gymvisual" (hasaneyldrm/exercises-dataset — a real
+	// animated GIF per exercise). The two datasets have zero exact-name
+	// overlap, so switching source is NOT a safe drop-in: re-seeding just adds
+	// the new dataset's rows alongside the old ones. Use the exercise-migration
+	// admin flow (POST /admin/exercise-migration/preview then /confirm) to
+	// move existing workouts/programs onto the new library and remove the old
+	// one; see controllers/exercise_migration.go.
+	//
+	// gymvisual's media is copyrighted by Gymvisual and redistributing it
+	// requires a license from them (see that dataset's NOTICE/README) —
+	// self-hosters who want it are expected to review those terms themselves.
+	//
+	// Flipping this env var only changes what a *fresh* seed writes; it does
+	// not by itself migrate an instance that already has data (see above), and
+	// completing a migration via the admin flow only updates the running
+	// process's in-memory value — persist the same value here too, or the next
+	// restart reverts to whatever this var says.
+	ExerciseLibrarySource string
 }
 
 var C *Config
@@ -203,7 +213,11 @@ func Load() {
 	C.AdminEmails = splitList(getEnv("ADMIN_EMAILS", ""))
 	C.AllowRegistration = getEnv("ALLOW_REGISTRATION", "") == "true"
 	C.RegistrationInviteCode = []byte(getEnv("REGISTRATION_INVITE_CODE", ""))
-	C.ExerciseGifSource = getEnv("EXERCISE_GIF_SOURCE", "") == "true"
+	C.ExerciseLibrarySource = getEnv("EXERCISE_LIBRARY_SOURCE", "free")
+	if C.ExerciseLibrarySource != "free" && C.ExerciseLibrarySource != "gymvisual" {
+		log.Printf("config: EXERCISE_LIBRARY_SOURCE=%q is not \"free\" or \"gymvisual\" - defaulting to \"free\"", C.ExerciseLibrarySource)
+		C.ExerciseLibrarySource = "free"
+	}
 	C.TrustedProxies = splitList(getEnv("TRUSTED_PROXIES", ""))
 	C.AIHealthInsightsEnabled = getEnv("AI_HEALTH_INSIGHTS_ENABLED", "") == "true"
 

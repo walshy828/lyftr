@@ -60,7 +60,7 @@ func (h *Handler) ServeExerciseImage(c *gin.Context) {
 
 	// "gif" isn't one of the two-frame photo positions — it's the real
 	// animated GIF, only present when the library was seeded from the
-	// optional Gymvisual-sourced dataset (see config.ExerciseGifSource).
+	// optional Gymvisual-sourced dataset (see config.ExerciseLibrarySource).
 	if name == "gif" {
 		path, err := storage.EnsureExerciseGif(config.C.ExerciseImageDir, e.SourceID, e.GifURL)
 		if err != nil {

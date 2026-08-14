@@ -187,6 +187,48 @@ func (p *anthropicProvider) GenerateProgram(ctx context.Context, req GeneratePro
 	return out.Programs, nil
 }
 
+func (p *anthropicProvider) MatchExercises(ctx context.Context, req MatchExercisesRequest) ([]ExerciseMatch, error) {
+	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model: p.model,
+		// 4096: a full-library migration can carry dozens of in-use exercises,
+		// each with reasoning text — bigger than a single meal response.
+		MaxTokens: 4096,
+		OutputConfig: anthropic.OutputConfigParam{
+			Effort: anthropic.OutputConfigEffortLow,
+			Format: anthropic.JSONOutputFormatParam{
+				Schema: exerciseMatchJSONSchema(),
+			},
+		},
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(matchExercisesPrompt(req)),
+			),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("anthropic match exercises call: %w", err)
+	}
+
+	var text string
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.TextBlock); ok {
+			text = tb.Text
+			break
+		}
+	}
+	if text == "" {
+		return nil, fmt.Errorf("anthropic match exercises call: no text content in response")
+	}
+
+	var out struct {
+		Matches []ExerciseMatch `json:"matches"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return nil, fmt.Errorf("anthropic match exercises call: unmarshal structured output: %w", err)
+	}
+	return out.Matches, nil
+}
+
 func (p *anthropicProvider) GenerateWeightPlan(ctx context.Context, req GenerateWeightPlanRequest) (DraftWeightPlan, error) {
 	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model: p.model,

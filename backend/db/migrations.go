@@ -406,9 +406,15 @@ CREATE INDEX IF NOT EXISTS idx_program_sets_program_exercise ON program_sets(pro
 	ensureColumn("exercises", "source_id", `ALTER TABLE exercises ADD COLUMN source_id TEXT NOT NULL DEFAULT ''`)
 
 	// gif_url holds a real animated GIF of the movement, only populated when
-	// the optional Gymvisual-sourced dataset is enabled (EXERCISE_GIF_SOURCE) —
-	// see config.ExerciseGifSource and seed/exercises.go.
+	// the Gymvisual-sourced dataset is selected (EXERCISE_LIBRARY_SOURCE=
+	// gymvisual) — see config.ExerciseLibrarySource and seed/exercises.go.
 	ensureColumn("exercises", "gif_url", `ALTER TABLE exercises ADD COLUMN gif_url TEXT NOT NULL DEFAULT ''`)
+
+	// source is which library a row belongs to ("free", "gymvisual", "lyftr" —
+	// see models.Exercise.Source). Empty until the next sync backfills it, same
+	// as the other columns above; the exercise-migration flow and
+	// WipeAndReseed's prune both need it to tell libraries apart.
+	ensureColumn("exercises", "source", `ALTER TABLE exercises ADD COLUMN source TEXT NOT NULL DEFAULT ''`)
 
 	// Faceted filtering on the library. Honest note: at ~870 rows these fix no
 	// measured problem — the `name LIKE '%q%'` scan dominates and cannot use
@@ -422,6 +428,30 @@ CREATE INDEX IF NOT EXISTS idx_exercises_level     ON exercises(level);
 CREATE INDEX IF NOT EXISTS idx_exercises_source_id ON exercises(source_id);`
 	if _, err := DB.Exec(exerciseIndexes); err != nil {
 		log.Fatalf("create exercise facet indexes: %v", err)
+	}
+
+	// exercise_migrations is the audit/idempotency record for the AI-assisted
+	// library-switch flow (controllers/exercise_migration.go): one row per
+	// preview, so a completed migration stays inspectable after the fact and a
+	// second accidental run can be rejected while one is already in flight.
+	// mapping_json holds the full proposed/confirmed old-id -> new-name mapping
+	// (including unmatched/manually-resolved entries) rather than a normalized
+	// join table, because it's write-once-per-migration, read-whole, and never
+	// queried by individual mapping row — a blob is simpler and just as correct.
+	exerciseMigrations := `
+CREATE TABLE IF NOT EXISTS exercise_migrations (
+  id           INTEGER  PRIMARY KEY AUTOINCREMENT,
+  from_source  TEXT     NOT NULL,
+  to_source    TEXT     NOT NULL,
+  status       TEXT     NOT NULL DEFAULT 'proposed', -- proposed | applied | failed
+  mapping_json TEXT     NOT NULL DEFAULT '[]',
+  applied_by   TEXT     NOT NULL DEFAULT '',
+  error        TEXT     NOT NULL DEFAULT '',
+  started_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME
+);`
+	if _, err := DB.Exec(exerciseMigrations); err != nil {
+		log.Fatalf("create exercise_migrations: %v", err)
 	}
 
 	// Weekly training schedule: which programs belong on which weekday, so the

@@ -1,23 +1,34 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Footprints, Zap, Bike, AlertCircle } from 'lucide-react'
+import { X, Footprints, Zap, Bike, Waves, AlertCircle } from 'lucide-react'
 import { exerciseAPI, workoutAPI } from '../services/api'
 import { useSettingsStore, weightShort } from '../stores/settings'
 import CardioEntry from './CardioEntry'
 import * as types from '../types'
 
-type Kind = 'walk' | 'run' | 'bike'
+type Kind = 'walk' | 'run' | 'bike' | 'swim'
 
 const KINDS: { kind: Kind; label: string; icon: typeof Footprints; keywords: string[] }[] = [
   { kind: 'walk', label: 'Walk', icon: Footprints, keywords: ['walk'] },
   { kind: 'run', label: 'Run', icon: Zap, keywords: ['run', 'jog'] },
   { kind: 'bike', label: 'Bike', icon: Bike, keywords: ['bicycl', 'cycling', 'bike', 'spinning'] },
+  { kind: 'swim', label: 'Swim', icon: Waves, keywords: ['swim'] },
 ]
 
-// Resolve a walk/run/bike kind to the best cardio exercise in the library.
-// Matches by keyword, then prefers the most generic ("outdoor") option by
-// deprioritizing stationary/treadmill/machine variants and shorter names.
+// Resolve a walk/run/bike/swim kind to the best cardio exercise in the
+// library. Lyftr seeds a fixed, always-present "lyftr" row per kind (see
+// backend/seed/exercises.go's lyftrCardioItems) specifically so this never
+// depends on whichever third-party library (free-exercise-db vs the
+// Gymvisual-sourced dataset) happens to be active — Gymvisual in particular
+// has no outdoor walk/bike and no swim entry at all, so the old
+// keyword-over-the-whole-catalog search could silently fail or match a
+// stationary-machine variant after a library switch. The keyword search
+// below only runs as a fallback, e.g. for an install that hasn't synced the
+// carve-out yet.
 function pickExercise(list: types.Exercise[], kind: Kind): types.Exercise | undefined {
+  const native = list.find(e => e.source === 'lyftr' && e.source_id === `lyftr-${kind}`)
+  if (native) return native
+
   const kw = KINDS.find(k => k.kind === kind)!.keywords
   const matches = list.filter(e => {
     const n = e.name.toLowerCase()
@@ -100,7 +111,7 @@ export default function QuickCardioModal({ onClose, onLogged }: QuickCardioModal
         </div>
 
         {/* Activity picker */}
-        <div className="grid grid-cols-3 gap-2 mb-5">
+        <div className="grid grid-cols-4 gap-2 mb-5">
           {KINDS.map(({ kind: k, label, icon: Icon }) => (
             <button
               key={k}

@@ -11,6 +11,7 @@ import { HelpTip } from '../components/Tooltip'
 import PageHeader from '../components/ui/PageHeader'
 import DateInput from '../components/ui/DateInput'
 import ServerSettings from '../components/ServerSettings'
+import ExerciseLibraryMigration from '../components/ExerciseLibraryMigration'
 import SignedInDevices from '../components/SignedInDevices'
 import PasskeyManager from '../components/PasskeyManager'
 import { todayStr } from '../utils/dateUtils'
@@ -917,6 +918,8 @@ export default function Settings() {
             }
           </button>
         </div>
+
+        <ExerciseLibraryMigration />
       </Section>
 
       {/* Danger Zone */}

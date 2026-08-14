@@ -61,7 +61,7 @@ func ExerciseImagePath(baseDir, sourceID string, frame int) (string, error) {
 }
 
 // ExerciseGifPath returns the on-disk path for an exercise's animated GIF
-// (only populated for exercises seeded from config.ExerciseGifSource).
+// (only populated for exercises seeded from config.ExerciseLibrarySource).
 func ExerciseGifPath(baseDir, sourceID string) (string, error) {
 	if err := validateSourceID(sourceID); err != nil {
 		return "", err

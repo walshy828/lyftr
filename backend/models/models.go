@@ -87,9 +87,16 @@ type Exercise struct {
 	ImageEndURL string `json:"image_url_end,omitempty" db:"image_url_end"`
 	// GifURL is a real animated GIF of the movement, only populated when the
 	// library was seeded from the Gymvisual-sourced dataset (see
-	// config.ExerciseGifSource). Empty for free-exercise-db rows, which
+	// config.ExerciseLibrarySource). Empty for free-exercise-db rows, which
 	// animate via the ImageURL/ImageEndURL crossfade instead.
 	GifURL string `json:"gif_url,omitempty" db:"gif_url"`
+	// Source is which library this row belongs to: "free", "gymvisual", or
+	// "lyftr" (the app's own always-present cardio carve-out — see
+	// seed.seedLyftrCardio). Distinct from SourceID (the upstream slug/id
+	// within that library): Source is what the exercise-migration flow and
+	// WipeAndReseed's prune both key off of to know which rows a library
+	// switch may touch.
+	Source string `json:"source,omitempty" db:"source"`
 	// Force ("push"/"pull"/"static"), Level ("beginner"/"intermediate"/
 	// "expert") and Mechanic ("compound"/"isolation") come from the upstream
 	// dataset and drive the library's filter chips.

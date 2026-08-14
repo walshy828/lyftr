@@ -203,6 +203,48 @@ func (p *geminiProvider) GenerateProgram(ctx context.Context, req GenerateProgra
 	return out.Programs, nil
 }
 
+func (p *geminiProvider) MatchExercises(ctx context.Context, req MatchExercisesRequest) ([]ExerciseMatch, error) {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  p.apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gemini client: %w", err)
+	}
+
+	resp, err := client.Models.GenerateContent(ctx, p.model,
+		[]*genai.Content{
+			genai.NewContentFromParts([]*genai.Part{
+				genai.NewPartFromText(matchExercisesPrompt(req)),
+			}, genai.RoleUser),
+		},
+		&genai.GenerateContentConfig{
+			ResponseMIMEType:   "application/json",
+			ResponseJsonSchema: exerciseMatchJSONSchema(),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gemini match exercises call: %w", err)
+	}
+
+	text := resp.Text()
+	if text == "" {
+		return nil, fmt.Errorf("gemini match exercises call: empty response text")
+	}
+
+	var out struct {
+		Matches []ExerciseMatch `json:"matches"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		var bare []ExerciseMatch
+		if arrErr := json.Unmarshal([]byte(text), &bare); arrErr == nil {
+			return bare, nil
+		}
+		return nil, fmt.Errorf("gemini match exercises call: unmarshal structured output: %w", err)
+	}
+	return out.Matches, nil
+}
+
 func (p *geminiProvider) GenerateWeightPlan(ctx context.Context, req GenerateWeightPlanRequest) (DraftWeightPlan, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  p.apiKey,

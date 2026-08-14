@@ -1547,11 +1547,22 @@ type fakeVisionProvider struct {
 	// bpReq captures what the handler built, so tests can assert the
 	// deterministic figures were threaded through rather than recomputed.
 	bpReq vision.BPInsightRequest
+
+	exerciseMatches []vision.ExerciseMatch
+	matchErr        error
+	// matchReq captures what the handler asked for, so tests can assert the
+	// in-use exercises and target catalog were threaded through correctly.
+	matchReq vision.MatchExercisesRequest
 }
 
 func (f *fakeVisionProvider) GenerateProgram(_ context.Context, req vision.GenerateProgramRequest) ([]vision.DraftProgram, error) {
 	f.generateReq = req
 	return f.generatedPrograms, f.generateErr
+}
+
+func (f *fakeVisionProvider) MatchExercises(_ context.Context, req vision.MatchExercisesRequest) ([]vision.ExerciseMatch, error) {
+	f.matchReq = req
+	return f.exerciseMatches, f.matchErr
 }
 
 func (f *fakeVisionProvider) AnalyzeLabel(_ context.Context, _, _ string) (vision.NutritionExtraction, error) {

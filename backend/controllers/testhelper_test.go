@@ -28,9 +28,10 @@ func setupTestConfig(t *testing.T) {
 	t.Helper()
 	orig := config.C
 	config.C = &config.Config{
-		Env:               "test",
-		AllowRegistration: true,
-		MealPhotoDir:      t.TempDir(),
+		Env:                   "test",
+		AllowRegistration:     true,
+		MealPhotoDir:          t.TempDir(),
+		ExerciseLibrarySource: "free",
 	}
 	t.Cleanup(func() { config.C = orig })
 }
@@ -126,9 +127,21 @@ CREATE TABLE IF NOT EXISTS exercises (
   "force" TEXT NOT NULL DEFAULT '',
   level TEXT NOT NULL DEFAULT '',
   mechanic TEXT NOT NULL DEFAULT '',
-  source_id TEXT NOT NULL DEFAULT ''
+  source_id TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
+CREATE TABLE IF NOT EXISTS exercise_migrations (
+  id           INTEGER  PRIMARY KEY AUTOINCREMENT,
+  from_source  TEXT     NOT NULL,
+  to_source    TEXT     NOT NULL,
+  status       TEXT     NOT NULL DEFAULT 'proposed',
+  mapping_json TEXT     NOT NULL DEFAULT '[]',
+  applied_by   TEXT     NOT NULL DEFAULT '',
+  error        TEXT     NOT NULL DEFAULT '',
+  started_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME
+);
 CREATE TABLE IF NOT EXISTS workouts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

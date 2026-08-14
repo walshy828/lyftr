@@ -51,11 +51,14 @@ export interface Exercise {
   video_url?: string
   /** End of the movement. With image_url it animates the lift. */
   image_url_end?: string
-  /** Real animated GIF, only present on libraries seeded with EXERCISE_GIF_SOURCE. */
+  /** Real animated GIF, only present on libraries seeded with EXERCISE_LIBRARY_SOURCE=gymvisual. */
   gif_url?: string
   force?: string
   level?: string
   mechanic?: string
+  /** Which library this row belongs to: "free", "gymvisual", or "lyftr" (the
+   *  app's own always-present cardio carve-out — see QuickCardioModal). */
+  source?: string
   /** Upstream dataset slug; the media cache keys on it. */
   source_id?: string
 }
@@ -930,6 +933,44 @@ export interface FacetValue {
 
 /** Distinct filter values with global counts, keyed by field. */
 export type ExerciseFacets = Partial<Record<ExerciseFacetKey, FacetValue[]>>
+
+/** One proposed (or manually resolved) old->new exercise mapping row in an
+ *  exercise-library migration — see backend stores.MigrationMappingEntry. */
+export interface ExerciseMigrationMappingEntry {
+  old_exercise_id: number
+  old_name: string
+  matched_name?: string
+  new_exercise_id?: number
+  confidence: 'high' | 'medium' | 'low' | string
+  reasoning?: string
+  leave_unmigrated: boolean
+}
+
+/** One exercise_migrations row — a preview, or a confirmed/failed record. */
+export interface ExerciseMigration {
+  id: number
+  from_source: string
+  to_source: string
+  status: 'proposed' | 'applied' | 'failed' | string
+  mapping: ExerciseMigrationMappingEntry[]
+  applied_by?: string
+  error?: string
+  started_at: string
+  completed_at?: string
+}
+
+export interface ExerciseMigrationStatus {
+  current_source: string
+  latest_migration?: ExerciseMigration
+}
+
+export interface ExerciseMigrationResult {
+  applied: boolean
+  from_source: string
+  to_source: string
+  migrated: number
+  message: string
+}
 
 /** Query params accepted by the exercise list endpoint. */
 export type ExerciseQuery = Partial<Record<ExerciseFacetKey, string>> & {

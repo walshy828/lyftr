@@ -280,6 +280,14 @@ export const exerciseAPI = {
   sync: () => api.post<{ data: { synced: boolean; total: number } }>('/admin/sync-exercises').then(res => unwrap(res)),
 }
 
+export const exerciseMigrationAPI = {
+  status: () => api.get<{ data: types.ExerciseMigrationStatus }>('/admin/exercise-migration/status').then(res => unwrap(res)),
+  preview: (toSource: string) =>
+    api.post<{ data: types.ExerciseMigration }>('/admin/exercise-migration/preview', { to_source: toSource }).then(res => unwrap(res)),
+  confirm: (id: number, mapping: types.ExerciseMigrationMappingEntry[]) =>
+    api.post<{ data: types.ExerciseMigrationResult }>(`/admin/exercise-migration/${id}/confirm`, { mapping }).then(res => unwrap(res)),
+}
+
 
 const tzOffset = () => -new Date().getTimezoneOffset()
 

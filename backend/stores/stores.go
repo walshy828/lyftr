@@ -13,46 +13,48 @@ import (
 // Stores aggregates every per-entity store, constructed once from the DB handle
 // and injected into the HTTP handlers.
 type Stores struct {
-	ActiveSession *ActiveSessionStore
-	Weight        *WeightStore
-	BloodPressure *BloodPressureStore
-	BPInsight     *BPInsightStore
-	Food          *FoodStore
-	FoodProduct   *FoodProductStore
-	User          *UserStore
-	Exercise      *ExerciseStore
-	Workout       *WorkoutStore
-	Program       *ProgramStore
-	Token         *TokenStore
-	DeviceSession *DeviceSessionStore
-	Passkey       *PasskeyStore
-	Profile       *ProfileStore
-	NutritionGoal *NutritionGoalStore
-	Motivation    *MotivationStore
-	Checkin       *CheckinStore
-	Schedule      *ScheduleStore
+	ActiveSession     *ActiveSessionStore
+	Weight            *WeightStore
+	BloodPressure     *BloodPressureStore
+	BPInsight         *BPInsightStore
+	Food              *FoodStore
+	FoodProduct       *FoodProductStore
+	User              *UserStore
+	Exercise          *ExerciseStore
+	Workout           *WorkoutStore
+	Program           *ProgramStore
+	Token             *TokenStore
+	DeviceSession     *DeviceSessionStore
+	Passkey           *PasskeyStore
+	Profile           *ProfileStore
+	NutritionGoal     *NutritionGoalStore
+	Motivation        *MotivationStore
+	Checkin           *CheckinStore
+	Schedule          *ScheduleStore
+	ExerciseMigration *ExerciseMigrationStore
 }
 
 func New(db *sql.DB) *Stores {
 	return &Stores{
-		ActiveSession: NewActiveSessionStore(db),
-		Weight:        NewWeightStore(db),
-		BloodPressure: NewBloodPressureStore(db),
-		BPInsight:     NewBPInsightStore(db),
-		Food:          NewFoodStore(db),
-		FoodProduct:   NewFoodProductStore(db),
-		User:          NewUserStore(db),
-		Exercise:      NewExerciseStore(db),
-		Workout:       NewWorkoutStore(db),
-		Program:       NewProgramStore(db),
-		Token:         NewTokenStore(db),
-		DeviceSession: NewDeviceSessionStore(db),
-		Passkey:       NewPasskeyStore(db),
-		Profile:       NewProfileStore(db),
-		NutritionGoal: NewNutritionGoalStore(db),
-		Motivation:    NewMotivationStore(db),
-		Checkin:       NewCheckinStore(db),
-		Schedule:      NewScheduleStore(db),
+		ActiveSession:     NewActiveSessionStore(db),
+		Weight:            NewWeightStore(db),
+		BloodPressure:     NewBloodPressureStore(db),
+		BPInsight:         NewBPInsightStore(db),
+		Food:              NewFoodStore(db),
+		FoodProduct:       NewFoodProductStore(db),
+		User:              NewUserStore(db),
+		Exercise:          NewExerciseStore(db),
+		Workout:           NewWorkoutStore(db),
+		Program:           NewProgramStore(db),
+		Token:             NewTokenStore(db),
+		DeviceSession:     NewDeviceSessionStore(db),
+		Passkey:           NewPasskeyStore(db),
+		Profile:           NewProfileStore(db),
+		NutritionGoal:     NewNutritionGoalStore(db),
+		Motivation:        NewMotivationStore(db),
+		Checkin:           NewCheckinStore(db),
+		Schedule:          NewScheduleStore(db),
+		ExerciseMigration: NewExerciseMigrationStore(db),
 	}
 }
 
