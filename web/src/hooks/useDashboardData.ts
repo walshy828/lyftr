@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { format } from 'date-fns'
+import { format, subDays } from 'date-fns'
 import { workoutAPI, foodAPI, weightAPI, userAPI, profileAPI, weightPlanAPI } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import * as types from '../types'
@@ -14,6 +14,13 @@ const DEFAULT_FOOD: types.DailyStats = {
 
 export interface DashboardData {
   workouts: types.Workout[]
+  /**
+   * Server-computed training aggregates over the trailing year. Separate from
+   * `workouts` on purpose: that list is a bounded page (for "last workout",
+   * "training mix"), while anything that has to see the whole history —
+   * consistency, muscle coverage, streaks — reads from here instead.
+   */
+  training: types.TrainingStats | null
   food: types.DailyStats
   foodHistory: types.FoodHistoryPoint[]
   weightLogs: types.WeightLog[]
@@ -35,6 +42,7 @@ export function useDashboardData(): DashboardData {
   const { settings: storedSettings } = useSettingsStore()
 
   const [workouts, setWorkouts] = useState<types.Workout[]>([])
+  const [training, setTraining] = useState<types.TrainingStats | null>(null)
   const [food, setFood] = useState<types.DailyStats>(DEFAULT_FOOD)
   const [foodHistory, setFoodHistory] = useState<types.FoodHistoryPoint[]>([])
   const [weightLogs, setWeightLogs] = useState<types.WeightLog[]>([])
@@ -47,8 +55,13 @@ export function useDashboardData(): DashboardData {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const today = new Date()
     Promise.all([
       workoutAPI.list({ limit: 150 }).catch(() => []),
+      workoutAPI.stats({
+        from: format(subDays(today, 364), 'yyyy-MM-dd'),
+        to: format(today, 'yyyy-MM-dd'),
+      }).catch(() => null),
       foodAPI.stats(format(TODAY, 'yyyy-MM-dd')).catch(() => DEFAULT_FOOD),
       foodAPI.history(90).catch(() => []),
       weightAPI.list({ limit: 90 }).catch(() => []),
@@ -57,8 +70,9 @@ export function useDashboardData(): DashboardData {
       profileAPI.get().catch(() => null),
       weightPlanAPI.current().catch(() => null), // 404 when no active plan
     ])
-      .then(([ws, fs, fh, wl, wst, s, prof, cur]) => {
+      .then(([ws, ts, fs, fh, wl, wst, s, prof, cur]) => {
         setWorkouts(ws || [])
+        setTraining(ts)
         setFood(fs || DEFAULT_FOOD)
         setFoodHistory(fh || [])
         setWeightLogs(wl || [])
@@ -83,7 +97,7 @@ export function useDashboardData(): DashboardData {
   }
 
   return {
-    workouts, food, foodHistory, weightLogs, weightStats, settings, profile, plan, adherence,
+    workouts, training, food, foodHistory, weightLogs, weightStats, settings, profile, plan, adherence,
     loading, error, addWeightLog,
   }
 }

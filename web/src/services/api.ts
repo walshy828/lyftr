@@ -207,6 +207,28 @@ export const workoutAPI = {
   create: (data: any) => api.post<{ data: types.Workout }>('/workouts', data).then(res => unwrap(res)),
   update: (id: number, data: any) => api.put<{ data: types.Workout }>(`/workouts/${id}`, data).then(res => unwrap(res)),
   delete: (id: number) => api.delete(`/workouts/${id}`),
+  /**
+   * Server-side training aggregates over a date window.
+   *
+   * `tz_offset` is always sent: the server stores no per-user timezone, so the
+   * browser is the only authority on where its own day boundary falls. Without
+   * it an evening session lands on the wrong calendar square.
+   *
+   * Omitting `include` asks for every section.
+   */
+  stats: (params: {
+    from?: string
+    to?: string
+    include?: ('daily' | 'muscles' | 'streak')[]
+  } = {}) =>
+    api.get<{ data: types.TrainingStats }>('/workouts/stats', {
+      params: {
+        from: params.from,
+        to: params.to,
+        include: params.include?.join(','),
+        tz_offset: -new Date().getTimezoneOffset(),
+      },
+    }).then(res => unwrap(res)),
 }
 
 let _exerciseCache: types.Exercise[] | null = null

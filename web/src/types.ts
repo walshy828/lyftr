@@ -858,6 +858,61 @@ export interface ExerciseHistoryPoint {
   sets_count: number
 }
 
+/** One local calendar day's training rollup. Days with no training are absent. */
+export interface TrainingDay {
+  date: string
+  workouts: number
+  /** seconds */
+  duration: number
+  /** reps x weight, in the user's own weight unit */
+  volume: number
+  sets: number
+  exercises: number
+}
+
+/**
+ * One muscle group's share of training over the window. Groups the user never
+ * trained are present with zeros — the neglect signal can't be read off an
+ * absent key.
+ */
+export interface MuscleTotal {
+  muscle_group: string
+  sets: number
+  volume: number
+  reps: number
+  workouts: number
+  /** Unbounded by the window (so "42 days ago" works); '' if never trained. */
+  last_trained: string
+}
+
+export interface TrainingStreak {
+  current: number
+  longest: number
+}
+
+export interface TrainingTotals {
+  workouts: number
+  duration: number
+  volume: number
+  sets: number
+  active_days: number
+}
+
+/**
+ * Server-computed training aggregates. Sections the caller didn't request are
+ * undefined rather than empty, so "not requested" reads differently from "no
+ * data". Totals are always present.
+ */
+export interface TrainingStats {
+  from: string
+  to: string
+  weight_unit: string
+  totals: TrainingTotals
+  daily?: TrainingDay[]
+  muscles?: MuscleTotal[]
+  streak?: TrainingStreak
+}
+
 export interface LoginRequest {
   email: string
   password: string

@@ -82,6 +82,8 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		// Workouts
 		protected.GET("workouts", h.ListWorkouts)
 		protected.POST("workouts", h.CreateWorkout)
+		// Named sub-path before the :id wildcard, or the wildcard swallows it.
+		protected.GET("workouts/stats", h.GetWorkoutStats)
 		protected.GET("workouts/:id", h.GetWorkout)
 		protected.PUT("workouts/:id", h.UpdateWorkout)
 		protected.DELETE("workouts/:id", h.DeleteWorkout)

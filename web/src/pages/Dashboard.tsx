@@ -124,7 +124,19 @@ export default function Dashboard() {
 
       {/* Training trends (mix + focus over time) + consistency */}
       <TrainingTrendsCard workouts={d.workouts} />
-      <ConsistencyHeatmap workouts={d.workouts} />
+      {/* Half a year, shaded by time invested rather than session count.
+          Both choices depend on the server-side aggregate: the old client-side
+          version could only see one page of workouts, so a longer window would
+          have rendered as a wall of false blanks. Duration shading matters
+          because almost every training day holds exactly one workout — a
+          count-based scale is effectively binary and says nothing beyond
+          "showed up". */}
+      <ConsistencyHeatmap
+        daily={d.training?.daily ?? []}
+        streak={d.training?.streak}
+        weeks={26}
+        metric="duration"
+      />
 
       {/* Last workout + muscle balance */}
       <div className="grid lg:grid-cols-2 gap-4 min-w-0">
