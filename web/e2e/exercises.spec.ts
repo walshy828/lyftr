@@ -70,7 +70,10 @@ test.describe('Exercise Detail', () => {
 
   test('exercise detail shows progression chart when history exists', async ({ page }) => {
     await page.goto(`/exercises/${exerciseId}`)
-    await expect(page.getByText('Weight Progression')).toBeVisible({ timeout: 5000 })
+    // The heading depends on the data: weighted sets get an estimated-1RM series
+    // and read "Strength Progression", bodyweight work has no load to
+    // extrapolate and stays "Weight Progression".
+    await expect(page.getByText(/(Strength|Weight) Progression/)).toBeVisible({ timeout: 5000 })
   })
 
   test('muscle diagram renders', async ({ page }) => {
