@@ -16,9 +16,17 @@ func (h *Handler) ListExercises(c *gin.Context) {
 		MuscleGroup: c.Query("muscle_group"),
 		Category:    c.Query("category"),
 		Equipment:   c.Query("equipment"),
+		Level:       c.Query("level"),
+		Force:       c.Query("force"),
+		Mechanic:    c.Query("mechanic"),
 		Limit:       100,
 	}
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 2000 {
+	// Clamp rather than ignore, so an over-limit request doesn't silently
+	// collapse to the default (see the same bug in ListWorkouts).
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 {
+		if l > maxExerciseListLimit {
+			l = maxExerciseListLimit
+		}
 		f.Limit = l
 	}
 	exercises, err := h.s.Exercise.List(f)
@@ -26,6 +34,20 @@ func (h *Handler) ListExercises(c *gin.Context) {
 		return
 	}
 	utils.OK(c, exercises)
+}
+
+// maxExerciseListLimit comfortably exceeds the whole catalog (~870), so a
+// client asking for "everything" gets everything.
+const maxExerciseListLimit = 2000
+
+// GetExerciseFacets returns the distinct filter values with counts, so the
+// browse page can render chips without hardcoding a taxonomy owned upstream.
+func (h *Handler) GetExerciseFacets(c *gin.Context) {
+	facets, err := h.s.Exercise.Facets()
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, facets)
 }
 
 func (h *Handler) GetExercise(c *gin.Context) {

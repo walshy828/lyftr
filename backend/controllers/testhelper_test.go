@@ -120,7 +120,12 @@ CREATE TABLE IF NOT EXISTS exercises (
   equipment TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
   image_url TEXT NOT NULL DEFAULT '',
-  video_url TEXT NOT NULL DEFAULT ''
+  video_url TEXT NOT NULL DEFAULT '',
+  image_url_end TEXT NOT NULL DEFAULT '',
+  "force" TEXT NOT NULL DEFAULT '',
+  level TEXT NOT NULL DEFAULT '',
+  mechanic TEXT NOT NULL DEFAULT '',
+  source_id TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
 CREATE TABLE IF NOT EXISTS workouts (

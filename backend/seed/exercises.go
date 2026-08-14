@@ -14,7 +14,9 @@ import (
 
 const (
 	exerciseDBURL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json"
-	imageBaseURL  = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises"
+	// ImageBaseURL is exported because the on-disk image cache fetches from the
+	// same origin; duplicating the string would let the two drift apart.
+	ImageBaseURL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises"
 )
 
 var seeding atomic.Bool
@@ -118,15 +120,21 @@ func fetchAndStoreLocked(db *sql.DB) error {
 	}
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO exercises (name, muscle_group, secondary_muscles, category, equipment, description, image_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO exercises (name, muscle_group, secondary_muscles, category, equipment, description,
+		                       image_url, image_url_end, "force", level, mechanic, source_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(name) DO UPDATE SET
 		  muscle_group      = excluded.muscle_group,
 		  secondary_muscles = excluded.secondary_muscles,
 		  category          = excluded.category,
 		  equipment         = excluded.equipment,
 		  description       = excluded.description,
-		  image_url         = excluded.image_url
+		  image_url         = excluded.image_url,
+		  image_url_end     = excluded.image_url_end,
+		  "force"           = excluded."force",
+		  level             = excluded.level,
+		  mechanic          = excluded.mechanic,
+		  source_id         = excluded.source_id
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -148,9 +156,17 @@ func fetchAndStoreLocked(db *sql.DB) error {
 
 		instructions := buildInstructions(e.Instructions)
 
-		imageURL := ""
+		// Build both frames from the upstream paths rather than re-deriving
+		// them from e.ID. The dataset's entries are already "<id>/<n>.jpg", so
+		// using them directly survives any id/path mismatch upstream. Most
+		// exercises ship two frames — the start and end of the movement — but
+		// not all, hence the length guard.
+		imageURL, imageEndURL := "", ""
 		if len(e.Images) > 0 {
-			imageURL = fmt.Sprintf("%s/%s/0.jpg", imageBaseURL, e.ID)
+			imageURL = ImageBaseURL + "/" + e.Images[0]
+		}
+		if len(e.Images) > 1 {
+			imageEndURL = ImageBaseURL + "/" + e.Images[1]
 		}
 
 		if _, err := stmt.Exec(
@@ -161,6 +177,11 @@ func fetchAndStoreLocked(db *sql.DB) error {
 			e.Equipment,
 			instructions,
 			imageURL,
+			imageEndURL,
+			e.Force,
+			e.Level,
+			e.Mechanic,
+			e.ID,
 		); err != nil {
 			log.Printf("seed: skip %q: %v", e.Name, err)
 			continue

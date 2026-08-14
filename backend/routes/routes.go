@@ -149,6 +149,8 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 
 		// Exercises (read-only for users)
 		protected.GET("exercises", h.ListExercises)
+		// Named sub-path before the :id wildcard, or the wildcard swallows it.
+		protected.GET("exercises/facets", h.GetExerciseFacets)
 		protected.GET("exercises/:id", h.GetExercise)
 		protected.GET("exercises/:id/prs", h.GetExercisePRs)
 		protected.GET("exercises/:id/history", h.GetExerciseHistory)

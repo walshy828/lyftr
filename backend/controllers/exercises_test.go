@@ -301,3 +301,128 @@ func TestGetExerciseHistory_bodyweightHasNo1RM(t *testing.T) {
 		t.Errorf("reps must still be tracked for bodyweight work, got %v", got)
 	}
 }
+
+// richExercise seeds a fully-populated library row, including the fields the
+// seed used to discard.
+func richExercise(t *testing.T, name, muscle, equipment, level, mechanic, force, sourceID string) int64 {
+	t.Helper()
+	res, err := db.DB.Exec(
+		`INSERT INTO exercises (name, muscle_group, category, equipment, level, mechanic, "force", source_id, image_url, image_url_end)
+		 VALUES (?, ?, 'strength', ?, ?, ?, ?, ?, ?, ?)`,
+		name, muscle, equipment, level, mechanic, force, sourceID,
+		"https://example.test/"+sourceID+"/0.jpg", "https://example.test/"+sourceID+"/1.jpg",
+	)
+	if err != nil {
+		t.Fatalf("seed exercise %q: %v", name, err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+func TestGetExercise_returnsEnrichedFields(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	exID := richExercise(t, "Barbell Bench Press", "chest", "barbell", "beginner", "compound", "push", "Barbell_Bench_Press")
+
+	c, w := newContext(uid, http.MethodGet, fmt.Sprintf("/api/v1/exercises/%d", exID), nil)
+	setParam(c, "id", fmt.Sprintf("%d", exID))
+	th.GetExercise(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	d := decodeResponse(t, w)["data"].(map[string]any)
+	for field, want := range map[string]string{
+		"level":         "beginner",
+		"mechanic":      "compound",
+		"force":         "push",
+		"source_id":     "Barbell_Bench_Press",
+		"image_url_end": "https://example.test/Barbell_Bench_Press/1.jpg",
+	} {
+		if d[field] != want {
+			t.Errorf("%s = %v, want %q", field, d[field], want)
+		}
+	}
+}
+
+func TestListExercises_filtersOnNewFacets(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	richExercise(t, "Barbell Bench Press", "chest", "barbell", "beginner", "compound", "push", "bbp")
+	richExercise(t, "Cable Fly", "chest", "cable", "intermediate", "isolation", "push", "cf")
+	richExercise(t, "Pull Up", "lats", "body only", "intermediate", "compound", "pull", "pu")
+
+	cases := []struct {
+		query string
+		want  []string
+	}{
+		{"level=intermediate", []string{"Cable Fly", "Pull Up"}},
+		{"mechanic=isolation", []string{"Cable Fly"}},
+		{"force=pull", []string{"Pull Up"}},
+		// The headline use case: "what can I do with just a barbell".
+		{"equipment=barbell", []string{"Barbell Bench Press"}},
+		{"muscle_group=chest&mechanic=compound", []string{"Barbell Bench Press"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			c, w := newContext(uid, http.MethodGet, "/api/v1/exercises?"+tc.query, nil)
+			c.Request.URL.RawQuery = tc.query
+			th.ListExercises(c)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			data := decodeResponse(t, w)["data"].([]any)
+			got := make([]string, len(data))
+			for i, e := range data {
+				got[i] = e.(map[string]any)["name"].(string)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("expected %v, got %v", tc.want, got)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Errorf("expected %v, got %v", tc.want, got)
+					break
+				}
+			}
+		})
+	}
+}
+
+func TestGetExerciseFacets(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	richExercise(t, "Barbell Bench Press", "chest", "barbell", "beginner", "compound", "push", "bbp")
+	richExercise(t, "Barbell Row", "back", "barbell", "beginner", "compound", "pull", "br")
+	richExercise(t, "Cable Fly", "chest", "cable", "intermediate", "isolation", "push", "cf")
+	// Empty values must not become a chip labelled "".
+	db.DB.Exec(`INSERT INTO exercises (name, muscle_group, category) VALUES ('Mystery Move', '', 'strength')`)
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/exercises/facets", nil)
+	th.GetExerciseFacets(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	facets := decodeResponse(t, w)["data"].(map[string]any)
+
+	for _, key := range []string{"muscle_group", "equipment", "category", "level", "mechanic", "force"} {
+		if _, ok := facets[key]; !ok {
+			t.Errorf("missing facet %q", key)
+		}
+	}
+
+	equipment := facets["equipment"].([]any)
+	// Ordered by count descending, so the most useful chip leads.
+	first := equipment[0].(map[string]any)
+	if first["value"] != "barbell" || first["count"].(float64) != 2 {
+		t.Errorf("expected barbell x2 first, got %v", first)
+	}
+
+	for _, group := range facets["muscle_group"].([]any) {
+		if group.(map[string]any)["value"] == "" {
+			t.Error("an empty value became a filter chip")
+		}
+	}
+}

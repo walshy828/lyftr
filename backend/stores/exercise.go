@@ -17,16 +17,20 @@ func NewExerciseStore(db *sql.DB) *ExerciseStore { return &ExerciseStore{db: db}
 // ExerciseFilter holds the optional list filters (empty string = no filter).
 type ExerciseFilter struct {
 	Query, MuscleGroup, Category, Equipment string
+	Level, Force, Mechanic                  string
 	Limit                                   int
 }
 
-const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url FROM exercises`
+// "force" is quoted throughout: it isn't reserved in SQLite, but it reads like
+// a keyword and quoting costs nothing.
+const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url, image_url_end, "force", level, mechanic, source_id FROM exercises`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanExercise(row scanner, e *models.Exercise) error {
 	var secondaryRaw string
-	if err := row.Scan(&e.ID, &e.Name, &e.MuscleGroup, &secondaryRaw, &e.Category, &e.Equipment, &e.Description, &e.ImageURL); err != nil {
+	if err := row.Scan(&e.ID, &e.Name, &e.MuscleGroup, &secondaryRaw, &e.Category, &e.Equipment, &e.Description,
+		&e.ImageURL, &e.ImageEndURL, &e.Force, &e.Level, &e.Mechanic, &e.SourceID); err != nil {
 		return err
 	}
 	json.Unmarshal([]byte(secondaryRaw), &e.SecondaryMuscles)
@@ -55,6 +59,18 @@ func (s *ExerciseStore) List(f ExerciseFilter) ([]models.Exercise, error) {
 		q += " AND equipment = ?"
 		args = append(args, f.Equipment)
 	}
+	if f.Level != "" {
+		q += " AND level = ?"
+		args = append(args, f.Level)
+	}
+	if f.Force != "" {
+		q += ` AND "force" = ?`
+		args = append(args, f.Force)
+	}
+	if f.Mechanic != "" {
+		q += " AND mechanic = ?"
+		args = append(args, f.Mechanic)
+	}
 	q += " ORDER BY name LIMIT ?"
 	args = append(args, f.Limit)
 
@@ -81,6 +97,47 @@ func (s *ExerciseStore) Get(id int64) (models.Exercise, error) {
 		return models.Exercise{}, err
 	}
 	return e, nil
+}
+
+// FacetValue is one filter option and how many exercises carry it.
+type FacetValue struct {
+	Value string `json:"value"`
+	Count int    `json:"count"`
+}
+
+// Facets returns the distinct values for every filterable field, so the client
+// can build filter chips without hardcoding a taxonomy that lives upstream.
+//
+// The counts are GLOBAL, deliberately not cross-filtered by the user's current
+// selection. True faceted search means re-running this with the active
+// predicate threaded through every branch on each chip tap; this is a static
+// reference catalog of ~870 rows, and the client can cache the answer for the
+// whole session.
+func (s *ExerciseStore) Facets() (map[string][]FacetValue, error) {
+	rows, err := s.db.Query(`
+		SELECT 'muscle_group' AS facet, muscle_group AS value, COUNT(*) AS n FROM exercises WHERE muscle_group <> '' GROUP BY muscle_group
+		UNION ALL SELECT 'equipment', equipment, COUNT(*) FROM exercises WHERE equipment <> '' GROUP BY equipment
+		UNION ALL SELECT 'category',  category,  COUNT(*) FROM exercises WHERE category  <> '' GROUP BY category
+		UNION ALL SELECT 'level',     level,     COUNT(*) FROM exercises WHERE level     <> '' GROUP BY level
+		UNION ALL SELECT 'mechanic',  mechanic,  COUNT(*) FROM exercises WHERE mechanic  <> '' GROUP BY mechanic
+		UNION ALL SELECT 'force',     "force",   COUNT(*) FROM exercises WHERE "force"   <> '' GROUP BY "force"
+		ORDER BY facet ASC, n DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string][]FacetValue{}
+	for rows.Next() {
+		var facet string
+		var fv FacetValue
+		if err := rows.Scan(&facet, &fv.Value, &fv.Count); err != nil {
+			return nil, err
+		}
+		out[facet] = append(out[facet], fv)
+	}
+	return out, rows.Err()
 }
 
 func (s *ExerciseStore) Count() (int, error) {

@@ -49,6 +49,13 @@ export interface Exercise {
   description: string
   image_url?: string
   video_url?: string
+  /** End of the movement. With image_url it animates the lift. */
+  image_url_end?: string
+  force?: string
+  level?: string
+  mechanic?: string
+  /** Upstream dataset slug; the media cache keys on it. */
+  source_id?: string
 }
 
 export interface Set {
@@ -861,6 +868,24 @@ export interface PersonalRecord {
   estimated_1rm: number
   date: string
   workout_id: number
+}
+
+/** The filterable fields of the exercise library. */
+export type ExerciseFacetKey =
+  | 'muscle_group' | 'equipment' | 'category' | 'level' | 'mechanic' | 'force'
+
+export interface FacetValue {
+  value: string
+  count: number
+}
+
+/** Distinct filter values with global counts, keyed by field. */
+export type ExerciseFacets = Partial<Record<ExerciseFacetKey, FacetValue[]>>
+
+/** Query params accepted by the exercise list endpoint. */
+export type ExerciseQuery = Partial<Record<ExerciseFacetKey, string>> & {
+  q?: string
+  limit?: number
 }
 
 export interface ExerciseHistoryPoint {

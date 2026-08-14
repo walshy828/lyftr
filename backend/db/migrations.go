@@ -384,6 +384,40 @@ CREATE INDEX IF NOT EXISTS idx_program_sets_program_exercise ON program_sets(pro
 	if _, err := DB.Exec(childIndexes); err != nil {
 		log.Fatalf("create child-table indexes: %v", err)
 	}
+
+	// Fields the exercise seed was fetching from free-exercise-db and throwing
+	// away.
+	//
+	// image_url_end is the second frame of the movement (the upstream dataset
+	// ships a start and an end image per exercise); the pair animates the lift,
+	// where one frame is just a photo. force/level/mechanic are what the
+	// library's filter chips are made of.
+	//
+	// source_id is the upstream slug ("Barbell_Bench_Press"). The image cache
+	// keys on it, and re-deriving it from image_url is brittle.
+	//
+	// All five are empty until the next admin exercise sync backfills them
+	// (the seed upserts on name, so existing rows refresh in place). The facets
+	// endpoint filters empty values, so a chip simply doesn't appear until then.
+	ensureColumn("exercises", "image_url_end", `ALTER TABLE exercises ADD COLUMN image_url_end TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("exercises", "force", `ALTER TABLE exercises ADD COLUMN "force" TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("exercises", "level", `ALTER TABLE exercises ADD COLUMN level TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("exercises", "mechanic", `ALTER TABLE exercises ADD COLUMN mechanic TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("exercises", "source_id", `ALTER TABLE exercises ADD COLUMN source_id TEXT NOT NULL DEFAULT ''`)
+
+	// Faceted filtering on the library. Honest note: at ~870 rows these fix no
+	// measured problem — the `name LIKE '%q%'` scan dominates and cannot use
+	// them anyway. They're here because they're free and correct by default,
+	// and because source_id is looked up per image request.
+	exerciseIndexes := `
+CREATE INDEX IF NOT EXISTS idx_exercises_muscle    ON exercises(muscle_group);
+CREATE INDEX IF NOT EXISTS idx_exercises_equipment ON exercises(equipment);
+CREATE INDEX IF NOT EXISTS idx_exercises_category  ON exercises(category);
+CREATE INDEX IF NOT EXISTS idx_exercises_level     ON exercises(level);
+CREATE INDEX IF NOT EXISTS idx_exercises_source_id ON exercises(source_id);`
+	if _, err := DB.Exec(exerciseIndexes); err != nil {
+		log.Fatalf("create exercise facet indexes: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

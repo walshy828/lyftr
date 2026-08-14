@@ -234,9 +234,11 @@ export const workoutAPI = {
 let _exerciseCache: types.Exercise[] | null = null
 let _exerciseCachePromise: Promise<types.Exercise[]> | null = null
 
+let _facetCache: types.ExerciseFacets | null = null
+
 export const exerciseAPI = {
-  list: (params?: { q?: string; muscle_group?: string; category?: string; equipment?: string }) => {
-    if (params?.q || params?.muscle_group || params?.category || params?.equipment) {
+  list: (params?: types.ExerciseQuery) => {
+    if (params && Object.values(params).some(Boolean)) {
       return api.get<{ data: types.Exercise[] }>('/exercises', { params }).then(res => unwrap(res))
     }
     if (_exerciseCache) return Promise.resolve(_exerciseCache)
@@ -252,7 +254,16 @@ export const exerciseAPI = {
   get: (id: number) => api.get<{ data: types.Exercise }>(`/exercises/${id}`).then(res => unwrap(res)),
   getPRs: (id: number) => api.get<{ data: types.PersonalRecord }>(`/exercises/${id}/prs`).then(res => unwrap(res)),
   getHistory: (id: number, limit = 20) => api.get<{ data: types.ExerciseHistoryPoint[] }>(`/exercises/${id}/history`, { params: { limit } }).then(res => unwrap(res)),
-  clearCache: () => { _exerciseCache = null; _exerciseCachePromise = null },
+  /**
+   * Filter options with counts. The catalog is static reference data and the
+   * counts are global (not cross-filtered), so one fetch per session is enough.
+   */
+  facets: () => {
+    if (_facetCache) return Promise.resolve(_facetCache)
+    return api.get<{ data: types.ExerciseFacets }>('/exercises/facets')
+      .then(res => { _facetCache = unwrap(res); return _facetCache })
+  },
+  clearCache: () => { _exerciseCache = null; _exerciseCachePromise = null; _facetCache = null },
   seedStatus: () => api.get<{ data: { count: number; in_progress: boolean } }>('/admin/seed-status').then(res => unwrap(res)),
   sync: () => api.post<{ data: { synced: boolean; total: number } }>('/admin/sync-exercises').then(res => unwrap(res)),
 }

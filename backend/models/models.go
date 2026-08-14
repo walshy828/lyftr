@@ -81,6 +81,19 @@ type Exercise struct {
 	Description      string   `json:"description" db:"description"`
 	ImageURL         string   `json:"image_url,omitempty" db:"image_url"`
 	VideoURL         string   `json:"video_url,omitempty" db:"video_url"`
+	// ImageEndURL is the movement's end position. Paired with ImageURL it
+	// animates the lift; alone, each is just a photo. Empty for the exercises
+	// upstream only ships one frame for.
+	ImageEndURL string `json:"image_url_end,omitempty" db:"image_url_end"`
+	// Force ("push"/"pull"/"static"), Level ("beginner"/"intermediate"/
+	// "expert") and Mechanic ("compound"/"isolation") come from the upstream
+	// dataset and drive the library's filter chips.
+	Force    string `json:"force,omitempty" db:"force"`
+	Level    string `json:"level,omitempty" db:"level"`
+	Mechanic string `json:"mechanic,omitempty" db:"mechanic"`
+	// SourceID is the upstream slug, e.g. "Barbell_Bench_Press". The image
+	// cache keys on it.
+	SourceID string `json:"source_id,omitempty" db:"source_id"`
 }
 
 type Workout struct {

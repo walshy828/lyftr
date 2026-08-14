@@ -46,6 +46,12 @@ export default function Programs() {
         subtitle="Reusable workout templates"
         action={
           <div className="flex gap-2 w-full sm:w-auto">
+            {/* The library has no home of its own in the tab bar (it's full at
+                five), and building a program is when you most want to go
+                looking through it. */}
+            <button onClick={() => navigate('/exercises')} className="btn-ghost btn-sm flex-1 sm:flex-none">
+              <Dumbbell className="w-4 h-4" /> Exercises
+            </button>
             <button onClick={() => navigate('/programs/ai-new')} className="btn-secondary btn-sm flex-1 sm:flex-none">
               <Sparkles className="w-4 h-4" /> AI Program
             </button>
