@@ -7,6 +7,7 @@ import QuickWeighInSheet from '../components/QuickWeighInSheet'
 import { useDashboardData } from '../hooks/useDashboardData'
 import { useWorkoutSession } from '../stores/workoutSession'
 import { useTrainingStats } from '../hooks/useTrainingStats'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useAuthStore } from '../stores/auth'
 import { displayWeight } from '../stores/settings'
 import ThisWeekScorecard from '../components/dashboard/ThisWeekScorecard'
@@ -43,6 +44,11 @@ export default function Dashboard() {
   const [musclePeriod, setMusclePeriod] = useState<MusclePeriod>('week')
   const muscleStats = useTrainingStats(MUSCLE_PERIOD_DAYS[musclePeriod], ['muscles'])
   const [consistencySource, setConsistencySource] = useState<ConsistencySource>('both')
+  // A full year of 12px columns needs ~780px to lay out without scrolling —
+  // narrower than that (phones, most tablets in portrait) shows 6 months
+  // instead of a heatmap that either overflows or has to shrink to unreadable.
+  const isWideScreen = useMediaQuery('(min-width: 1024px)')
+  const consistencyWeeks = isWideScreen ? 52 : 26
 
   if (d.loading) return <Loading />
 
@@ -158,7 +164,7 @@ export default function Dashboard() {
         }
         source={consistencySource}
         onSourceChange={setConsistencySource}
-        weeks={26}
+        weeks={consistencyWeeks}
         metric="duration"
       />
 

@@ -187,9 +187,13 @@ export default function ConsistencyHeatmap({
           {/* Fixed-width columns rather than 1fr: stretched-to-fit columns turn
               the squares into wide bars, which reads as a bar chart instead of a
               calendar. A full year overflows instead, and scrolls. */}
+          {/* Centered rather than left-started: a shorter window (mobile's 6
+              months) shouldn't look stranded against the card's left edge when
+              there's a wide, mostly-empty card around it. overflow-x-auto stays
+              as a safety net for an in-between viewport a media query missed. */}
           <div className="overflow-x-auto no-scrollbar">
             <div
-              style={{ display: 'grid', gridTemplateColumns: `1.25rem repeat(${weekCols.length}, 0.75rem)`, gap: '2px', justifyContent: 'start' }}
+              style={{ display: 'grid', gridTemplateColumns: `1.25rem repeat(${weekCols.length}, 0.75rem)`, gap: '2px', justifyContent: 'center' }}
             >
               <div />
               {weekCols.map((_, i) => (
