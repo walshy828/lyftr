@@ -25,6 +25,20 @@ class TokenStore(context: Context) {
         get() = prefs.getString(KEY_SERVER_URL, null)
         set(value) = prefs.edit().putString(KEY_SERVER_URL, value).apply()
 
+    /**
+     * Email/password remembered from the last successful login, so
+     * LoginScreen can prefill them after a logout or a refresh-token expiry
+     * instead of asking the user to retype everything. Stored in the same
+     * encrypted prefs as the JWTs, so this adds no new security surface.
+     */
+    var savedEmail: String?
+        get() = prefs.getString(KEY_SAVED_EMAIL, null)
+        set(value) = prefs.edit().putString(KEY_SAVED_EMAIL, value).apply()
+
+    var savedPassword: String?
+        get() = prefs.getString(KEY_SAVED_PASSWORD, null)
+        set(value) = prefs.edit().putString(KEY_SAVED_PASSWORD, value).apply()
+
     var accessToken: String?
         get() = prefs.getString(KEY_ACCESS_TOKEN, null)
         set(value) = prefs.edit().putString(KEY_ACCESS_TOKEN, value).apply()
@@ -52,12 +66,22 @@ class TokenStore(context: Context) {
             .apply()
     }
 
+    /**
+     * Logs out: drops the JWT pair only. Server URL and remembered
+     * credentials survive so the next login is a single tap on a prefilled
+     * form (LoginScreen) instead of retyping the server and password.
+     */
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit()
+            .remove(KEY_ACCESS_TOKEN)
+            .remove(KEY_REFRESH_TOKEN)
+            .apply()
     }
 
     private companion object {
         const val KEY_SERVER_URL = "server_url"
+        const val KEY_SAVED_EMAIL = "saved_email"
+        const val KEY_SAVED_PASSWORD = "saved_password"
         const val KEY_ACCESS_TOKEN = "access_token"
         const val KEY_REFRESH_TOKEN = "refresh_token"
         const val KEY_LAST_CARDIO_SYNC = "last_cardio_sync_at"

@@ -77,7 +77,7 @@ data class CardioSessionDto(
 @Serializable
 private data class ImportCardioSessionsRequest(val sessions: List<CardioSessionDto>)
 @Serializable
-private data class ImportCardioSessionsResult(val imported: Int, val updated: Int, val submitted: Int)
+private data class ImportCardioSessionsResult(val imported: Int, val updated: Int = 0, val submitted: Int)
 @Serializable
 private data class ImportCardioSessionsEnvelope(val data: ImportCardioSessionsResult)
 
