@@ -3,7 +3,7 @@ import { Dumbbell, ArrowRight } from 'lucide-react'
 import { format } from 'date-fns'
 import * as types from '../../types'
 import { displayWeight, displayVolume, weightShort, displayDistance, distanceShort } from '../../stores/settings'
-import { muscleColor } from '../../utils/exerciseUtils'
+import { muscleColor, formatExerciseName } from '../../utils/exerciseUtils'
 import { isCardio, fmtClock } from '../../utils/workoutSets'
 import { calcVolume } from '../../utils/dashboardMetrics'
 import { FOCUS_HEX, focusOf, type FocusCategory } from '../../utils/chartTheme'
@@ -89,7 +89,7 @@ export default function LastWorkoutCard({ workouts, settings }: {
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-tx-secondary truncate">{ex.exercise.name}</p>
+                <p className="text-sm text-tx-secondary truncate">{formatExerciseName(ex.exercise.name)}</p>
                 <span className={`text-[10px] px-1 py-0.5 rounded ${muscleColor(ex.exercise.muscle_group)}`}>{ex.exercise.muscle_group}</span>
               </div>
               {cardio && best ? (

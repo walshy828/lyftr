@@ -6,6 +6,7 @@ import { useWorkoutSession } from '../stores/workoutSession'
 import ExerciseDetailContent from '../components/ExerciseDetailContent'
 import AddToRoutineSheet from '../components/AddToRoutineSheet'
 import * as types from '../types'
+import { formatExerciseName } from '../utils/exerciseUtils'
 
 export default function ExerciseDetail() {
   const { exerciseId } = useParams<{ exerciseId: string }>()
@@ -50,7 +51,7 @@ export default function ExerciseDetail() {
           <ArrowLeft className="w-5 h-5 text-tx-muted" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="font-display font-bold text-2xl text-tx-primary leading-tight">{exercise.name}</h1>
+          <h1 className="font-display font-bold text-2xl text-tx-primary leading-tight">{formatExerciseName(exercise.name)}</h1>
         </div>
         <button
           onClick={() => setShowPlanSheet(true)}

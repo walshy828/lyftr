@@ -4,6 +4,7 @@ import { Sheet } from './ui'
 import { programAPI } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import * as types from '../types'
+import { formatExerciseName } from '../utils/exerciseUtils'
 
 interface Props {
   exercise: types.Exercise
@@ -69,7 +70,7 @@ export default function AddToRoutineSheet({ exercise, onClose }: Props) {
         {error && <div className="alert-error text-sm mb-2">{error}</div>}
         {addedName ? (
           <div className="flex items-center gap-2 p-3 text-sm text-brand-400">
-            <Check className="w-4 h-4 flex-shrink-0" /> Added {exercise.name} to {addedName}
+            <Check className="w-4 h-4 flex-shrink-0" /> Added {formatExerciseName(exercise.name)} to {addedName}
           </div>
         ) : loading ? (
           <p className="text-xs text-tx-muted px-1 py-2">Loading routines…</p>

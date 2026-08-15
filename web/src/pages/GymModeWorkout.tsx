@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import Model, { IExerciseData } from 'react-body-highlighter'
 import * as types from '../types'
-import { muscleColor, muscleColorBordered, EQUIPMENT_LABEL, muscleToBodySlugs } from '../utils/exerciseUtils'
+import { muscleColor, muscleColorBordered, EQUIPMENT_LABEL, muscleToBodySlugs, formatExerciseName } from '../utils/exerciseUtils'
 import { useTheme } from '../hooks/useTheme'
 import { useWorkoutSession, syncProgramWeights } from '../stores/workoutSession'
 import { useSettingsStore } from '../stores/settings'
@@ -250,7 +250,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
                         placeholder icon when an exercise has no artwork. */}
                     <ExerciseDemo exercise={ex.exercise} compact className="w-10 h-10 rounded-xl flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-tx-primary truncate">{ex.exercise.name}</p>
+                      <p className="text-sm font-semibold text-tx-primary truncate">{formatExerciseName(ex.exercise.name)}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${muscleColor(ex.exercise.muscle_group)}`}>
                           {ex.exercise.muscle_group}
@@ -379,7 +379,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
           <div className="px-5 pt-5 pb-4 space-y-5">
             {/* Name + muscle */}
             <div>
-              <h2 className="font-display font-bold text-2xl text-tx-primary leading-tight">{exercise.name}</h2>
+              <h2 className="font-display font-bold text-2xl text-tx-primary leading-tight">{formatExerciseName(exercise.name)}</h2>
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${muscleColorBordered(exercise.muscle_group)}`}>
                   {exercise.muscle_group}
@@ -580,7 +580,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
       <div className="px-5 pt-4 pb-3 border-b border-surface-border flex-shrink-0">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="font-display font-bold text-lg text-tx-primary leading-tight truncate">{ex.exercise.name}</h2>
+            <h2 className="font-display font-bold text-lg text-tx-primary leading-tight truncate">{formatExerciseName(ex.exercise.name)}</h2>
             <div className="flex items-center gap-2 mt-1">
               <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${muscleColor(ex.exercise.muscle_group)}`}>
                 {ex.exercise.muscle_group}

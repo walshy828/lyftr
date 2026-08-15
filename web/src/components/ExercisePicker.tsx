@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { ArrowLeft, Search, Plus } from 'lucide-react'
 import { exerciseAPI } from '../services/api'
 import ExerciseList from './exercise/ExerciseList'
-import { muscleColorBordered } from '../utils/exerciseUtils'
+import { muscleColorBordered, formatExerciseName } from '../utils/exerciseUtils'
 import * as types from '../types'
 
 // Lazy: the detail view drags in recharts (history chart), and the picker is
@@ -53,7 +53,7 @@ export default function ExercisePicker({ selectedIds, onSelect, onClose }: Props
             <ArrowLeft className="w-5 h-5 text-tx-muted" />
           </button>
           <div className="min-w-0">
-            <h2 className="font-display font-bold text-xl text-tx-primary truncate">{detailExercise.name}</h2>
+            <h2 className="font-display font-bold text-xl text-tx-primary truncate">{formatExerciseName(detailExercise.name)}</h2>
             <span className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium border ${muscleColorBordered(detailExercise.muscle_group)}`}>
               {detailExercise.muscle_group}
             </span>
@@ -123,7 +123,7 @@ export default function ExercisePicker({ selectedIds, onSelect, onClose }: Props
           <button
             type="button"
             onClick={() => onSelect(ex)}
-            aria-label={`Add ${ex.name}`}
+            aria-label={`Add ${formatExerciseName(ex.name)}`}
             className="flex-shrink-0 p-2 mr-2 rounded-lg bg-brand-500/10 border border-brand-500/20 hover:bg-brand-500/20 transition-colors"
           >
             <Plus className="w-4 h-4 text-brand-500" />

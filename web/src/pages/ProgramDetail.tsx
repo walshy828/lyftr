@@ -10,7 +10,7 @@ import { useWorkoutSession } from '../stores/workoutSession'
 import { useAuthStore } from '../stores/auth'
 import { useSettingsStore, weightShort, displayWeight } from '../stores/settings'
 import * as types from '../types'
-import { muscleColor } from '../utils/exerciseUtils'
+import { muscleColor, formatExerciseName } from '../utils/exerciseUtils'
 
 export default function ProgramDetail() {
   const { id } = useParams<{ id: string }>()
@@ -274,7 +274,7 @@ export default function ProgramDetail() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-tx-primary truncate">{ex.exercise?.name}</p>
+                  <p className="text-sm font-semibold text-tx-primary truncate">{ex.exercise?.name && formatExerciseName(ex.exercise.name)}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     {ex.exercise?.muscle_group && (
                       <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${muscleColor(ex.exercise.muscle_group)}`}>

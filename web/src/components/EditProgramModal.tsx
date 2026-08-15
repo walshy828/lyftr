@@ -6,6 +6,7 @@ import { useSettingsStore, weightShort, lbsToDisplay, displayToLbs } from '../st
 import WeightInput from './WeightInput'
 import ExercisePicker from './ExercisePicker'
 import * as types from '../types'
+import { formatExerciseName } from '../utils/exerciseUtils'
 
 interface ProgramFormData {
   name: string
@@ -238,7 +239,7 @@ export default function EditProgramModal({ isOpen, onClose, onSuccess, programId
                           <div className="w-6 h-6 rounded bg-brand-500/20 flex items-center justify-center flex-shrink-0">
                             <span className="text-xs font-bold text-brand-500">{exIdx + 1}</span>
                           </div>
-                          <p className="font-semibold text-tx-primary">{exercise?.name}</p>
+                          <p className="font-semibold text-tx-primary">{exercise?.name && formatExerciseName(exercise.name)}</p>
                         </div>
                         <p className="text-xs text-tx-muted ml-8">{exercise?.muscle_group} • {exercise?.equipment}</p>
                       </div>

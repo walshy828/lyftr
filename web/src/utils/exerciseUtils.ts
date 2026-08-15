@@ -29,6 +29,19 @@ export const EQUIPMENT_LABEL: Record<string, string> = {
   'foam roll':     'Foam Roll',
 }
 
+// Exercise names come from mixed-case sources (Title Case, all-lowercase,
+// and free-typed custom names) — normalize to Title Case for display so the
+// app reads consistently regardless of source casing.
+export function formatExerciseName(name: string): string {
+  return (name ?? '')
+    .split(' ')
+    .map(word => word
+      .split('-')
+      .map(part => part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : part)
+      .join('-'))
+    .join(' ')
+}
+
 export function muscleColor(m: string): string {
   const full = MUSCLE_COLORS[m?.toLowerCase()] || 'bg-surface-muted text-tx-muted border-surface-border'
   return full.split(' ').filter(c => !c.startsWith('border-')).join(' ')

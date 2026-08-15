@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Dumbbell, Pause, Play } from 'lucide-react'
 import { exerciseImageSources, exerciseGifSources, type Frame } from '../../utils/exerciseMedia'
+import { formatExerciseName } from '../../utils/exerciseUtils'
 import * as types from '../../types'
 
 /** How long each frame holds before crossing to the other, in ms. */
@@ -51,7 +52,7 @@ function GifDemo({ exercise, sources, className }: { exercise: MediaExercise; so
       <img
         key={src}
         src={src}
-        alt={`${exercise.name} demonstration`}
+        alt={`${formatExerciseName(exercise.name)} demonstration`}
         loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setAttempt(a => a + 1)}
@@ -118,7 +119,7 @@ function CrossfadeDemo({ exercise, className, compact }: { exercise: MediaExerci
           // element that already errored.
           key={startSrc}
           src={startSrc}
-          alt={`${exercise.name}, starting position`}
+          alt={`${formatExerciseName(exercise.name)}, starting position`}
           loading="lazy"
           onError={() => onFrameError('start')}
           className="absolute inset-0 w-full h-full object-contain transition-opacity duration-500"
@@ -129,7 +130,7 @@ function CrossfadeDemo({ exercise, className, compact }: { exercise: MediaExerci
         <img
           key={endSrc}
           src={endSrc}
-          alt={`${exercise.name}, end position`}
+          alt={`${formatExerciseName(exercise.name)}, end position`}
           loading="lazy"
           onError={() => onFrameError('end')}
           className="absolute inset-0 w-full h-full object-contain transition-opacity duration-500"

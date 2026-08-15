@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, type ReactNode } from 'react'
 import { Dumbbell } from 'lucide-react'
-import { muscleColorBordered, EQUIPMENT_LABEL } from '../../utils/exerciseUtils'
+import { muscleColorBordered, EQUIPMENT_LABEL, formatExerciseName } from '../../utils/exerciseUtils'
 import { exerciseImageSources, hasExerciseImage } from '../../utils/exerciseMedia'
 import * as types from '../../types'
 
@@ -45,7 +45,7 @@ function ExerciseCard({ exercise, onOpen, renderAction }: {
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-tx-primary truncate">{exercise.name}</p>
+          <p className="text-sm font-medium text-tx-primary truncate">{formatExerciseName(exercise.name)}</p>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${muscleColorBordered(exercise.muscle_group)}`}>
               {exercise.muscle_group}

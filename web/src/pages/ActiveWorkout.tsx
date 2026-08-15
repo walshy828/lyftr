@@ -13,7 +13,7 @@ import ExercisePicker from '../components/ExercisePicker'
 import FeelingPicker from '../components/FeelingPicker'
 import { workoutAPI } from '../services/api'
 import * as types from '../types'
-import { muscleColor } from '../utils/exerciseUtils'
+import { muscleColor, formatExerciseName } from '../utils/exerciseUtils'
 import { isCardio } from '../utils/workoutSets'
 import EffortPicker from '../components/EffortPicker'
 
@@ -196,7 +196,7 @@ export default function ActiveWorkout() {
                 <button
                   key={i}
                   onClick={() => jumpToExercise(i)}
-                  title={ex.exercise.name}
+                  title={formatExerciseName(ex.exercise.name)}
                   className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all duration-200 ${
                     done
                       ? 'bg-brand-500/15 border-brand-500/30 text-brand-400'
@@ -212,7 +212,7 @@ export default function ActiveWorkout() {
                       active ? 'bg-brand-400 text-white' : 'bg-surface-border text-tx-muted'
                     }`}>{i + 1}</span>
                   )}
-                  <span className="max-w-[5.5rem] truncate">{ex.exercise.name}</span>
+                  <span className="max-w-[5.5rem] truncate">{formatExerciseName(ex.exercise.name)}</span>
                 </button>
               )
             })}
@@ -284,7 +284,7 @@ export default function ActiveWorkout() {
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="text-base font-semibold text-tx-primary truncate leading-tight group-hover:text-brand-400 transition-colors">
-                        {ex.exercise.name}
+                        {formatExerciseName(ex.exercise.name)}
                       </span>
                       <Info className="w-3.5 h-3.5 text-tx-muted flex-shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
                     </div>
