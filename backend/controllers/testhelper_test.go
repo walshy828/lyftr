@@ -245,6 +245,21 @@ CREATE TABLE IF NOT EXISTS bp_insights (
   report     TEXT     NOT NULL DEFAULT '',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS cardio_sessions (
+  id                INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id           INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  external_id       TEXT     NOT NULL,
+  activity_type     TEXT     NOT NULL,
+  started_at        DATETIME NOT NULL,
+  ended_at          DATETIME NOT NULL,
+  duration_seconds  INTEGER  NOT NULL,
+  distance_meters   REAL     NOT NULL DEFAULT 0,
+  avg_heart_rate    INTEGER  NOT NULL DEFAULT 0,
+  calories          REAL     NOT NULL DEFAULT 0,
+  source            TEXT     NOT NULL DEFAULT 'health_connect',
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, external_id)
+);
 
 CREATE TABLE IF NOT EXISTS food_logs (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,

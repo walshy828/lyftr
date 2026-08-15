@@ -3,6 +3,7 @@ package com.lyftr.phone.auth
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.time.Instant
 
 /**
  * Keystore-backed storage for the server URL and JWT pair. The backend has no
@@ -35,6 +36,15 @@ class TokenStore(context: Context) {
     val isLoggedIn: Boolean
         get() = !serverUrl.isNullOrBlank() && !refreshToken.isNullOrBlank()
 
+    /**
+     * Watermark for CardioSyncWorker: the latest Health Connect session
+     * start-time already submitted, so each sync run only reads what's new.
+     * Null means "never synced" — read everything Health Connect has.
+     */
+    var lastCardioSyncAt: Instant?
+        get() = prefs.getLong(KEY_LAST_CARDIO_SYNC, -1L).takeIf { it >= 0 }?.let(Instant::ofEpochMilli)
+        set(value) = prefs.edit().putLong(KEY_LAST_CARDIO_SYNC, value?.toEpochMilli() ?: -1L).apply()
+
     fun saveTokens(access: String, refresh: String) {
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, access)
@@ -50,5 +60,6 @@ class TokenStore(context: Context) {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_ACCESS_TOKEN = "access_token"
         const val KEY_REFRESH_TOKEN = "refresh_token"
+        const val KEY_LAST_CARDIO_SYNC = "last_cardio_sync_at"
     }
 }

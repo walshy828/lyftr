@@ -155,6 +155,45 @@ type WeightLog struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
+// CardioSession is one cardio activity (run/ride/walk) imported from a
+// companion device's health platform. Deliberately separate from the
+// workout/exercise/set model — this data arrives pre-aggregated by the source
+// platform rather than as loggable sets.
+type CardioSession struct {
+	ID              int64     `json:"id" db:"id"`
+	UserID          int64     `json:"user_id" db:"user_id"`
+	ExternalID      string    `json:"external_id" db:"external_id"` // source platform's own record id, used for import idempotency
+	ActivityType    string    `json:"activity_type" db:"activity_type"`
+	StartedAt       time.Time `json:"started_at" db:"started_at"`
+	EndedAt         time.Time `json:"ended_at" db:"ended_at"`
+	DurationSeconds int       `json:"duration_seconds" db:"duration_seconds"`
+	DistanceMeters  float64   `json:"distance_meters" db:"distance_meters"`
+	AvgHeartRate    int       `json:"avg_heart_rate" db:"avg_heart_rate"`
+	Calories        float64   `json:"calories" db:"calories"`
+	Source          string    `json:"source" db:"source"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+}
+
+// CreateCardioSessionRequest is one imported session on the wire. ExternalID
+// is required — it's what makes re-running an import idempotent.
+type CreateCardioSessionRequest struct {
+	ExternalID      string    `json:"external_id" validate:"required"`
+	ActivityType    string    `json:"activity_type" validate:"required"`
+	StartedAt       time.Time `json:"started_at" validate:"required"`
+	EndedAt         time.Time `json:"ended_at" validate:"required"`
+	DurationSeconds int       `json:"duration_seconds" validate:"required,gt=0"`
+	DistanceMeters  float64   `json:"distance_meters" validate:"gte=0"`
+	AvgHeartRate    int       `json:"avg_heart_rate" validate:"gte=0"`
+	Calories        float64   `json:"calories" validate:"gte=0"`
+	Source          string    `json:"source"`
+}
+
+// BatchImportCardioSessionsRequest lets a sync job submit every session
+// collected since its last run in one call.
+type BatchImportCardioSessionsRequest struct {
+	Sessions []CreateCardioSessionRequest `json:"sessions" validate:"required,dive"`
+}
+
 // Blood pressure (#bloodPressure) ------------------------------------------
 
 // Measurement contexts. Free-form on the wire but validated to this set, so the

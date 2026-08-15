@@ -6,6 +6,7 @@ import Loading from '../components/Loading'
 
 const WeightPanel = lazy(() => import('../components/health/WeightPanel'))
 const BloodPressurePanel = lazy(() => import('../components/health/BloodPressurePanel'))
+const CardioPanel = lazy(() => import('../components/health/CardioPanel'))
 
 /**
  * The health hub: one page per body metric, selected by tab.
@@ -17,6 +18,7 @@ const BloodPressurePanel = lazy(() => import('../components/health/BloodPressure
 const TABS: { key: string; label: string; Panel: ComponentType }[] = [
   { key: 'weight', label: 'Weight', Panel: WeightPanel },
   { key: 'bp', label: 'Blood Pressure', Panel: BloodPressurePanel },
+  { key: 'cardio', label: 'Cardio', Panel: CardioPanel },
 ]
 
 const DEFAULT_TAB = TABS[0].key
@@ -24,6 +26,7 @@ const DEFAULT_TAB = TABS[0].key
 const SUBTITLES: Record<string, string> = {
   weight: 'Track your body weight over time',
   bp: 'Readings, ranges, and when to measure',
+  cardio: 'Runs, rides, and other cardio synced from your watch',
 }
 
 export default function Health() {

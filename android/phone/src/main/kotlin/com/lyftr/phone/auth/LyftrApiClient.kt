@@ -57,6 +57,31 @@ data class CreateWorkoutRequest(
 )
 
 /**
+ * Mirrors backend/models/models.go's CreateCardioSessionRequest. external_id
+ * is the Health Connect record's own UUID — the backend dedupes imports on
+ * (user_id, external_id), so CardioSyncWorker can resubmit its whole batch
+ * every run with no local bookkeeping of what already made it across.
+ */
+@Serializable
+data class CardioSessionDto(
+    val external_id: String,
+    val activity_type: String,
+    val started_at: String,
+    val ended_at: String,
+    val duration_seconds: Int,
+    val distance_meters: Double = 0.0,
+    val avg_heart_rate: Int = 0,
+    val calories: Double = 0.0,
+)
+
+@Serializable
+private data class ImportCardioSessionsRequest(val sessions: List<CardioSessionDto>)
+@Serializable
+private data class ImportCardioSessionsResult(val imported: Int, val submitted: Int)
+@Serializable
+private data class ImportCardioSessionsEnvelope(val data: ImportCardioSessionsResult)
+
+/**
  * Minimal REST client for the subset of the Lyftr API (backend/routes/routes.go)
  * the phone companion needs: login/refresh and the active-session blob sync
  * (backend/controllers/active_session.go). No offline queueing — per the
@@ -129,6 +154,25 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
     suspend fun createWorkout(req: CreateWorkoutRequest): Boolean = withContext(Dispatchers.IO) {
         val body = json.encodeToString(CreateWorkoutRequest.serializer(), req).toRequestBody(JSON_MEDIA_TYPE)
         executeWithRefresh { authedRequest("/workouts").post(body).build() } != null
+    }
+
+    /**
+     * Imports cardio sessions read from Health Connect. Returns the count
+     * actually inserted (may be less than [sessions].size if some were
+     * already imported), or null on failure. See
+     * backend/controllers/cardio.go ImportCardioSessions.
+     */
+    suspend fun importCardioSessions(sessions: List<CardioSessionDto>): Int? = withContext(Dispatchers.IO) {
+        if (sessions.isEmpty()) return@withContext 0
+        val body = json.encodeToString(
+            ImportCardioSessionsRequest.serializer(),
+            ImportCardioSessionsRequest(sessions),
+        ).toRequestBody(JSON_MEDIA_TYPE)
+        val respBody = executeWithRefresh { authedRequest("/cardio/import").post(body).build() }
+            ?: return@withContext null
+        runCatching {
+            json.decodeFromString(ImportCardioSessionsEnvelope.serializer(), respBody).data.imported
+        }.getOrNull()
     }
 
     private fun authedRequest(path: String) = Request.Builder()

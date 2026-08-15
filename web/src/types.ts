@@ -110,6 +110,24 @@ export interface WeightLog {
   created_at?: string
 }
 
+// Cardio sessions imported from a companion device's health platform (e.g.
+// Health Connect on a Pixel Watch via the Android companion app). Read-only
+// on the web — entries only arrive via the import endpoint.
+export interface CardioSession {
+  id: number
+  user_id?: number
+  external_id: string
+  activity_type: string
+  started_at: string
+  ended_at: string
+  duration_seconds: number
+  distance_meters: number
+  avg_heart_rate: number
+  calories: number
+  source: string
+  created_at?: string
+}
+
 // Blood pressure (#bloodPressure)
 
 /** ACC/AHA 2017 categories, plus 'low' which is advisory only. */

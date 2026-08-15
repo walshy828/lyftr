@@ -500,6 +500,36 @@ CREATE INDEX IF NOT EXISTS idx_schedule_overrides_user_date ON program_schedule_
 	if _, err := DB.Exec(schedule); err != nil {
 		log.Fatalf("create program schedule tables: %v", err)
 	}
+
+	// Cardio sessions imported from a companion device's health platform (e.g.
+	// Health Connect on a Pixel Watch), distinct from the strength
+	// workout/exercise/set model since this data arrives pre-aggregated
+	// (duration/distance/HR/calories) rather than as sets.
+	//
+	// external_id is the source platform's own record identifier. The unique
+	// constraint on (user_id, external_id) makes re-running an import idempotent
+	// — a periodic sync job can re-submit the same session without creating
+	// duplicates, so it never needs to track what it already sent.
+	cardio := `
+CREATE TABLE IF NOT EXISTS cardio_sessions (
+  id                INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id           INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  external_id       TEXT     NOT NULL,
+  activity_type     TEXT     NOT NULL,
+  started_at        DATETIME NOT NULL,
+  ended_at          DATETIME NOT NULL,
+  duration_seconds  INTEGER  NOT NULL,
+  distance_meters   REAL     NOT NULL DEFAULT 0,
+  avg_heart_rate    INTEGER  NOT NULL DEFAULT 0,
+  calories          REAL     NOT NULL DEFAULT 0,
+  source            TEXT     NOT NULL DEFAULT 'health_connect',
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cardio_sessions_user_started ON cardio_sessions(user_id, started_at DESC);`
+	if _, err := DB.Exec(cardio); err != nil {
+		log.Fatalf("create cardio_sessions: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

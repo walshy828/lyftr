@@ -130,6 +130,13 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.PATCH("blood-pressure/:id", h.UpdateBloodPressureLog)
 		protected.DELETE("blood-pressure/:id", h.DeleteBloodPressureLog)
 
+		// Cardio sessions imported from a companion device — static sub-paths
+		// before cardio/:id.
+		protected.GET("cardio", h.ListCardioSessions)
+		protected.POST("cardio/import", h.ImportCardioSessions)
+		protected.GET("cardio/:id", h.GetCardioSession)
+		protected.DELETE("cardio/:id", h.DeleteCardioSession)
+
 		// Cross-metric hub summary — the seam a future metric plugs into.
 		protected.GET("health/summary", h.GetHealthSummary)
 

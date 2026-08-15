@@ -343,6 +343,15 @@ export const weightAPI = {
   stats:  () => api.get<{ data: types.WeightStats }>('/weight/stats').then(res => unwrap(res)),
 }
 
+// Cardio sessions imported from a companion device (Health Connect via the
+// Android app) — read-only here, entries only arrive via that import.
+export const cardioAPI = {
+  list:   (params?: { limit?: number; offset?: number }) =>
+    api.get<{ data: types.CardioSession[] }>('/cardio', { params }).then(res => unwrap(res)),
+  get:    (id: number) => api.get<{ data: types.CardioSession }>(`/cardio/${id}`).then(res => unwrap(res)),
+  delete: (id: number) => api.delete(`/cardio/${id}`),
+}
+
 // Blood pressure (#bloodPressure). No unit conversion anywhere: mmHg is
 // universal, so unlike weight there is no display/storage split to bridge.
 export const bloodPressureAPI = {
