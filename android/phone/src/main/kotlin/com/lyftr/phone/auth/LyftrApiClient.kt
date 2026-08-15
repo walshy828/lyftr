@@ -77,9 +77,12 @@ data class CardioSessionDto(
 @Serializable
 private data class ImportCardioSessionsRequest(val sessions: List<CardioSessionDto>)
 @Serializable
-private data class ImportCardioSessionsResult(val imported: Int, val submitted: Int)
+private data class ImportCardioSessionsResult(val imported: Int, val updated: Int, val submitted: Int)
 @Serializable
 private data class ImportCardioSessionsEnvelope(val data: ImportCardioSessionsResult)
+
+/** Outcome of a cardio import batch: rows newly inserted vs existing rows overwritten. */
+data class CardioImportResult(val imported: Int, val updated: Int)
 
 /**
  * Minimal REST client for the subset of the Lyftr API (backend/routes/routes.go)
@@ -164,13 +167,14 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
     }
 
     /**
-     * Imports cardio sessions read from Health Connect. Returns the count
-     * actually inserted (may be less than [sessions].size if some were
-     * already imported), or null on failure. See
+     * Imports cardio sessions read from Health Connect. Returns the counts
+     * newly inserted vs updated (a session already imported is overwritten
+     * with its resubmitted values, e.g. if the user recategorized it in
+     * Health Connect — not re-inserted or skipped), or null on failure. See
      * backend/controllers/cardio.go ImportCardioSessions.
      */
-    suspend fun importCardioSessions(sessions: List<CardioSessionDto>): Int? = withContext(Dispatchers.IO) {
-        if (sessions.isEmpty()) return@withContext 0
+    suspend fun importCardioSessions(sessions: List<CardioSessionDto>): CardioImportResult? = withContext(Dispatchers.IO) {
+        if (sessions.isEmpty()) return@withContext CardioImportResult(0, 0)
         val body = json.encodeToString(
             ImportCardioSessionsRequest.serializer(),
             ImportCardioSessionsRequest(sessions),
@@ -178,7 +182,8 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
         val respBody = executeWithRefresh { authedRequest("/cardio/import").post(body).build() }
             ?: return@withContext null
         runCatching {
-            json.decodeFromString(ImportCardioSessionsEnvelope.serializer(), respBody).data.imported
+            val result = json.decodeFromString(ImportCardioSessionsEnvelope.serializer(), respBody).data
+            CardioImportResult(result.imported, result.updated)
         }.getOrNull()
     }
 

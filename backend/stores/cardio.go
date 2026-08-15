@@ -63,36 +63,70 @@ func (s *CardioStore) Get(uid, id int64) (models.CardioSession, error) {
 		`SELECT `+cardioCols+` FROM cardio_sessions WHERE id = ? AND user_id = ?`, id, uid))
 }
 
-// Import inserts every session that isn't already present for this user
-// (matched on external_id), so a sync job can resubmit its whole batch on
-// every run with no need to track what it already sent. Returns the count of
-// rows actually inserted.
-func (s *CardioStore) Import(uid int64, reqs []models.CreateCardioSessionRequest) (int, error) {
-	return inTx(s.db, func(tx *sql.Tx) (int, error) {
-		imported := 0
+// importResult is the outcome of a batch Import, split into rows that were
+// newly inserted vs rows that already existed and were overwritten.
+type importResult struct{ Imported, Updated int }
+
+// Import upserts every session in the batch, matched on (user_id, external_id).
+// A sync job can resubmit its whole batch on every run with no need to track
+// what it already sent: new sessions are inserted, and sessions it already
+// sent are overwritten with the resubmitted values (Health Connect is the
+// source of truth, e.g. the user recategorizes a session after the fact).
+func (s *CardioStore) Import(uid int64, reqs []models.CreateCardioSessionRequest) (imported, updated int, err error) {
+	res, err := inTx(s.db, func(tx *sql.Tx) (importResult, error) {
+		existing := map[string]bool{}
+		rows, err := tx.Query(`SELECT external_id FROM cardio_sessions WHERE user_id = ?`, uid)
+		if err != nil {
+			return importResult{}, err
+		}
+		for rows.Next() {
+			var extID string
+			if err := rows.Scan(&extID); err != nil {
+				rows.Close()
+				return importResult{}, err
+			}
+			existing[extID] = true
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return importResult{}, err
+		}
+		rows.Close()
+
+		var r importResult
 		for _, req := range reqs {
 			source := req.Source
 			if source == "" {
 				source = "health_connect"
 			}
-			res, err := tx.Exec(
+			_, err := tx.Exec(
 				`INSERT INTO cardio_sessions
 				 (user_id, external_id, activity_type, started_at, ended_at,
 				  duration_seconds, distance_meters, avg_heart_rate, calories, source)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-				 ON CONFLICT(user_id, external_id) DO NOTHING`,
+				 ON CONFLICT(user_id, external_id) DO UPDATE SET
+				   activity_type    = excluded.activity_type,
+				   started_at       = excluded.started_at,
+				   ended_at         = excluded.ended_at,
+				   duration_seconds = excluded.duration_seconds,
+				   distance_meters  = excluded.distance_meters,
+				   avg_heart_rate   = excluded.avg_heart_rate,
+				   calories         = excluded.calories`,
 				uid, req.ExternalID, req.ActivityType, req.StartedAt, req.EndedAt,
 				req.DurationSeconds, req.DistanceMeters, req.AvgHeartRate, req.Calories, source,
 			)
 			if err != nil {
-				return 0, err
+				return importResult{}, err
 			}
-			if n, _ := res.RowsAffected(); n > 0 {
-				imported++
+			if existing[req.ExternalID] {
+				r.Updated++
+			} else {
+				r.Imported++
 			}
 		}
-		return imported, nil
+		return r, nil
 	})
+	return res.Imported, res.Updated, err
 }
 
 func (s *CardioStore) Delete(uid, id int64) (int64, error) {

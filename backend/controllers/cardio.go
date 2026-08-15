@@ -30,7 +30,9 @@ func (h *Handler) ListCardioSessions(c *gin.Context) {
 
 // ImportCardioSessions accepts a batch of cardio sessions from a sync job
 // (e.g. the Android companion app reading Health Connect). Safe to call
-// repeatedly with overlapping batches — sessions are deduped on external_id.
+// repeatedly with overlapping batches — sessions are upserted on external_id,
+// so a resubmitted session (e.g. recategorized in Health Connect) overwrites
+// the existing row instead of being ignored.
 func (h *Handler) ImportCardioSessions(c *gin.Context) {
 	uid := middleware.UserID(c)
 	var req models.BatchImportCardioSessionsRequest
@@ -43,11 +45,11 @@ func (h *Handler) ImportCardioSessions(c *gin.Context) {
 		return
 	}
 
-	imported, err := h.s.Cardio.Import(uid, req.Sessions)
+	imported, updated, err := h.s.Cardio.Import(uid, req.Sessions)
 	if utils.DBError(c, err) {
 		return
 	}
-	utils.Created(c, gin.H{"imported": imported, "submitted": len(req.Sessions)})
+	utils.Created(c, gin.H{"imported": imported, "updated": updated, "submitted": len(req.Sessions)})
 }
 
 func (h *Handler) GetCardioSession(c *gin.Context) {

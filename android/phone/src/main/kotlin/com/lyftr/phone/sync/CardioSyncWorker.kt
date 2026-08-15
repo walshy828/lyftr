@@ -64,20 +64,34 @@ class CardioSyncWorker(context: Context, params: WorkerParameters) : CoroutineWo
             return Result.success(statusData(Status.OK, imported = 0, found = 0, syncedAt = runStartedAt))
         }
 
-        val imported = LyftrApiClient(tokenStore).importCardioSessions(sessions)
+        val result = LyftrApiClient(tokenStore).importCardioSessions(sessions)
             ?: return Result.failure(statusData(Status.IMPORT_FAILED))
 
         tokenStore.lastCardioSyncAt = runStartedAt
-        return Result.success(statusData(Status.OK, imported = imported, found = sessions.size, syncedAt = runStartedAt))
+        return Result.success(
+            statusData(
+                Status.OK,
+                imported = result.imported,
+                updated = result.updated,
+                found = sessions.size,
+                syncedAt = runStartedAt,
+            ),
+        )
     }
 
-    private fun statusData(status: Status, imported: Int = 0, found: Int = 0, syncedAt: Instant? = null) =
-        workDataOf(
-            STATUS to status.name,
-            KEY_IMPORTED to imported,
-            KEY_FOUND to found,
-            KEY_SYNCED_AT to (syncedAt?.toEpochMilli() ?: -1L),
-        )
+    private fun statusData(
+        status: Status,
+        imported: Int = 0,
+        updated: Int = 0,
+        found: Int = 0,
+        syncedAt: Instant? = null,
+    ) = workDataOf(
+        STATUS to status.name,
+        KEY_IMPORTED to imported,
+        KEY_UPDATED to updated,
+        KEY_FOUND to found,
+        KEY_SYNCED_AT to (syncedAt?.toEpochMilli() ?: -1L),
+    )
 
     companion object {
         private const val PERIODIC_WORK_NAME = "lyftr_cardio_sync"
@@ -85,6 +99,7 @@ class CardioSyncWorker(context: Context, params: WorkerParameters) : CoroutineWo
 
         const val STATUS = "status"
         const val KEY_IMPORTED = "imported"
+        const val KEY_UPDATED = "updated"
         const val KEY_FOUND = "found"
         const val KEY_SYNCED_AT = "synced_at"
 

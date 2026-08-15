@@ -43,8 +43,14 @@ private fun manualSyncStatusText(info: WorkInfo?): String? = when (info?.state) 
     WorkInfo.State.SUCCEEDED -> when (info.outputData.statusOrNull()) {
         CardioSyncWorker.Status.OK -> {
             val imported = info.outputData.getInt(CardioSyncWorker.KEY_IMPORTED, 0)
-            if (imported > 0) "Synced $imported new session${if (imported == 1) "" else "s"}"
-            else "Up to date — no new sessions"
+            val updated = info.outputData.getInt(CardioSyncWorker.KEY_UPDATED, 0)
+            when {
+                imported > 0 && updated > 0 ->
+                    "Synced $imported new session${if (imported == 1) "" else "s"}, $updated updated"
+                imported > 0 -> "Synced $imported new session${if (imported == 1) "" else "s"}"
+                updated > 0 -> "Updated $updated session${if (updated == 1) "" else "s"}"
+                else -> "Up to date — no new sessions"
+            }
         }
         CardioSyncWorker.Status.NOT_LOGGED_IN -> "Not logged in"
         CardioSyncWorker.Status.HEALTH_CONNECT_UNAVAILABLE -> "Health Connect isn't available on this device"
