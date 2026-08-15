@@ -1044,6 +1044,38 @@ export interface TrainingStreak {
   longest: number
 }
 
+/** One local calendar day's cardio rollup (synced from Health Connect). Days with no sessions are absent. */
+export interface CardioDay {
+  date: string
+  sessions: number
+  /** seconds */
+  duration: number
+  distance_meters: number
+  calories: number
+}
+
+export interface CardioTotals {
+  sessions: number
+  duration: number
+  distance_meters: number
+  calories: number
+  active_days: number
+}
+
+/**
+ * Server-computed cardio aggregates. Sections the caller didn't request are
+ * undefined, mirroring TrainingStats. `combined_streak` (workouts OR cardio,
+ * unioned before computing the run) is only present when explicitly requested.
+ */
+export interface CardioStats {
+  from: string
+  to: string
+  totals: CardioTotals
+  daily?: CardioDay[]
+  streak?: TrainingStreak
+  combined_streak?: TrainingStreak
+}
+
 export interface TrainingTotals {
   workouts: number
   duration: number

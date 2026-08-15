@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { format, subDays } from 'date-fns'
-import { workoutAPI, foodAPI, weightAPI, userAPI, profileAPI, weightPlanAPI, scheduleAPI } from '../services/api'
+import { workoutAPI, foodAPI, weightAPI, userAPI, profileAPI, weightPlanAPI, scheduleAPI, cardioAPI } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import * as types from '../types'
 
@@ -21,6 +21,10 @@ export interface DashboardData {
    * consistency, muscle coverage, streaks — reads from here instead.
    */
   training: types.TrainingStats | null
+  /** Cardio sessions synced from Health Connect, bounded — for the weekly scorecard. */
+  cardioSessions: types.CardioSession[]
+  /** Server-computed cardio aggregates over the trailing year, mirroring `training`. */
+  cardioStats: types.CardioStats | null
   /** Today's resolved plan, or null when the user has no schedule. */
   todaysPlan: types.ScheduledDay | null
   food: types.DailyStats
@@ -45,6 +49,8 @@ export function useDashboardData(): DashboardData {
 
   const [workouts, setWorkouts] = useState<types.Workout[]>([])
   const [training, setTraining] = useState<types.TrainingStats | null>(null)
+  const [cardioSessions, setCardioSessions] = useState<types.CardioSession[]>([])
+  const [cardioStats, setCardioStats] = useState<types.CardioStats | null>(null)
   const [todaysPlan, setTodaysPlan] = useState<types.ScheduledDay | null>(null)
   const [food, setFood] = useState<types.DailyStats>(DEFAULT_FOOD)
   const [foodHistory, setFoodHistory] = useState<types.FoodHistoryPoint[]>([])
@@ -65,6 +71,13 @@ export function useDashboardData(): DashboardData {
         from: format(subDays(today, 364), 'yyyy-MM-dd'),
         to: format(today, 'yyyy-MM-dd'),
       }).catch(() => null),
+      cardioAPI.list({ limit: 150 }).catch(() => []),
+      cardioAPI.stats({
+        from: format(subDays(today, 364), 'yyyy-MM-dd'),
+        to: format(today, 'yyyy-MM-dd'),
+        include: ['daily', 'streak'],
+        combinedStreak: true,
+      }).catch(() => null),
       foodAPI.stats(format(TODAY, 'yyyy-MM-dd')).catch(() => DEFAULT_FOOD),
       foodAPI.history(90).catch(() => []),
       weightAPI.list({ limit: 90 }).catch(() => []),
@@ -74,9 +87,11 @@ export function useDashboardData(): DashboardData {
       weightPlanAPI.current().catch(() => null), // 404 when no active plan
       scheduleAPI.today().catch(() => null),
     ])
-      .then(([ws, ts, fs, fh, wl, wst, s, prof, cur, plan]) => {
+      .then(([ws, ts, cs, cst, fs, fh, wl, wst, s, prof, cur, plan]) => {
         setWorkouts(ws || [])
         setTraining(ts)
+        setCardioSessions(cs || [])
+        setCardioStats(cst)
         setFood(fs || DEFAULT_FOOD)
         setFoodHistory(fh || [])
         setWeightLogs(wl || [])
@@ -102,7 +117,7 @@ export function useDashboardData(): DashboardData {
   }
 
   return {
-    workouts, training, todaysPlan, food, foodHistory, weightLogs, weightStats, settings, profile, plan, adherence,
-    loading, error, addWeightLog,
+    workouts, training, cardioSessions, cardioStats, todaysPlan, food, foodHistory, weightLogs, weightStats,
+    settings, profile, plan, adherence, loading, error, addWeightLog,
   }
 }

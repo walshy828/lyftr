@@ -3,10 +3,10 @@ import {
   calcVolume, weekRange, weeklyTraining, daysSinceLastWorkout, untrainedFocusRegions,
   weeklyNutrition, delta, olsTrend, weightSeries, goalDirection, goalProgress, buildInsights,
   elapsedDays, firstDaysOf,
-  workoutMinutesByCategory, activityMix,
+  workoutMinutesByCategory, activityMix, weeklyCardio,
   type InsightSignals, type WeeklyNutrition,
 } from './dashboardMetrics'
-import type { Workout, FoodHistoryPoint, WeightLog, WorkoutExercise } from '../types'
+import type { Workout, FoodHistoryPoint, WeightLog, WorkoutExercise, CardioSession } from '../types'
 
 // Wednesday, 2026-07-15 12:00 local — mid-week reference.
 const NOW = new Date(2026, 6, 15, 12, 0, 0)
@@ -53,6 +53,36 @@ describe('weekRange / weeklyTraining', () => {
   it('prior week window excludes this week', () => {
     const ws = [workout('2026-07-06T09:00:00', 'back', 4), workout('2026-07-14T09:00:00', 'chest', 3)]
     expect(weeklyTraining(ws, weekRange(NOW, 1)).sessions).toBe(1)
+  })
+})
+
+function cardioSession(startedAtIso: string, durationSeconds = 1800): CardioSession {
+  return {
+    id: Math.random(), external_id: `ext-${Math.random()}`, activity_type: 'running',
+    started_at: startedAtIso, ended_at: startedAtIso, duration_seconds: durationSeconds,
+    distance_meters: 0, avg_heart_rate: 0, calories: 0, source: 'health_connect',
+  }
+}
+
+describe('weeklyCardio', () => {
+  it('counts only this-week sessions and sums their duration', () => {
+    const sessions = [
+      cardioSession('2026-07-14T09:00:00', 1800), // this week
+      cardioSession('2026-07-15T09:00:00', 900),  // this week
+      cardioSession('2026-07-06T09:00:00', 3600), // last week — excluded
+    ]
+    const { sessions: count, duration } = weeklyCardio(sessions, weekRange(NOW))
+    expect(count).toBe(2)
+    expect(duration).toBe(2700)
+  })
+
+  it('returns zeros for an empty list', () => {
+    expect(weeklyCardio([], weekRange(NOW))).toEqual({ sessions: 0, duration: 0 })
+  })
+
+  it('prior week window excludes this week', () => {
+    const sessions = [cardioSession('2026-07-06T09:00:00'), cardioSession('2026-07-14T09:00:00')]
+    expect(weeklyCardio(sessions, weekRange(NOW, 1)).sessions).toBe(1)
   })
 })
 

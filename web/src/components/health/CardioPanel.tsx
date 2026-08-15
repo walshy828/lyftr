@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertCircle, Bike, Footprints, Waves, RotateCw, Trash2, Timer, MapPin, HeartPulse, Flame } from 'lucide-react'
+import { AlertCircle, Bike, Footprints, Waves, RotateCw, Trash2, Timer, MapPin, HeartPulse, Flame, Activity, Zap, ArrowUpFromDot } from 'lucide-react'
 import { format } from 'date-fns'
 import Loading from '../Loading'
 import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
@@ -13,6 +13,11 @@ const ACTIVITY_ICONS: Record<string, typeof Footprints> = {
   swimming: Waves,
   rowing: RotateCw,
   elliptical: RotateCw,
+  hiit: Zap,
+  stair_climbing: ArrowUpFromDot,
+  // Fitbit tags most sessions "Other workout" rather than a specific sport —
+  // see android/phone/.../HealthConnectSync.kt cardioActivityTypeOf.
+  workout: Activity,
 }
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -22,6 +27,9 @@ const ACTIVITY_LABELS: Record<string, string> = {
   swimming: 'Swim',
   rowing: 'Row',
   elliptical: 'Elliptical',
+  hiit: 'HIIT',
+  stair_climbing: 'Stair climbing',
+  workout: 'Workout',
 }
 
 function formatDuration(seconds: number): string {

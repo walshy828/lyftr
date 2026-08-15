@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Flame, Trophy, Dumbbell, Clock, TrendingUp, ArrowRight } from 'lucide-react'
+import { Flame, Trophy, Dumbbell, Clock, TrendingUp, ArrowRight, HeartPulse } from 'lucide-react'
 import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { workoutAPI, exerciseAPI } from '../services/api'
 import { useTrainingStats } from '../hooks/useTrainingStats'
+import { useCardioStats } from '../hooks/useCardioStats'
 import { useSettingsStore, weightShort, displayWeight, displayVolume } from '../stores/settings'
-import ConsistencyHeatmap from '../components/dashboard/ConsistencyHeatmap'
+import ConsistencyHeatmap, { type ConsistencySource } from '../components/dashboard/ConsistencyHeatmap'
+import ActivityOverlapCard from '../components/dashboard/ActivityOverlapCard'
 import MuscleMapCard, { MUSCLE_PERIOD_DAYS, type MusclePeriod } from '../components/dashboard/MuscleMapCard'
 import { PageHeader, StatTile, SectionHeader } from '../components/ui'
 import Loading from '../components/Loading'
@@ -40,8 +42,10 @@ export default function Stats() {
   const wUnit = weightShort(settings.weight_unit)
 
   const year = useTrainingStats(365, ['daily', 'streak'])
+  const cardio = useCardioStats(365, ['daily', 'streak'], true)
   const [musclePeriod, setMusclePeriod] = useState<MusclePeriod>('month')
   const muscles = useTrainingStats(MUSCLE_PERIOD_DAYS[musclePeriod], ['muscles'])
+  const [consistencySource, setConsistencySource] = useState<ConsistencySource>('both')
 
   const [prs, setPRs] = useState<types.RecentPR[]>([])
   const [selectedExercise, setSelectedExercise] = useState<types.RecentPR | null>(null)
@@ -73,7 +77,12 @@ export default function Stats() {
   )
 
   const totals = year.stats?.totals
-  const streak = year.stats?.streak
+  // The headline streak follows the consistency toggle, so the page shows one
+  // coherent number rather than a second, possibly-conflicting streak.
+  const streak =
+    consistencySource === 'cardio' ? cardio.stats?.streak
+      : consistencySource === 'both' ? cardio.stats?.combined_streak
+        : year.stats?.streak
 
   if (year.loading && !year.stats) return <Loading />
 
@@ -118,11 +127,57 @@ export default function Stats() {
 
       {/* A full year, shaded by time invested */}
       <ConsistencyHeatmap
-        daily={year.stats?.daily ?? []}
+        workoutDaily={year.stats?.daily ?? []}
+        cardioDaily={cardio.stats?.daily ?? []}
         streak={streak}
+        source={consistencySource}
+        onSourceChange={setConsistencySource}
         weeks={52}
         metric="duration"
       />
+
+      <ActivityOverlapCard workoutDaily={year.stats?.daily ?? []} cardioDaily={cardio.stats?.daily ?? []} />
+
+      {/* Synced Cardio totals — a distinct data source from any "Cardio" label
+          elsewhere on this page (that one classifies exercises logged inside a
+          workout; this is the Health Connect import). Same trailing year as
+          the headline totals above. */}
+      <div className="card p-4">
+        <SectionHeader icon={HeartPulse} title="Synced Cardio" className="mb-3" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatTile
+            label="Sessions"
+            value={cardio.stats?.totals.sessions ?? 0}
+            sub={`${cardio.stats?.totals.active_days ?? 0} active days`}
+            icon={HeartPulse}
+            accent="#ef4444"
+          />
+          <StatTile
+            label="Time"
+            value={hoursLabel(cardio.stats?.totals.duration ?? 0)}
+            unit="h"
+            sub="past year"
+            icon={Clock}
+            accent="#a78bfa"
+          />
+          <StatTile
+            label="Distance"
+            value={((cardio.stats?.totals.distance_meters ?? 0) / 1000).toFixed(1)}
+            unit="km"
+            sub="past year"
+            icon={TrendingUp}
+            accent="#22d3ee"
+          />
+          <StatTile
+            label="Calories"
+            value={Math.round(cardio.stats?.totals.calories ?? 0).toLocaleString()}
+            unit="kcal"
+            sub="past year"
+            icon={Flame}
+            accent="#f59e0b"
+          />
+        </div>
+      </div>
 
       <MuscleMapCard
         muscles={muscles.stats?.muscles ?? []}

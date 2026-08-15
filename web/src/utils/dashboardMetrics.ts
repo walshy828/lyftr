@@ -2,7 +2,7 @@
 // components so the weekly / week-over-week / insight math is unit-testable.
 
 import { startOfWeek, endOfWeek, subWeeks } from 'date-fns'
-import type { Workout, FoodHistoryPoint, WeightLog } from '../types'
+import type { Workout, FoodHistoryPoint, WeightLog, CardioSession } from '../types'
 import { focusOf, type FocusCategory, type ActivityCategory } from './chartTheme'
 
 // ── Volume ──────────────────────────────────────────────────────────────
@@ -61,6 +61,21 @@ export function weeklyTraining(workouts: Workout[], range: WeekRange): WeeklyTra
     }
   }
   return { sessions, volume }
+}
+
+// ── Cardio (synced from Health Connect) ──────────────────────────────────
+export interface WeeklyCardio { sessions: number; duration: number }
+export function weeklyCardio(sessions: CardioSession[], range: WeekRange): WeeklyCardio {
+  let count = 0
+  let duration = 0
+  for (const s of sessions) {
+    const t = new Date(s.started_at)
+    if (t >= range.start && t <= range.end) {
+      count += 1
+      duration += s.duration_seconds
+    }
+  }
+  return { sessions: count, duration }
 }
 
 // Whole days since the most recent workout (0 = worked out today). null when

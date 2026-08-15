@@ -133,6 +133,7 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		// Cardio sessions imported from a companion device — static sub-paths
 		// before cardio/:id.
 		protected.GET("cardio", h.ListCardioSessions)
+		protected.GET("cardio/stats", h.GetCardioStats)
 		protected.POST("cardio/import", h.ImportCardioSessions)
 		protected.GET("cardio/:id", h.GetCardioSession)
 		protected.DELETE("cardio/:id", h.DeleteCardioSession)

@@ -5,24 +5,12 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
 	"github.com/Cawlumm/lyftr-backend/stores"
 	"github.com/Cawlumm/lyftr-backend/utils"
 	"github.com/gin-gonic/gin"
 )
-
-// maxStatsSpanDays bounds the requested window. A year of daily rows is what
-// the full-year heatmap needs; the slack above that covers a client asking for
-// "last year plus this one" without letting a caller ask for a decade.
-const maxStatsSpanDays = 400
-
-// defaultStatsSpanDays is the window when the caller names neither end: the
-// trailing year, which is exactly the heatmap's span.
-const defaultStatsSpanDays = 365
-
-const isoDate = "2006-01-02"
 
 // GetWorkoutStats returns training aggregates over a date window.
 //
@@ -39,40 +27,8 @@ const isoDate = "2006-01-02"
 func (h *Handler) GetWorkoutStats(c *gin.Context) {
 	uid := middleware.UserID(c)
 
-	tzOffset := 0
-	if v, err := strconv.Atoi(c.Query("tz_offset")); err == nil {
-		tzOffset = v
-	}
-	today := stores.LocalToday(tzOffset)
-
-	to := today
-	if raw := c.Query("to"); raw != "" {
-		t, err := time.Parse(isoDate, raw)
-		if err != nil {
-			utils.BadRequest(c, "to must be a YYYY-MM-DD date")
-			return
-		}
-		to = t.Format(isoDate)
-	}
-
-	toTime, _ := time.Parse(isoDate, to)
-	from := toTime.AddDate(0, 0, -(defaultStatsSpanDays - 1)).Format(isoDate)
-	if raw := c.Query("from"); raw != "" {
-		t, err := time.Parse(isoDate, raw)
-		if err != nil {
-			utils.BadRequest(c, "from must be a YYYY-MM-DD date")
-			return
-		}
-		from = t.Format(isoDate)
-	}
-
-	if from > to {
-		utils.BadRequest(c, "from must not be after to")
-		return
-	}
-	fromTime, _ := time.Parse(isoDate, from)
-	if int(toTime.Sub(fromTime).Hours()/24)+1 > maxStatsSpanDays {
-		utils.BadRequest(c, "date range must not exceed "+strconv.Itoa(maxStatsSpanDays)+" days")
+	from, to, tzOffset, today, ok := parseStatsWindow(c)
+	if !ok {
 		return
 	}
 

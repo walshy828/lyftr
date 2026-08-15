@@ -14,7 +14,8 @@ import PlanAdherenceHero from '../components/dashboard/PlanAdherenceHero'
 import JourneyRoad from '../components/dashboard/JourneyRoad'
 import InsightsCard from '../components/dashboard/InsightsCard'
 import WeightTrendCard from '../components/dashboard/WeightTrendCard'
-import ConsistencyHeatmap from '../components/dashboard/ConsistencyHeatmap'
+import ConsistencyHeatmap, { type ConsistencySource } from '../components/dashboard/ConsistencyHeatmap'
+import ActivityOverlapCard from '../components/dashboard/ActivityOverlapCard'
 import TrainingTrendsCard from '../components/dashboard/TrainingTrendsCard'
 import NutritionTodayCard from '../components/dashboard/NutritionTodayCard'
 import NutritionTrendCard from '../components/dashboard/NutritionTrendCard'
@@ -41,6 +42,7 @@ export default function Dashboard() {
   // trailing year — "what have I skipped this week" is the actionable question.
   const [musclePeriod, setMusclePeriod] = useState<MusclePeriod>('week')
   const muscleStats = useTrainingStats(MUSCLE_PERIOD_DAYS[musclePeriod], ['muscles'])
+  const [consistencySource, setConsistencySource] = useState<ConsistencySource>('both')
 
   if (d.loading) return <Loading />
 
@@ -102,8 +104,8 @@ export default function Dashboard() {
 
       {/* This week — the headline synthesis */}
       <ThisWeekScorecard
-        workouts={d.workouts} foodHistory={d.foodHistory} weightStats={d.weightStats}
-        settings={d.settings} plan={d.plan}
+        workouts={d.workouts} cardioSessions={d.cardioSessions} foodHistory={d.foodHistory}
+        weightStats={d.weightStats} settings={d.settings} plan={d.plan}
       />
 
       {/* Plan adherence hero (only with an active plan) */}
@@ -147,11 +149,20 @@ export default function Dashboard() {
           count-based scale is effectively binary and says nothing beyond
           "showed up". */}
       <ConsistencyHeatmap
-        daily={d.training?.daily ?? []}
-        streak={d.training?.streak}
+        workoutDaily={d.training?.daily ?? []}
+        cardioDaily={d.cardioStats?.daily ?? []}
+        streak={
+          consistencySource === 'cardio' ? d.cardioStats?.streak
+            : consistencySource === 'both' ? d.cardioStats?.combined_streak
+              : d.training?.streak
+        }
+        source={consistencySource}
+        onSourceChange={setConsistencySource}
         weeks={26}
         metric="duration"
       />
+
+      <ActivityOverlapCard workoutDaily={d.training?.daily ?? []} cardioDaily={d.cardioStats?.daily ?? []} />
 
       {/* Coverage — what got trained, and what didn't */}
       <MuscleMapCard

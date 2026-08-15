@@ -1,20 +1,22 @@
-import { Dumbbell, Flame, Scale } from 'lucide-react'
+import { Dumbbell, Flame, Scale, HeartPulse } from 'lucide-react'
 import { StatTile, DeltaBadge } from '../ui'
 import * as types from '../../types'
 import { displayWeight, weightShort } from '../../stores/settings'
 import {
-  weekRange, weeklyTraining, weeklyNutrition, delta, goalDirection,
+  weekRange, weeklyTraining, weeklyCardio, weeklyNutrition, delta, goalDirection,
   elapsedDays, firstDaysOf,
 } from '../../utils/dashboardMetrics'
 
 const NOW = new Date()
 
-// The three-pillar "how's this week going, vs last week" summary. Every tile
+// The four-pillar "how's this week going, vs last week" summary. Every tile
 // carries a week-over-week DeltaBadge so the user reads direction at a glance.
 export default function ThisWeekScorecard({
-  workouts, foodHistory, weightStats, settings, plan,
+  workouts, cardioSessions, foodHistory, weightStats, settings, plan,
 }: {
   workouts: types.Workout[]
+  /** Cardio sessions synced from Health Connect — a separate source from `workouts`. */
+  cardioSessions: types.CardioSession[]
   foodHistory: types.FoodHistoryPoint[]
   weightStats: types.WeightStats | null
   settings: types.UserSettings
@@ -30,6 +32,10 @@ export default function ThisWeekScorecard({
   const trainNow = weeklyTraining(workouts, thisWeek)
   const trainPrev = weeklyTraining(workouts, lastWeek)
   const sessionsDelta = delta(trainNow.sessions, trainPrev.sessions)
+
+  const cardioNow = weeklyCardio(cardioSessions, thisWeek)
+  const cardioPrev = weeklyCardio(cardioSessions, lastWeek)
+  const cardioDelta = delta(cardioNow.sessions, cardioPrev.sessions)
 
   const nutNow = weeklyNutrition(foodHistory, settings.protein_target, thisWeek, NOW)
   const nutPrev = weeklyNutrition(foodHistory, settings.protein_target, lastWeek, NOW)
@@ -49,7 +55,7 @@ export default function ThisWeekScorecard({
         <h2 className="stat-label">This Week</h2>
         <span className="text-[11px] text-tx-muted">vs last week</span>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <StatTile
           label="Training"
           to="/workouts"
@@ -59,6 +65,16 @@ export default function ThisWeekScorecard({
           value={trainNow.sessions}
           sub={trainNow.sessions === 1 ? 'session' : 'sessions'}
           delta={<DeltaBadge value={sessionsDelta.abs} goodDirection="up" />}
+        />
+        <StatTile
+          label="Synced Cardio"
+          to="/health"
+          linkLabel="Synced cardio this week — view health"
+          icon={HeartPulse}
+          accent="#ef4444"
+          value={cardioNow.sessions}
+          sub={cardioNow.sessions === 1 ? 'session' : 'sessions'}
+          delta={<DeltaBadge value={cardioDelta.abs} goodDirection="up" />}
         />
         <StatTile
           label="Nutrition"

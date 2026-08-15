@@ -38,6 +38,23 @@
             </intent-filter>
         </activity>
 
+        <!-- Required for Health Connect to show its permission-grant screen at
+             all: without a declared rationale target, PermissionsActivity logs
+             "App should support rationale intent, finishing!" and closes
+             itself instead of prompting. Points at MainActivity/StatusScreen,
+             which already explains what cardio data Lyftr reads and why —
+             no separate screen needed. -->
+        <activity-alias
+            android:name=".PermissionsRationaleActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <service
             android:name=".sync.SessionSyncService"
             android:exported="false"

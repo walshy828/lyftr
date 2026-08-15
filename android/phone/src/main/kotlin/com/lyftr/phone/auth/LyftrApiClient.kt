@@ -120,18 +120,25 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
 
     /** Rotates the token pair using the stored refresh token. See backend/utils/jwt.go. */
     suspend fun refresh(): Boolean = withContext(Dispatchers.IO) {
-        val rt = tokenStore.refreshToken ?: return@withContext false
+        val rt = tokenStore.refreshToken
+        if (rt == null) {
+            Log.w(TAG, "refresh: no refresh token stored")
+            return@withContext false
+        }
         val body = json.encodeToString(RefreshRequest.serializer(), RefreshRequest(rt))
             .toRequestBody(JSON_MEDIA_TYPE)
         val req = Request.Builder().url(apiUrl("/auth/refresh")).post(body).build()
         runCatching {
             http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext false
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "refresh: HTTP ${resp.code} from ${req.url}: ${resp.body?.string()}")
+                    return@withContext false
+                }
                 val envelope = json.decodeFromString(AuthEnvelope.serializer(), resp.body!!.string())
                 tokenStore.saveTokens(envelope.data.token, envelope.data.refresh_token)
                 true
             }
-        }.getOrDefault(false)
+        }.onFailure { Log.e(TAG, "refresh: request to ${req.url} failed", it) }.getOrDefault(false)
     }
 
     /** Returns the raw session JSON string (or null if nothing is active). */

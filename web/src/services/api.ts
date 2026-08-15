@@ -350,6 +350,26 @@ export const cardioAPI = {
     api.get<{ data: types.CardioSession[] }>('/cardio', { params }).then(res => unwrap(res)),
   get:    (id: number) => api.get<{ data: types.CardioSession }>(`/cardio/${id}`).then(res => unwrap(res)),
   delete: (id: number) => api.delete(`/cardio/${id}`),
+  /**
+   * Server-side cardio aggregates over a date window, mirroring workoutAPI.stats.
+   * `combinedStreak` additionally requests the cross-domain streak (workout OR
+   * cardio day) for the dashboard's "both" toggle position.
+   */
+  stats: (params: {
+    from?: string
+    to?: string
+    include?: ('daily' | 'streak')[]
+    combinedStreak?: boolean
+  } = {}) =>
+    api.get<{ data: types.CardioStats }>('/cardio/stats', {
+      params: {
+        from: params.from,
+        to: params.to,
+        include: params.include?.join(','),
+        combined_streak: params.combinedStreak ? 1 : undefined,
+        tz_offset: -new Date().getTimezoneOffset(),
+      },
+    }).then(res => unwrap(res)),
 }
 
 // Blood pressure (#bloodPressure). No unit conversion anywhere: mmHg is
