@@ -328,6 +328,13 @@ type BPWeightContext struct {
 type BPTrainingContext struct {
 	WorkoutDays30 int `json:"workout_days_30"`
 	WorkoutDays90 int `json:"workout_days_90"`
+
+	// Cardio, from Health Connect imports — aerobic activity is one of the
+	// levers the BP insight prompt is told it may recommend, so it needs its
+	// own evidence rather than being folded into WorkoutDays.
+	CardioDays30     int `json:"cardio_days_30"`
+	CardioSessions30 int `json:"cardio_sessions_30"`
+	CardioMinutes30  int `json:"cardio_minutes_30"`
 }
 
 type BPNutritionContext struct {
@@ -891,6 +898,14 @@ type CheckinWindow struct {
 	AvgProtein     float64 `json:"avg_protein"`
 	CalorieTarget  int     `json:"calorie_target"`
 	ProteinTarget  int     `json:"protein_target"`
+
+	// Cardio, from Health Connect imports (stores.CardioStore.SummarySince) —
+	// separate from WorkoutDays because a person can run without lifting and
+	// the two consistency signals shouldn't be conflated.
+	CardioDays            int     `json:"cardio_days"`
+	CardioSessions        int     `json:"cardio_sessions"`
+	CardioDurationMinutes int     `json:"cardio_duration_minutes"`
+	CardioCalories        float64 `json:"cardio_calories"`
 }
 
 // Check-in trend patterns. Derived deterministically from the overall vs.

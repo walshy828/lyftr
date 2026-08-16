@@ -236,6 +236,14 @@ func (h *Handler) buildCheckinFacts(uid int64, now time.Time) (models.CheckinFac
 		if w.WorkoutDays, err = h.s.Workout.CountSince(uid, days); err != nil {
 			return facts, goal, err
 		}
+		cardio, cerr := h.s.Cardio.SummarySince(uid, days)
+		if cerr != nil {
+			return facts, goal, cerr
+		}
+		w.CardioDays = cardio.Days
+		w.CardioSessions = cardio.Sessions
+		w.CardioDurationMinutes = cardio.DurationMinutes
+		w.CardioCalories = cardio.Calories
 		history, herr := h.s.Food.History(uid, days)
 		if herr != nil {
 			return facts, goal, herr

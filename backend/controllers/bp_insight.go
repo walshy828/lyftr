@@ -116,6 +116,13 @@ func (h *Handler) buildBPInsightFacts(uid int64, now time.Time) (models.BPInsigh
 	if f.Training.WorkoutDays90, err = h.s.Workout.CountSince(uid, 90); err != nil {
 		return f, sessions, err
 	}
+	cardio30, err := h.s.Cardio.SummarySince(uid, 30)
+	if err != nil {
+		return f, sessions, err
+	}
+	f.Training.CardioDays30 = cardio30.Days
+	f.Training.CardioSessions30 = cardio30.Sessions
+	f.Training.CardioMinutes30 = cardio30.DurationMinutes
 
 	// A user who has never opened Settings has no row; that's not an error, and
 	// bailing out here would silently drop the nutrition context (and every
@@ -241,14 +248,16 @@ func (h *Handler) generateBPReport(c *gin.Context, uid int64, facts models.BPIns
 		DaysMeasuredLast30: w30.DaysWithData,
 		SysStdDev30:        w30.SysStdDev,
 
-		CurrentWeightLbs:   facts.Weight.CurrentLbs,
-		WeightChange30dLbs: facts.Weight.Change30dLbs,
-		WeightChange90dLbs: facts.Weight.Change90dLbs,
-		BMICategory:        facts.Weight.BMICategory,
-		WorkoutDaysLast30:  facts.Training.WorkoutDays30,
-		AvgSodiumMg:        facts.Nutrition.AvgSodiumMg,
-		SodiumTargetMg:     facts.Nutrition.SodiumTargetMg,
-		DaysFoodLogged30:   facts.Nutrition.DaysLogged30,
+		CurrentWeightLbs:    facts.Weight.CurrentLbs,
+		WeightChange30dLbs:  facts.Weight.Change30dLbs,
+		WeightChange90dLbs:  facts.Weight.Change90dLbs,
+		BMICategory:         facts.Weight.BMICategory,
+		WorkoutDaysLast30:   facts.Training.WorkoutDays30,
+		CardioDaysLast30:    facts.Training.CardioDays30,
+		CardioMinutesLast30: facts.Training.CardioMinutes30,
+		AvgSodiumMg:         facts.Nutrition.AvgSodiumMg,
+		SodiumTargetMg:      facts.Nutrition.SodiumTargetMg,
+		DaysFoodLogged30:    facts.Nutrition.DaysLogged30,
 
 		FactsJSON: redactedFactsJSON(facts),
 	}

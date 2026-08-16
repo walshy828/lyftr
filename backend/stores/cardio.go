@@ -130,6 +130,51 @@ func (s *CardioStore) Import(uid int64, reqs []models.CreateCardioSessionRequest
 	return res.Imported, res.Updated, err
 }
 
+// CardioSummary is an aggregate rollup of cardio sessions over a rolling
+// window — the cardio analogue of WorkoutStore.CountSince's day count, but
+// carrying the richer fields (duration/distance/calories/heart rate) that
+// AI-facing prompts need to reason about Health Connect activity alongside
+// strength training.
+type CardioSummary struct {
+	Days            int     `json:"days"` // distinct calendar days with at least one session
+	Sessions        int     `json:"sessions"`
+	DurationMinutes int     `json:"duration_minutes"`
+	DistanceMeters  float64 `json:"distance_meters"`
+	Calories        float64 `json:"calories"`
+	AvgHeartRate    float64 `json:"avg_heart_rate"` // 0 when no session in the window recorded one
+}
+
+// SummarySince rolls up every cardio session in the last N days. Mirrors
+// CountSince's day-window semantics (substr fallback for the day bucket,
+// date('now', ?) for the window bound — see the started_at format note on
+// cardioDayExpr in cardio_stats.go) so the two stay consistent as sources of
+// "how many days has this person trained" for the same user.
+func (s *CardioStore) SummarySince(uid int64, days int) (CardioSummary, error) {
+	var sum CardioSummary
+	var durationSeconds, hrSum float64
+	var hrCount int
+	err := s.db.QueryRow(
+		`SELECT COUNT(DISTINCT substr(started_at, 1, 10)),
+		        COUNT(*),
+		        COALESCE(SUM(duration_seconds), 0),
+		        COALESCE(SUM(distance_meters), 0),
+		        COALESCE(SUM(calories), 0),
+		        COALESCE(SUM(CASE WHEN avg_heart_rate > 0 THEN avg_heart_rate ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN avg_heart_rate > 0 THEN 1 ELSE 0 END), 0)
+		   FROM cardio_sessions
+		  WHERE user_id = ? AND started_at >= date('now', ?)`,
+		uid, dayWindow(days),
+	).Scan(&sum.Days, &sum.Sessions, &durationSeconds, &sum.DistanceMeters, &sum.Calories, &hrSum, &hrCount)
+	if err != nil {
+		return sum, err
+	}
+	sum.DurationMinutes = int(durationSeconds / 60)
+	if hrCount > 0 {
+		sum.AvgHeartRate = hrSum / float64(hrCount)
+	}
+	return sum, nil
+}
+
 func (s *CardioStore) Delete(uid, id int64) (int64, error) {
 	res, err := s.db.Exec(`DELETE FROM cardio_sessions WHERE id = ? AND user_id = ?`, id, uid)
 	if err != nil {

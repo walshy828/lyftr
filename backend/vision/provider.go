@@ -916,7 +916,7 @@ func progressCheckinPrompt(req ProgressCheckinRequest) string {
 
 	fmt.Fprintf(&b, "Their daily targets are %d kcal and %d g protein.\n\n", req.CalorieTarget, req.ProteinTarget)
 
-	b.WriteString("Here is the complete computed picture as JSON — food-logging and workout consistency over 7/28/90-day windows, the week-by-week actual-vs-target weight table, and their energy basis (BMR, maintenance calories, macro bands). Reason from these numbers; do not compute your own metabolic estimates and do not contradict any figure here:\n\n")
+	b.WriteString("Here is the complete computed picture as JSON — food-logging and workout consistency over 7/28/90-day windows (including cardio sessions imported from Health Connect: cardio_days, cardio_sessions, cardio_duration_minutes, cardio_calories, alongside workout_days for strength training), the week-by-week actual-vs-target weight table, and their energy basis (BMR, maintenance calories, macro bands). Treat cardio and strength training as distinct signals — a person can be consistent with runs or rides while skipping lifting, or vice versa, and that distinction is useful to call out. Reason from these numbers; do not compute your own metabolic estimates and do not contradict any figure here:\n\n")
 	b.WriteString(req.FactsJSON)
 	b.WriteString("\n\n")
 
@@ -1077,14 +1077,16 @@ type BPInsightRequest struct {
 	SysStdDev30        float64
 
 	// Contributing-factor evidence, all from the user's own logs.
-	CurrentWeightLbs   float64
-	WeightChange30dLbs float64
-	WeightChange90dLbs float64
-	BMICategory        string
-	WorkoutDaysLast30  int
-	AvgSodiumMg        float64
-	SodiumTargetMg     int
-	DaysFoodLogged30   int
+	CurrentWeightLbs    float64
+	WeightChange30dLbs  float64
+	WeightChange90dLbs  float64
+	BMICategory         string
+	WorkoutDaysLast30   int
+	CardioDaysLast30    int
+	CardioMinutesLast30 int
+	AvgSodiumMg         float64
+	SodiumTargetMg      int
+	DaysFoodLogged30    int
 
 	FactsJSON string
 }
@@ -1147,6 +1149,11 @@ func bpInsightPrompt(req BPInsightRequest) string {
 			req.AvgSodiumMg, req.DaysFoodLogged30, req.SodiumTargetMg)
 	}
 
+	cardio := "no cardio sessions logged in the last 30 days"
+	if req.CardioDaysLast30 > 0 {
+		cardio = fmt.Sprintf("logged cardio (Health Connect) on %d of the last 30 days, totaling %d minutes", req.CardioDaysLast30, req.CardioMinutesLast30)
+	}
+
 	return fmt.Sprintf(`You are reviewing a person's home blood-pressure readings alongside the rest of their health log. Today is %s. They are a %s.
 
 THE APP HAS ALREADY DECIDED THESE. Do not recompute or contradict them:
@@ -1158,7 +1165,8 @@ THE APP HAS ALREADY DECIDED THESE. Do not recompute or contradict them:
 
 THEIR OTHER LOGGED DATA:
 - Currently %.1f lbs, %+.1f lbs over 30 days and %+.1f lbs over 90 days. BMI category: %s.
-- Trained on %d of the last 30 days.
+- Strength-trained on %d of the last 30 days.
+- Aerobic activity: %s.
 - %s
 
 Write the review as JSON matching the schema. Requirements:
@@ -1194,6 +1202,7 @@ FULL DATA:
 		req.DaysMeasuredLast30, req.ReadingsLast30, req.SysStdDev30,
 		req.CurrentWeightLbs, req.WeightChange30dLbs, req.WeightChange90dLbs, req.BMICategory,
 		req.WorkoutDaysLast30,
+		cardio,
 		sodium,
 		req.Avg30Sys, req.Avg30Dia,
 		req.FactsJSON,

@@ -695,6 +695,10 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 	if utils.DBError(c, err) {
 		return
 	}
+	cardio, err := h.s.Cardio.SummarySince(uid, adherenceLookbackDays)
+	if utils.DBError(c, err) {
+		return
+	}
 
 	var totalCalories float64
 	for _, p := range history {
@@ -714,6 +718,9 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 	}
 	if workoutDays == 0 {
 		drivers = append(drivers, fmt.Sprintf("no workouts logged in the last %d days", adherenceLookbackDays))
+	}
+	if workoutDays == 0 && cardio.Days > 0 {
+		drivers = append(drivers, fmt.Sprintf("no strength workouts, but %d cardio session(s) logged in the last %d days", cardio.Sessions, adherenceLookbackDays))
 	}
 
 	forceRefresh := c.Query("refresh") == "1"
@@ -735,17 +742,19 @@ func (h *Handler) GetWeightPlanAdherence(c *gin.Context) {
 	shouldRegenerate, regenerateReason := planRegenerateSignal(goal, projections, forecast, weightStats.Latest, lastWeighIn, now)
 
 	utils.OK(c, gin.H{
-		"behind_plan":       behindPlan,
-		"variance_lbs":      variance,
-		"drivers":           drivers,
-		"motivational_note": note,
-		"days_logged_food":  loggedDays,
-		"logging_window":    adherenceLookbackDays,
-		"avg_calories":      avgCalories,
-		"workouts_last_7d":  workoutDays,
-		"weeks_into_plan":   weeksIntoPlan,
-		"should_regenerate": shouldRegenerate,
-		"regenerate_reason": regenerateReason,
+		"behind_plan":             behindPlan,
+		"variance_lbs":            variance,
+		"drivers":                 drivers,
+		"motivational_note":       note,
+		"days_logged_food":        loggedDays,
+		"logging_window":          adherenceLookbackDays,
+		"avg_calories":            avgCalories,
+		"workouts_last_7d":        workoutDays,
+		"cardio_sessions_last_7d": cardio.Sessions,
+		"cardio_days_last_7d":     cardio.Days,
+		"weeks_into_plan":         weeksIntoPlan,
+		"should_regenerate":       shouldRegenerate,
+		"regenerate_reason":       regenerateReason,
 	})
 }
 
