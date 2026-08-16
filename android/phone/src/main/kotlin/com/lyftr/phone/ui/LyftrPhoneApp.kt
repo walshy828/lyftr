@@ -2,6 +2,7 @@ package com.lyftr.phone.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,7 +29,20 @@ fun LyftrPhoneApp() {
     val context = LocalContext.current
     val tokenStore = remember { TokenStore(context) }
     val apiClient = remember { LyftrApiClient(tokenStore) }
-    var loggedIn by remember { mutableStateOf(tokenStore.isLoggedIn) }
+    var loggedIn by remember { mutableStateOf(tokenStore.isLoggedIn && !tokenStore.sessionExpired) }
+    var sessionExpired by remember { mutableStateOf(tokenStore.sessionExpired) }
+
+    // Live signal from LyftrApiClient.executeWithRefresh: a background poll
+    // or worker found the refresh token itself expired/revoked while this
+    // screen was already open (e.g. StatusScreen mid-session). Bounce back
+    // to LoginScreen immediately rather than waiting for the next cold start.
+    val expiredEventCount by tokenStore.sessionExpiredEvents.collectAsState()
+    LaunchedEffect(expiredEventCount) {
+        if (expiredEventCount > 0 && loggedIn) {
+            loggedIn = false
+            sessionExpired = true
+        }
+    }
 
     // Runs whenever `loggedIn` becomes/is true — the moment login succeeds
     // and every app launch with a stored session: keep the daily token
@@ -49,9 +63,19 @@ fun LyftrPhoneApp() {
                 CardioSyncWorker.cancel(context)
                 tokenStore.clear()
                 loggedIn = false
+                sessionExpired = false
             },
         )
     } else {
-        LoginScreen(apiClient = apiClient, tokenStore = tokenStore, onLoggedIn = { loggedIn = true })
+        LoginScreen(
+            apiClient = apiClient,
+            tokenStore = tokenStore,
+            sessionExpired = sessionExpired,
+            onLoggedIn = {
+                tokenStore.clearSessionExpired()
+                sessionExpired = false
+                loggedIn = true
+            },
+        )
     }
 }

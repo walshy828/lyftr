@@ -6,13 +6,14 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import com.lyftr.phone.ui.LyftrPhoneApp
+import com.lyftr.phone.ui.theme.LyftrTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                Surface {
+            LyftrTheme {
+                Surface(color = MaterialTheme.colorScheme.background) {
                     LyftrPhoneApp()
                 }
             }

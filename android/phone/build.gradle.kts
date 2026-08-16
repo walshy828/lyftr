@@ -44,6 +44,9 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    // Watch/Sync/FavoriteBorder icons used on StatusScreen live in the
+    // extended icon set, not material-icons-core (bundled with material3).
+    implementation("androidx.compose.material:material-icons-extended")
 
     // Wear Data Layer bridge to the watch module.
     implementation("com.google.android.gms:play-services-wearable:18.2.0")

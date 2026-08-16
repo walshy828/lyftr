@@ -116,6 +116,7 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
                 if (!resp.isSuccessful) return@withContext false
                 val envelope = json.decodeFromString(AuthEnvelope.serializer(), resp.body!!.string())
                 tokenStore.saveTokens(envelope.data.token, envelope.data.refresh_token)
+                tokenStore.clearSessionExpired()
                 true
             }
         }.getOrDefault(false)
@@ -139,6 +140,7 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
                 }
                 val envelope = json.decodeFromString(AuthEnvelope.serializer(), resp.body!!.string())
                 tokenStore.saveTokens(envelope.data.token, envelope.data.refresh_token)
+                tokenStore.clearSessionExpired()
                 true
             }
         }.onFailure { Log.e(TAG, "refresh: request to ${req.url} failed", it) }.getOrDefault(false)
@@ -191,14 +193,21 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
         .url(apiUrl(path))
         .header("Authorization", "Bearer ${tokenStore.accessToken}")
 
-    /** Runs [buildRequest], retrying once after a token refresh if the access token expired. */
+    /**
+     * Runs [buildRequest], retrying once after a token refresh if the access
+     * token expired. If the refresh token itself is also expired/revoked,
+     * marks the session expired ([TokenStore.expireSession]) so the UI
+     * (LyftrPhoneApp) bounces back to a re-login prompt instead of silently
+     * leaving StatusScreen showing stale/broken sync state.
+     */
     private suspend fun executeWithRefresh(buildRequest: () -> Request): String? = runCatching {
         var resp = http.newCall(buildRequest()).execute()
         if (resp.code == 401) {
             resp.close()
             Log.d(TAG, "executeWithRefresh: 401, attempting token refresh")
             if (!refresh()) {
-                Log.w(TAG, "executeWithRefresh: refresh failed")
+                Log.w(TAG, "executeWithRefresh: refresh failed, marking session expired")
+                tokenStore.expireSession()
                 return null
             }
             resp = http.newCall(buildRequest()).execute()

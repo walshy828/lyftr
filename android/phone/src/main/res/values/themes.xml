@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Lyftr" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Actual theming (colors/typography) is done in Compose via
+         com.lyftr.phone.ui.theme.LyftrTheme — this just sets the pre-Compose
+         window background to brand navy so there's no flash of default white
+         between process start and the first Compose frame. -->
+    <style name="Theme.Lyftr" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#070D1A</item>
+        <item name="android:statusBarColor">#070D1A</item>
+    </style>
 </resources>

@@ -2,10 +2,15 @@ package com.lyftr.phone.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -23,6 +28,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.lyftr.phone.auth.LyftrApiClient
 import com.lyftr.phone.auth.TokenStore
+import com.lyftr.phone.ui.theme.LyftrBrandHeader
 import kotlinx.coroutines.launch
 
 private enum class Step { SERVER, CREDENTIALS }
@@ -40,7 +46,12 @@ private enum class Step { SERVER, CREDENTIALS }
  * retype the server URL, email, and password every time.
  */
 @Composable
-fun LoginScreen(apiClient: LyftrApiClient, tokenStore: TokenStore, onLoggedIn: () -> Unit) {
+fun LoginScreen(
+    apiClient: LyftrApiClient,
+    tokenStore: TokenStore,
+    sessionExpired: Boolean = false,
+    onLoggedIn: () -> Unit,
+) {
     val knownServerUrl = tokenStore.serverUrl
     var step by remember { mutableStateOf(if (knownServerUrl.isNullOrBlank()) Step.SERVER else Step.CREDENTIALS) }
     var serverUrl by remember { mutableStateOf(knownServerUrl ?: "https://") }
@@ -51,78 +62,130 @@ fun LoginScreen(apiClient: LyftrApiClient, tokenStore: TokenStore, onLoggedIn: (
     val scope = rememberCoroutineScope()
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Text("Connect to your Lyftr server")
+        LyftrBrandHeader()
 
-        if (step == Step.SERVER) {
-            OutlinedTextField(
-                value = serverUrl,
-                onValueChange = { serverUrl = it },
-                label = { Text("Server URL") },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            if (error != null) Text(error!!)
-            Button(
-                enabled = !loading && serverUrl.isNotBlank(),
-                onClick = {
-                    loading = true
-                    error = null
-                    scope.launch {
-                        val ok = apiClient.checkServer(serverUrl)
-                        loading = false
-                        if (ok) {
-                            tokenStore.serverUrl = serverUrl
-                            step = Step.CREDENTIALS
-                        } else {
-                            error = "Couldn't reach that server. Check the URL and try again."
-                        }
-                    }
-                },
+        Text(
+            "Connect to your Lyftr server",
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        Text(
+            "Your self-hosted fitness tracker's bridge to your watch — sync active workouts and import cardio sessions.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+        )
+
+        if (sessionExpired && step == Step.CREDENTIALS) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
             ) {
-                if (loading) CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp)) else Text("Next")
+                Text(
+                    "Your session expired. Please sign in again.",
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
-        } else {
-            Text(serverUrl, style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("Email") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Password") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            if (error != null) Text(error!!)
-            Button(
-                enabled = !loading && email.isNotBlank() && password.isNotBlank(),
-                onClick = {
-                    loading = true
-                    error = null
-                    scope.launch {
-                        val ok = apiClient.login(email, password)
-                        loading = false
-                        if (ok) {
-                            tokenStore.savedEmail = email
-                            tokenStore.savedPassword = password
-                            onLoggedIn()
-                        } else {
-                            error = "Login failed. Check your email and password."
-                        }
-                    }
-                },
+        }
+
+        Card(elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (loading) CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp)) else Text("Log in")
-            }
-            TextButton(enabled = !loading, onClick = { step = Step.SERVER; error = null }) {
-                Text("Not the right server? Change it")
+                if (step == Step.SERVER) {
+                    OutlinedTextField(
+                        value = serverUrl,
+                        onValueChange = { serverUrl = it },
+                        label = { Text("Server URL") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(
+                        enabled = !loading && serverUrl.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            loading = true
+                            error = null
+                            scope.launch {
+                                val ok = apiClient.checkServer(serverUrl)
+                                loading = false
+                                if (ok) {
+                                    tokenStore.serverUrl = serverUrl
+                                    step = Step.CREDENTIALS
+                                } else {
+                                    error = "Couldn't reach that server. Check the URL and try again."
+                                }
+                            }
+                        },
+                    ) {
+                        if (loading) {
+                            CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
+                        }
+                        Text(if (loading) "Checking…" else "Next")
+                    }
+                } else {
+                    Text(
+                        serverUrl,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    )
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        label = { Text("Email") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(
+                        enabled = !loading && email.isNotBlank() && password.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            loading = true
+                            error = null
+                            scope.launch {
+                                val ok = apiClient.login(email, password)
+                                loading = false
+                                if (ok) {
+                                    tokenStore.savedEmail = email
+                                    tokenStore.savedPassword = password
+                                    onLoggedIn()
+                                } else {
+                                    error = "Login failed. Check your email and password."
+                                }
+                            }
+                        },
+                    ) {
+                        if (loading) {
+                            CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
+                        }
+                        Text(if (loading) "Signing in…" else "Log in")
+                    }
+                    TextButton(enabled = !loading, onClick = { step = Step.SERVER; error = null }) {
+                        Text("Not the right server? Change it")
+                    }
+                }
             }
         }
     }
