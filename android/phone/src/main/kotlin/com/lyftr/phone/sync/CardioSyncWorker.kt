@@ -145,13 +145,19 @@ class CardioSyncWorker(context: Context, params: WorkerParameters) : CoroutineWo
          * now that the web trigger and in-app manual sync cover the common
          * case — see the class doc for why this is a ceiling, not a
          * guarantee.
+         *
+         * UPDATE (not KEEP): a device that already has a periodic job enqueued
+         * under the old 4h interval needs that schedule actually replaced, not
+         * left alone — KEEP treats any existing periodic work under this name
+         * as final and ignores the new request entirely, so an interval change
+         * would silently never take effect on an existing install.
          */
         fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<CardioSyncWorker>(24, TimeUnit.HOURS, 2, TimeUnit.HOURS)
                 .setConstraints(Constraints(requiredNetworkType = NetworkType.CONNECTED))
                 .build()
             WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(PERIODIC_WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+                .enqueueUniquePeriodicWork(PERIODIC_WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
         }
 
         fun cancel(context: Context) {
