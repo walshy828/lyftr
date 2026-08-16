@@ -233,7 +233,7 @@ class SessionSyncService : Service() {
             NotificationChannel(CHANNEL_ID, "Workout sync", NotificationManager.IMPORTANCE_LOW)
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Lyftr")
+            .setContentTitle("Lyftr Companion")
             .setContentText("Syncing your workout with your watch")
             .setSmallIcon(R.drawable.ic_sync)
             .setOngoing(true)
