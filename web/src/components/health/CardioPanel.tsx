@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import Loading from '../Loading'
 import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
 import { cardioAPI } from '../../services/api'
+import { useSettingsStore, displayDistance, distanceShort } from '../../stores/settings'
 import * as types from '../../types'
 
 const ACTIVITY_ICONS: Record<string, typeof Footprints> = {
@@ -38,9 +39,9 @@ function formatDuration(seconds: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-function formatDistance(meters: number): string {
+function formatDistance(meters: number, unit: string): string {
   if (meters <= 0) return ''
-  return `${(meters / 1000).toFixed(2)} km`
+  return `${displayDistance(meters, unit).toFixed(2)} ${distanceShort(unit)}`
 }
 
 /**
@@ -51,6 +52,7 @@ function formatDistance(meters: number): string {
 export default function CardioPanel() {
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const unit = useSettingsStore(s => s.settings.weight_unit)
 
   const { items, sentinelRef, hasMore, loading, initialLoading, reload } =
     useServerInfiniteList<types.CardioSession>({
@@ -96,7 +98,12 @@ export default function CardioPanel() {
       <div className="space-y-2">
         {items.map(session => {
           const Icon = ACTIVITY_ICONS[session.activity_type] ?? Footprints
-          const label = ACTIVITY_LABELS[session.activity_type] ?? session.activity_type
+          // "workout" is Health Connect's generic catch-all type (see
+          // cardioActivityTypeOf in HealthConnectSync.kt) — prefer the
+          // source app's own session title when it has one more specific.
+          const label = session.activity_type === 'workout' && session.title
+            ? session.title
+            : ACTIVITY_LABELS[session.activity_type] ?? session.activity_type
           return (
             <div key={session.id} className="card flex items-center p-4 gap-3">
               <div className="w-11 h-11 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
@@ -112,7 +119,7 @@ export default function CardioPanel() {
                 <div className="flex items-center gap-x-3 mt-1 text-xs text-tx-muted flex-wrap">
                   <span className="flex items-center gap-1"><Timer className="w-3 h-3" />{formatDuration(session.duration_seconds)}</span>
                   {session.distance_meters > 0 && (
-                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{formatDistance(session.distance_meters)}</span>
+                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{formatDistance(session.distance_meters, unit)}</span>
                   )}
                   {session.avg_heart_rate > 0 && (
                     <span className="flex items-center gap-1"><HeartPulse className="w-3 h-3" />{session.avg_heart_rate} bpm</span>

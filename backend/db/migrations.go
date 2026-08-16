@@ -530,6 +530,16 @@ CREATE INDEX IF NOT EXISTS idx_cardio_sessions_user_started ON cardio_sessions(u
 	if _, err := DB.Exec(cardio); err != nil {
 		log.Fatalf("create cardio_sessions: %v", err)
 	}
+
+	// Health Connect's own session title (e.g. a user-renamed/recategorized
+	// entry), kept alongside the coarse activity_type mapping. Health Connect
+	// only exposes ~9 cardio exercise-type constants, plus a generic "Other
+	// workout" catch-all that many source apps (Fitbit in particular) use even
+	// for real runs/rides — activity_type alone collapses those to "Workout".
+	// title carries whatever specific label the source app/user gave the
+	// session, so the UI can show it instead of falling back to the generic
+	// type. Empty for older imports and any source that doesn't set a title.
+	ensureColumn("cardio_sessions", "title", `ALTER TABLE cardio_sessions ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

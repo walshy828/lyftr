@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import CardioPanel from './CardioPanel'
+import { useSettingsStore } from '../../stores/settings'
 import type * as types from '../../types'
 
 // jsdom has no IntersectionObserver; useServerInfiniteList's sentinel effect
@@ -46,9 +47,29 @@ describe('CardioPanel', () => {
     render(<CardioPanel />)
     await waitFor(() => expect(screen.getByText('Run')).toBeTruthy())
     expect(screen.getByText('30m')).toBeTruthy()
-    expect(screen.getByText('5.00 km')).toBeTruthy()
+    // Default unit preference is lbs, which displays distance in miles.
+    expect(screen.getByText('3.11 mi')).toBeTruthy()
     expect(screen.getByText('145 bpm')).toBeTruthy()
     expect(screen.getByText('320 cal')).toBeTruthy()
+  })
+
+  it('respects the kg unit preference for distance', async () => {
+    useSettingsStore.setState(state => ({ settings: { ...state.settings, weight_unit: 'kg' } }))
+    vi.mocked(cardioAPI.list).mockResolvedValue([session])
+    render(<CardioPanel />)
+    await waitFor(() => expect(screen.getByText('5.00 km')).toBeTruthy())
+    useSettingsStore.setState(state => ({ settings: { ...state.settings, weight_unit: 'lbs' } }))
+  })
+
+  it('shows the source session title instead of the generic "Workout" label', async () => {
+    const generic: types.CardioSession = {
+      ...session,
+      activity_type: 'workout',
+      title: 'Evening Ruck',
+    }
+    vi.mocked(cardioAPI.list).mockResolvedValue([generic])
+    render(<CardioPanel />)
+    await waitFor(() => expect(screen.getByText('Evening Ruck')).toBeTruthy())
   })
 
   it('deletes a session and refreshes the list', async () => {

@@ -250,6 +250,7 @@ CREATE TABLE IF NOT EXISTS cardio_sessions (
   user_id           INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   external_id       TEXT     NOT NULL,
   activity_type     TEXT     NOT NULL,
+  title             TEXT     NOT NULL DEFAULT '',
   started_at        DATETIME NOT NULL,
   ended_at          DATETIME NOT NULL,
   duration_seconds  INTEGER  NOT NULL,

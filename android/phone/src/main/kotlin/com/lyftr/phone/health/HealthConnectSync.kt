@@ -99,6 +99,7 @@ object HealthConnectSync {
             CardioSessionDto(
                 external_id = session.metadata.id,
                 activity_type = activityType,
+                title = session.title ?: "",
                 started_at = ISO_FORMAT.format(session.startTime),
                 ended_at = ISO_FORMAT.format(session.endTime),
                 duration_seconds = (session.endTime.epochSecond - session.startTime.epochSecond).toInt(),

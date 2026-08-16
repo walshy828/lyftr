@@ -164,6 +164,7 @@ type CardioSession struct {
 	UserID          int64     `json:"user_id" db:"user_id"`
 	ExternalID      string    `json:"external_id" db:"external_id"` // source platform's own record id, used for import idempotency
 	ActivityType    string    `json:"activity_type" db:"activity_type"`
+	Title           string    `json:"title,omitempty" db:"title"` // source platform's own session title, when it has one more specific than activity_type
 	StartedAt       time.Time `json:"started_at" db:"started_at"`
 	EndedAt         time.Time `json:"ended_at" db:"ended_at"`
 	DurationSeconds int       `json:"duration_seconds" db:"duration_seconds"`
@@ -179,6 +180,7 @@ type CardioSession struct {
 type CreateCardioSessionRequest struct {
 	ExternalID      string    `json:"external_id" validate:"required"`
 	ActivityType    string    `json:"activity_type" validate:"required"`
+	Title           string    `json:"title"`
 	StartedAt       time.Time `json:"started_at" validate:"required"`
 	EndedAt         time.Time `json:"ended_at" validate:"required"`
 	DurationSeconds int       `json:"duration_seconds" validate:"required,gt=0"`

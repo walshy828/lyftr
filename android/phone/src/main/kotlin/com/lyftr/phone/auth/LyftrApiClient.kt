@@ -66,6 +66,7 @@ data class CreateWorkoutRequest(
 data class CardioSessionDto(
     val external_id: String,
     val activity_type: String,
+    val title: String = "",
     val started_at: String,
     val ended_at: String,
     val duration_seconds: Int,

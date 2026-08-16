@@ -19,13 +19,13 @@ type CardioFilter struct {
 	Limit, Offset int
 }
 
-const cardioCols = `id, user_id, external_id, activity_type, started_at, ended_at,
+const cardioCols = `id, user_id, external_id, activity_type, title, started_at, ended_at,
                      duration_seconds, distance_meters, avg_heart_rate, calories,
                      source, created_at`
 
 func scanCardio(sc interface{ Scan(...any) error }) (models.CardioSession, error) {
 	var s models.CardioSession
-	err := sc.Scan(&s.ID, &s.UserID, &s.ExternalID, &s.ActivityType, &s.StartedAt,
+	err := sc.Scan(&s.ID, &s.UserID, &s.ExternalID, &s.ActivityType, &s.Title, &s.StartedAt,
 		&s.EndedAt, &s.DurationSeconds, &s.DistanceMeters, &s.AvgHeartRate,
 		&s.Calories, &s.Source, &s.CreatedAt)
 	return s, err
@@ -101,18 +101,19 @@ func (s *CardioStore) Import(uid int64, reqs []models.CreateCardioSessionRequest
 			}
 			_, err := tx.Exec(
 				`INSERT INTO cardio_sessions
-				 (user_id, external_id, activity_type, started_at, ended_at,
+				 (user_id, external_id, activity_type, title, started_at, ended_at,
 				  duration_seconds, distance_meters, avg_heart_rate, calories, source)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				 ON CONFLICT(user_id, external_id) DO UPDATE SET
 				   activity_type    = excluded.activity_type,
+				   title            = excluded.title,
 				   started_at       = excluded.started_at,
 				   ended_at         = excluded.ended_at,
 				   duration_seconds = excluded.duration_seconds,
 				   distance_meters  = excluded.distance_meters,
 				   avg_heart_rate   = excluded.avg_heart_rate,
 				   calories         = excluded.calories`,
-				uid, req.ExternalID, req.ActivityType, req.StartedAt, req.EndedAt,
+				uid, req.ExternalID, req.ActivityType, req.Title, req.StartedAt, req.EndedAt,
 				req.DurationSeconds, req.DistanceMeters, req.AvgHeartRate, req.Calories, source,
 			)
 			if err != nil {
