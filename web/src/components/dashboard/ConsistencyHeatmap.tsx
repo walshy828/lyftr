@@ -64,6 +64,25 @@ const FILL: Record<0 | 1 | 2 | 3, string> = {
   3: 'bg-brand-500',
 }
 
+const CARDIO_WEIGHT_UNIT_SECONDS = 15 * 60
+// Grace window before the next 15-minute increment: a 28-minute session reads
+// as "basically 30" and gets weight 2, while 27 stays at weight 1. Applied at
+// every boundary (including 0 → 15), so a 13-14 minute session also rounds up.
+const CARDIO_WEIGHT_GRACE_MINUTES = 2
+
+/**
+ * Cardio duration, shading-weighted: one 15-minute block of credit per 15
+ * minutes completed, rounded up within a 2-minute grace of the next block.
+ * Expressed back in seconds so it stays unit-compatible with workout duration
+ * for the 'both' blended shade.
+ */
+export function cardioWeightedDuration(durationSeconds: number): number {
+  if (durationSeconds <= 0) return 0
+  const minutes = durationSeconds / 60
+  const blocks = Math.floor((minutes + CARDIO_WEIGHT_GRACE_MINUTES) / 15)
+  return blocks * CARDIO_WEIGHT_UNIT_SECONDS
+}
+
 /**
  * The value a day's square is bucketed on, for the given source/metric. 'both'
  * sums the two domains into one number — this is the entirety of the "blended
@@ -76,7 +95,9 @@ export function mergeConsistencyValue(
   metric: HeatmapMetric,
 ): number {
   const workoutValue = metric === 'duration' ? (workoutDay?.duration ?? 0) : (workoutDay?.workouts ?? 0)
-  const cardioValue = metric === 'duration' ? (cardioDay?.duration ?? 0) : (cardioDay?.sessions ?? 0)
+  const cardioValue = metric === 'duration'
+    ? cardioWeightedDuration(cardioDay?.duration ?? 0)
+    : (cardioDay?.sessions ?? 0)
   if (source === 'workouts') return workoutValue
   if (source === 'cardio') return cardioValue
   return workoutValue + cardioValue
