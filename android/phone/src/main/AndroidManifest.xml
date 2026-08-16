@@ -14,6 +14,14 @@
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
 
+    <!-- Without this, Health Connect's aggregate() call throws SecurityException
+         whenever CardioSyncWorker runs as a background WorkManager job (i.e.
+         every periodic run — the normal case), silently failing the whole
+         sync with zero sessions imported. Foreground-only reads (the app
+         open, or the manual "Sync cardio now" button) worked fine without it,
+         which is why the gap was easy to miss. -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+
     <application
         android:label="Lyftr"
         android:icon="@mipmap/ic_launcher"
@@ -55,6 +63,25 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+
+        <!-- Invisible entry point the web PWA's "Refresh" button navigates to via
+             lyftr://sync — runs an expedited cardio sync and bounces straight back
+             to the browser tab named in ?returnTo=. See CardioSyncWorker.syncNow
+             and SyncTriggerActivity. -->
+        <activity
+            android:name=".sync.SyncTriggerActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lyftr" android:host="sync" />
+            </intent-filter>
+        </activity>
 
         <service
             android:name=".sync.SessionSyncService"

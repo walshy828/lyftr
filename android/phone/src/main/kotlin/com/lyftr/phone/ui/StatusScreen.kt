@@ -99,6 +99,7 @@ private fun syncStatusText(status: CardioSyncWorker.Status?, imported: Int, upda
     CardioSyncWorker.Status.HEALTH_CONNECT_UNAVAILABLE -> "Health Connect isn't available on this device"
     CardioSyncWorker.Status.PERMISSION_NOT_GRANTED -> "Health Connect permission isn't granted"
     CardioSyncWorker.Status.IMPORT_FAILED -> "Sync failed — check your connection and try again"
+    CardioSyncWorker.Status.READ_FAILED -> "Couldn't read Health Connect — try syncing again"
     null -> "Sync failed — check your connection and try again"
 }
 

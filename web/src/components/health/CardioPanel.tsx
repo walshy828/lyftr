@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { AlertCircle, Bike, Footprints, Waves, RotateCw, Trash2, Timer, MapPin, HeartPulse, Flame, Activity, Zap, ArrowUpFromDot } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertCircle, Bike, Footprints, Waves, RotateCw, Trash2, Timer, MapPin, HeartPulse, Flame, Activity, Zap, ArrowUpFromDot, RefreshCw } from 'lucide-react'
 import { format } from 'date-fns'
 import Loading from '../Loading'
 import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
+import { useCompanionSync } from '../../hooks/useCompanionSync'
 import { cardioAPI } from '../../services/api'
 import { useSettingsStore, displayDistance, distanceShort } from '../../stores/settings'
 import * as types from '../../types'
@@ -58,6 +59,14 @@ export default function CardioPanel() {
     useServerInfiniteList<types.CardioSession>({
       fetcher: (offset, limit) => cardioAPI.list({ offset, limit }),
     })
+  const { trigger: triggerSync, status: syncStatus } = useCompanionSync(reload)
+
+  useEffect(() => {
+    if (syncStatus !== 'unavailable') return
+    setError('Lyftr Companion app not found — install it on this phone to sync cardio data')
+    const timeout = setTimeout(() => setError(null), 5000)
+    return () => clearTimeout(timeout)
+  }, [syncStatus])
 
   const handleDelete = async (id: number) => {
     setDeletingId(id)
@@ -94,7 +103,17 @@ export default function CardioPanel() {
         </div>
       )}
 
-      <h2 className="section-title px-1">History</h2>
+      <div className="flex items-center justify-between px-1">
+        <h2 className="section-title">History</h2>
+        <button
+          onClick={triggerSync}
+          disabled={syncStatus === 'triggering'}
+          className="p-2 hover:bg-brand-500/10 rounded-lg transition-colors"
+          aria-label="Refresh cardio sessions from companion app"
+        >
+          <RefreshCw className={`w-4 h-4 text-tx-secondary ${syncStatus === 'triggering' ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
       <div className="space-y-2">
         {items.map(session => {
           const Icon = ACTIVITY_ICONS[session.activity_type] ?? Footprints

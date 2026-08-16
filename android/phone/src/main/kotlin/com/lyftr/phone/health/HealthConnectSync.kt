@@ -27,12 +27,21 @@ import java.time.format.DateTimeFormatter
  */
 object HealthConnectSync {
     /** Cardio-relevant read scopes. Distance/heart rate/calories are read only
-     * to summarize a session, never as raw streams (no HR time-series in v1). */
+     * to summarize a session, never as raw streams (no HR time-series in v1).
+     *
+     * PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND is required or every
+     * CardioSyncWorker periodic run's client.aggregate() call throws
+     * SecurityException ("must be in foreground") the moment the worker
+     * executes outside the app's foreground — i.e. every scheduled run.
+     * Without it, cardio import only ever works while the app happens to be
+     * open (manual sync / on-open catch-up), which looks like intermittent
+     * missing sessions rather than the systemic gap it actually is. */
     val PERMISSIONS = setOf(
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
         HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
+        HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND,
     )
 
     /** False on a device where the Health Connect app/API isn't installed at all. */
