@@ -343,8 +343,18 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
   if (phase === 'exercise-info') {
     const exercise = ex.exercise
     const equipLabel = EQUIPMENT_LABEL[exercise.equipment?.toLowerCase()] || exercise.equipment
-    const descLines = exercise.description
-      ? exercise.description.split('\n').filter(l => l.trim())
+    // The seed data has two shapes for `description`: free-exercise-db already
+    // numbers each step on its own line ("1. ...\n2. ..."), while the
+    // gymvisual source stores one unbroken paragraph with no line breaks at
+    // all. Numbered lines are used as-is; a single unbroken blob is split into
+    // sentences so it still renders as a step list instead of a wall of text.
+    const instructionSteps = exercise.description
+      ? (() => {
+          const lines = exercise.description.split('\n').map(l => l.trim()).filter(Boolean)
+          if (lines.length > 1) return lines.map(l => l.replace(/^\d+\.\s*/, ''))
+          const sentences = lines[0]?.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).map(s => s.trim()).filter(Boolean) || []
+          return sentences.length > 1 ? sentences : lines
+        })()
       : []
     const bodyData = buildBodyData(exercise)
     // Plan summary: one value if every set matches, else a min–max range.
@@ -396,6 +406,23 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
                 )}
               </div>
             </div>
+
+            {/* Instructions */}
+            {instructionSteps.length > 0 && (
+              <div className="card p-4">
+                <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider mb-3">Instructions</p>
+                <ol className="space-y-3">
+                  {instructionSteps.map((step, i) => (
+                    <li key={i} className="flex gap-3">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-500/15 text-brand-400 text-[11px] font-bold flex items-center justify-center mt-0.5">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm text-tx-secondary leading-relaxed">{step}</p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
 
             {/* Plan — what you're about to do, as an icon stat strip */}
             <div className="card p-4 grid grid-cols-3 divide-x divide-surface-border">
@@ -464,26 +491,6 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#0e7490' }} />
                     <span className="text-xs text-tx-muted">Secondary</span>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* Instructions */}
-            {descLines.length > 0 && (
-              <div className="card p-4">
-                <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider mb-3">Instructions</p>
-                <div className="space-y-2.5">
-                  {descLines.map((line, i) => {
-                    const stepMatch = line.match(/^(\d+\.)\s*(.*)/)
-                    if (stepMatch) {
-                      return (
-                        <p key={i} className="text-sm text-tx-secondary leading-relaxed">
-                          <span className="font-semibold text-tx-primary">{stepMatch[1]}</span>{' '}{stepMatch[2]}
-                        </p>
-                      )
-                    }
-                    return <p key={i} className="text-sm text-tx-secondary leading-relaxed">{line}</p>
-                  })}
                 </div>
               </div>
             )}

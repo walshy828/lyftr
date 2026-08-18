@@ -2,6 +2,7 @@ package stores
 
 import (
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -369,7 +370,8 @@ func (s *ProgramStore) loadExercisesFor(programIDs []int64) (map[int64][]models.
 	placeholders, args := inArgs(programIDs)
 	rows, err := s.db.Query(
 		`SELECT pe.id, pe.program_id, pe.exercise_id, pe.order_index, pe.notes, pe.rest_seconds,
-		        e.name, e.muscle_group, e.category, e.equipment, e.image_url
+		        e.name, e.muscle_group, e.category, e.equipment, e.image_url,
+		        e.image_url_end, e.gif_url, e.description, e.secondary_muscles, e.source_id
 		 FROM program_exercises pe
 		 JOIN exercises e ON e.id = pe.exercise_id
 		 WHERE pe.program_id IN (`+placeholders+`) ORDER BY pe.program_id, pe.order_index`,
@@ -381,15 +383,22 @@ func (s *ProgramStore) loadExercisesFor(programIDs []int64) (map[int64][]models.
 	var exercises []models.ProgramExercise
 	for rows.Next() {
 		var pe models.ProgramExercise
+		var secondaryRaw string
 		if err := rows.Scan(
 			&pe.ID, &pe.ProgramID, &pe.ExerciseID, &pe.OrderIndex, &pe.Notes, &pe.RestSeconds,
 			&pe.Exercise.Name, &pe.Exercise.MuscleGroup, &pe.Exercise.Category,
 			&pe.Exercise.Equipment, &pe.Exercise.ImageURL,
+			&pe.Exercise.ImageEndURL, &pe.Exercise.GifURL, &pe.Exercise.Description,
+			&secondaryRaw, &pe.Exercise.SourceID,
 		); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		pe.Exercise.ID = pe.ExerciseID
+		json.Unmarshal([]byte(secondaryRaw), &pe.Exercise.SecondaryMuscles)
+		if pe.Exercise.SecondaryMuscles == nil {
+			pe.Exercise.SecondaryMuscles = []string{}
+		}
 		exercises = append(exercises, pe)
 	}
 	if err := rows.Err(); err != nil {
