@@ -176,6 +176,8 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		// Exercises (mostly read-only for users; POST adds a custom entry)
 		protected.GET("exercises", h.ListExercises)
 		protected.POST("exercises", h.CreateExercise)
+		protected.PUT("exercises/:id", h.UpdateExercise)
+		protected.DELETE("exercises/:id", h.DeleteExercise)
 		// Named sub-path before the :id wildcard, or the wildcard swallows it.
 		protected.GET("exercises/facets", h.GetExerciseFacets)
 		protected.GET("exercises/:id", h.GetExercise)

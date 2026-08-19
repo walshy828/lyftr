@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, type ReactNode } from 'react'
-import { Dumbbell } from 'lucide-react'
+import { Dumbbell, Sparkles } from 'lucide-react'
 import { muscleColorBordered, EQUIPMENT_LABEL, formatExerciseName } from '../../utils/exerciseUtils'
 import { exerciseImageSources, hasExerciseImage } from '../../utils/exerciseMedia'
 import * as types from '../../types'
@@ -50,6 +50,11 @@ function ExerciseCard({ exercise, onOpen, renderAction }: {
             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${muscleColorBordered(exercise.muscle_group)}`}>
               {exercise.muscle_group}
             </span>
+            {exercise.source === 'custom' && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-brand-500/10 text-brand-400">
+                <Sparkles className="w-2.5 h-2.5" /> Custom
+              </span>
+            )}
             {exercise.equipment && exercise.equipment !== 'other' && (
               <span className="text-xs text-tx-muted">
                 {EQUIPMENT_LABEL[exercise.equipment] || exercise.equipment}

@@ -63,6 +63,17 @@ export interface Exercise {
   source_id?: string
 }
 
+/** Payload shape for creating or editing a custom exercise. */
+export interface ExerciseInput {
+  name: string
+  muscle_group: string
+  secondary_muscles?: string[]
+  category?: string
+  equipment?: string
+  description?: string
+  image_url?: string
+}
+
 export interface Set {
   id?: number
   set_number: number

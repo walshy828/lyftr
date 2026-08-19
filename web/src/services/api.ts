@@ -275,12 +275,25 @@ export const exerciseAPI = {
     return api.get<{ data: types.ExerciseFacets }>('/exercises/facets')
       .then(res => { _facetCache = unwrap(res); return _facetCache })
   },
-  /** Adds a name + body-part-only exercise to the shared catalog, then busts
-   *  the list/facet caches so it shows up immediately. */
-  create: (input: { name: string; muscle_group: string; equipment?: string }) =>
+  /** Adds a custom exercise to the shared catalog (source becomes "custom"),
+   *  then busts the list/facet caches so it shows up immediately. */
+  create: (input: types.ExerciseInput) =>
     api.post<{ data: types.Exercise }>('/exercises', input).then(res => unwrap(res)).then(ex => {
       exerciseAPI.clearCache()
       return ex
+    }),
+  /** Edits a custom exercise (server rejects edits to library exercises). */
+  update: (id: number, input: types.ExerciseInput) =>
+    api.put<{ data: types.Exercise }>(`/exercises/${id}`, input).then(res => unwrap(res)).then(ex => {
+      exerciseAPI.clearCache()
+      return ex
+    }),
+  /** Deletes a custom exercise; server returns 409 if it's still used in a
+   *  saved workout or program. */
+  delete: (id: number) =>
+    api.delete(`/exercises/${id}`).then(res => {
+      exerciseAPI.clearCache()
+      return res.data
     }),
   clearCache: () => { _exerciseCache = null; _exerciseCachePromise = null; _facetCache = null },
   seedStatus: () => api.get<{ data: { count: number; in_progress: boolean } }>('/admin/seed-status').then(res => unwrap(res)),

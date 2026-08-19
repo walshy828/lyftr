@@ -3,14 +3,24 @@ package stores
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/Cawlumm/lyftr-backend/models"
 	"github.com/Cawlumm/lyftr-backend/seed"
+	"github.com/Cawlumm/lyftr-backend/utils"
 )
 
 // ExerciseStore owns all SQL for the (global, read-only) exercises catalog, and
 // wraps the seed subsystem for the admin sync/reset endpoints.
 type ExerciseStore struct{ db *sql.DB }
+
+// ErrNotCustomExercise means the caller tried to edit/delete a library
+// exercise (source != "custom") through the user-facing mutation endpoints.
+var ErrNotCustomExercise = errors.New("exercise is not a custom exercise")
+
+// ErrExerciseInUse means a delete was blocked by the exercises(id) foreign
+// key still being referenced from an existing workout or program.
+var ErrExerciseInUse = errors.New("exercise is referenced by an existing workout or program")
 
 func NewExerciseStore(db *sql.DB) *ExerciseStore { return &ExerciseStore{db: db} }
 
@@ -140,13 +150,19 @@ func (s *ExerciseStore) Facets() (map[string][]FacetValue, error) {
 	return out, rows.Err()
 }
 
-// Create inserts a user-defined exercise with no animation media, tagged
-// source=custom so it survives WipeAndReseed/Sync like the lyftr cardio
-// carve-out does (see seed.SourceCustom).
-func (s *ExerciseStore) Create(name, muscleGroup, equipment string) (models.Exercise, error) {
+// Create inserts a user-defined exercise, tagged source=custom so it survives
+// WipeAndReseed/Sync like the lyftr cardio carve-out does (see seed.SourceCustom).
+func (s *ExerciseStore) Create(name, muscleGroup, equipment, category, description, imageURL string, secondaryMuscles []string) (models.Exercise, error) {
+	if category == "" {
+		category = "strength"
+	}
+	secondaryJSON, err := json.Marshal(secondaryMuscles)
+	if err != nil || secondaryMuscles == nil {
+		secondaryJSON = []byte("[]")
+	}
 	res, err := s.db.Exec(
-		`INSERT INTO exercises (name, muscle_group, category, equipment, source) VALUES (?, ?, 'strength', ?, ?)`,
-		name, muscleGroup, equipment, seed.SourceCustom,
+		`INSERT INTO exercises (name, muscle_group, category, equipment, description, image_url, secondary_muscles, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), seed.SourceCustom,
 	)
 	if err != nil {
 		return models.Exercise{}, err
@@ -156,6 +172,68 @@ func (s *ExerciseStore) Create(name, muscleGroup, equipment string) (models.Exer
 		return models.Exercise{}, err
 	}
 	return s.Get(id)
+}
+
+// Update edits a custom exercise in place. It returns ErrNotCustomExercise if
+// the row exists but isn't source=custom (library rows are never editable),
+// or sql.ErrNoRows if the id doesn't exist at all.
+func (s *ExerciseStore) Update(id int64, name, muscleGroup, equipment, category, description, imageURL string, secondaryMuscles []string) (models.Exercise, error) {
+	existing, err := s.Get(id)
+	if err != nil {
+		return models.Exercise{}, err
+	}
+	if existing.Source != seed.SourceCustom {
+		return models.Exercise{}, ErrNotCustomExercise
+	}
+	if category == "" {
+		category = "strength"
+	}
+	secondaryJSON, err := json.Marshal(secondaryMuscles)
+	if err != nil || secondaryMuscles == nil {
+		secondaryJSON = []byte("[]")
+	}
+	res, err := s.db.Exec(
+		`UPDATE exercises SET name = ?, muscle_group = ?, category = ?, equipment = ?, description = ?, image_url = ?, secondary_muscles = ?
+		 WHERE id = ? AND source = ?`,
+		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), id, seed.SourceCustom,
+	)
+	if err != nil {
+		return models.Exercise{}, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return models.Exercise{}, err
+	} else if n == 0 {
+		return models.Exercise{}, sql.ErrNoRows
+	}
+	return s.Get(id)
+}
+
+// Delete removes a custom exercise. It returns ErrNotCustomExercise for a
+// library row, sql.ErrNoRows if the id doesn't exist, or ErrExerciseInUse if
+// the exercises(id) foreign key is still referenced by a workout or program
+// (SQLite enforces this at the constraint level, so there's no separate
+// pre-check race to worry about).
+func (s *ExerciseStore) Delete(id int64) error {
+	existing, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	if existing.Source != seed.SourceCustom {
+		return ErrNotCustomExercise
+	}
+	res, err := s.db.Exec(`DELETE FROM exercises WHERE id = ? AND source = ?`, id, seed.SourceCustom)
+	if err != nil {
+		if utils.IsForeignKeyViolation(err) {
+			return ErrExerciseInUse
+		}
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (s *ExerciseStore) Count() (int, error) {

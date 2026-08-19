@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, type ReactNode } from 'react'
-import { Dumbbell } from 'lucide-react'
+import { Dumbbell, Sparkles } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { muscleColorBordered, EQUIPMENT_LABEL, formatExerciseName } from '../../utils/exerciseUtils'
 import { exerciseImageSources, hasExerciseImage } from '../../utils/exerciseMedia'
@@ -97,6 +97,11 @@ export default function ExerciseList({ exercises, loading, onOpen, renderAction,
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${muscleColorBordered(ex.muscle_group)}`}>
                           {ex.muscle_group}
                         </span>
+                        {ex.source === 'custom' && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-brand-500/10 text-brand-400">
+                            <Sparkles className="w-2.5 h-2.5" /> Custom
+                          </span>
+                        )}
                         {ex.equipment && ex.equipment !== 'other' && (
                           <span className="text-xs text-tx-muted">
                             {EQUIPMENT_LABEL[ex.equipment] || ex.equipment}

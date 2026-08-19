@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Trophy, SquarePlay, Dumbbell } from 'lucide-react'
+import { Trophy, SquarePlay, Dumbbell, Sparkles } from 'lucide-react'
 import { format, subDays } from 'date-fns'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Model, { IExerciseData } from 'react-body-highlighter'
@@ -95,6 +95,11 @@ export default function ExerciseDetailContent({ exercise }: Props) {
 
       {/* Tags: primary muscle, equipment, and secondary muscles together */}
       <div className="flex flex-wrap gap-2">
+        {exercise.source === 'custom' && (
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-xs font-medium text-brand-400">
+            <Sparkles className="w-3 h-3" /> Custom
+          </span>
+        )}
         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${muscleColorBordered(exercise.muscle_group)}`}>
           {exercise.muscle_group}
         </span>

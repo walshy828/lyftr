@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Dumbbell, Plus } from 'lucide-react'
+import { ArrowLeft, Dumbbell, Plus, Pencil } from 'lucide-react'
 import { exerciseAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
 import ExerciseDetailContent from '../components/ExerciseDetailContent'
 import AddToRoutineSheet from '../components/AddToRoutineSheet'
+import CreateExerciseSheet from '../components/exercise/CreateExerciseSheet'
 import * as types from '../types'
 import { formatExerciseName } from '../utils/exerciseUtils'
 
@@ -15,6 +16,7 @@ export default function ExerciseDetail() {
   const [exercise, setExercise] = useState<types.Exercise | null>(null)
   const [loading, setLoading] = useState(true)
   const [showPlanSheet, setShowPlanSheet] = useState(false)
+  const [showEditSheet, setShowEditSheet] = useState(false)
 
   useEffect(() => {
     const id = Number(exerciseId)
@@ -53,6 +55,15 @@ export default function ExerciseDetail() {
         <div className="flex-1 min-w-0">
           <h1 className="font-display font-bold text-2xl text-tx-primary leading-tight">{formatExerciseName(exercise.name)}</h1>
         </div>
+        {exercise.source === 'custom' && (
+          <button
+            onClick={() => setShowEditSheet(true)}
+            className="btn-secondary btn-sm flex-shrink-0 mt-0.5"
+            aria-label="Edit exercise"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button
           onClick={() => setShowPlanSheet(true)}
           className="btn-secondary btn-sm flex-shrink-0 mt-0.5"
@@ -64,6 +75,14 @@ export default function ExerciseDetail() {
       <ExerciseDetailContent exercise={exercise} />
 
       {showPlanSheet && <AddToRoutineSheet exercise={exercise} onClose={() => setShowPlanSheet(false)} />}
+      {showEditSheet && (
+        <CreateExerciseSheet
+          exercise={exercise}
+          onClose={() => setShowEditSheet(false)}
+          onSaved={updated => { setExercise(updated); setShowEditSheet(false) }}
+          onDeleted={() => navigate(-1)}
+        />
+      )}
     </div>
   )
 }
