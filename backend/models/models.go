@@ -106,6 +106,13 @@ type Exercise struct {
 	// SourceID is the upstream slug, e.g. "Barbell_Bench_Press". The image
 	// cache keys on it.
 	SourceID string `json:"source_id,omitempty" db:"source_id"`
+	// IsTimed marks a hold/stretch-style exercise logged by duration instead
+	// of reps/weight (e.g. a plank). Orthogonal to Category — a timed
+	// exercise can belong to any muscle group.
+	IsTimed bool `json:"is_timed" db:"is_timed"`
+	// DefaultDurationSeconds is the countdown length Gym Mode pre-fills when
+	// IsTimed is true. Meaningless (and left 0) otherwise.
+	DefaultDurationSeconds int `json:"default_duration_seconds,omitempty" db:"default_duration_seconds"`
 }
 
 type Workout struct {

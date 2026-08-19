@@ -128,7 +128,9 @@ CREATE TABLE IF NOT EXISTS exercises (
   level TEXT NOT NULL DEFAULT '',
   mechanic TEXT NOT NULL DEFAULT '',
   source_id TEXT NOT NULL DEFAULT '',
-  source TEXT NOT NULL DEFAULT ''
+  source TEXT NOT NULL DEFAULT '',
+  is_timed INTEGER NOT NULL DEFAULT 0,
+  default_duration_seconds INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
 CREATE TABLE IF NOT EXISTS exercise_migrations (

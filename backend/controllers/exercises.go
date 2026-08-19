@@ -49,13 +49,15 @@ const maxExerciseListLimit = 2000
 // exerciseWriteBody is the shared shape for creating and editing a custom
 // exercise: name, muscle groups worked, equipment, instructions, and photo.
 type exerciseWriteBody struct {
-	Name             string   `json:"name"`
-	MuscleGroup      string   `json:"muscle_group"`
-	SecondaryMuscles []string `json:"secondary_muscles"`
-	Category         string   `json:"category"`
-	Equipment        string   `json:"equipment"`
-	Description      string   `json:"description"`
-	ImageURL         string   `json:"image_url"`
+	Name                   string   `json:"name"`
+	MuscleGroup            string   `json:"muscle_group"`
+	SecondaryMuscles       []string `json:"secondary_muscles"`
+	Category               string   `json:"category"`
+	Equipment              string   `json:"equipment"`
+	Description            string   `json:"description"`
+	ImageURL               string   `json:"image_url"`
+	IsTimed                bool     `json:"is_timed"`
+	DefaultDurationSeconds int      `json:"default_duration_seconds"`
 }
 
 // bindAndValidate parses+trims the shared write body and enforces the common
@@ -79,6 +81,15 @@ func bindExerciseWrite(c *gin.Context) (exerciseWriteBody, bool) {
 		utils.BadRequest(c, "image_url exceeds size limit")
 		return body, false
 	}
+	if body.IsTimed {
+		if body.DefaultDurationSeconds < 1 {
+			body.DefaultDurationSeconds = 30
+		} else if body.DefaultDurationSeconds > 3600 {
+			body.DefaultDurationSeconds = 3600
+		}
+	} else {
+		body.DefaultDurationSeconds = 0
+	}
 	return body, true
 }
 
@@ -90,7 +101,7 @@ func (h *Handler) CreateExercise(c *gin.Context) {
 	if !ok {
 		return
 	}
-	e, err := h.s.Exercise.Create(body.Name, body.MuscleGroup, body.Equipment, body.Category, body.Description, body.ImageURL, body.SecondaryMuscles)
+	e, err := h.s.Exercise.Create(body.Name, body.MuscleGroup, body.Equipment, body.Category, body.Description, body.ImageURL, body.SecondaryMuscles, body.IsTimed, body.DefaultDurationSeconds)
 	if utils.IsUniqueViolation(err) {
 		utils.Conflict(c, "an exercise with that name already exists")
 		return
@@ -113,7 +124,7 @@ func (h *Handler) UpdateExercise(c *gin.Context) {
 	if !ok {
 		return
 	}
-	e, err := h.s.Exercise.Update(id, body.Name, body.MuscleGroup, body.Equipment, body.Category, body.Description, body.ImageURL, body.SecondaryMuscles)
+	e, err := h.s.Exercise.Update(id, body.Name, body.MuscleGroup, body.Equipment, body.Category, body.Description, body.ImageURL, body.SecondaryMuscles, body.IsTimed, body.DefaultDurationSeconds)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		utils.NotFound(c, "exercise not found")

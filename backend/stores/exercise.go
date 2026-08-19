@@ -33,14 +33,15 @@ type ExerciseFilter struct {
 
 // "force" is quoted throughout: it isn't reserved in SQLite, but it reads like
 // a keyword and quoting costs nothing.
-const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url, image_url_end, gif_url, "force", level, mechanic, source_id, source FROM exercises`
+const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url, image_url_end, gif_url, "force", level, mechanic, source_id, source, is_timed, default_duration_seconds FROM exercises`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanExercise(row scanner, e *models.Exercise) error {
 	var secondaryRaw string
 	if err := row.Scan(&e.ID, &e.Name, &e.MuscleGroup, &secondaryRaw, &e.Category, &e.Equipment, &e.Description,
-		&e.ImageURL, &e.ImageEndURL, &e.GifURL, &e.Force, &e.Level, &e.Mechanic, &e.SourceID, &e.Source); err != nil {
+		&e.ImageURL, &e.ImageEndURL, &e.GifURL, &e.Force, &e.Level, &e.Mechanic, &e.SourceID, &e.Source,
+		&e.IsTimed, &e.DefaultDurationSeconds); err != nil {
 		return err
 	}
 	json.Unmarshal([]byte(secondaryRaw), &e.SecondaryMuscles)
@@ -152,7 +153,7 @@ func (s *ExerciseStore) Facets() (map[string][]FacetValue, error) {
 
 // Create inserts a user-defined exercise, tagged source=custom so it survives
 // WipeAndReseed/Sync like the lyftr cardio carve-out does (see seed.SourceCustom).
-func (s *ExerciseStore) Create(name, muscleGroup, equipment, category, description, imageURL string, secondaryMuscles []string) (models.Exercise, error) {
+func (s *ExerciseStore) Create(name, muscleGroup, equipment, category, description, imageURL string, secondaryMuscles []string, isTimed bool, defaultDurationSeconds int) (models.Exercise, error) {
 	if category == "" {
 		category = "strength"
 	}
@@ -161,8 +162,8 @@ func (s *ExerciseStore) Create(name, muscleGroup, equipment, category, descripti
 		secondaryJSON = []byte("[]")
 	}
 	res, err := s.db.Exec(
-		`INSERT INTO exercises (name, muscle_group, category, equipment, description, image_url, secondary_muscles, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), seed.SourceCustom,
+		`INSERT INTO exercises (name, muscle_group, category, equipment, description, image_url, secondary_muscles, source, is_timed, default_duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), seed.SourceCustom, isTimed, defaultDurationSeconds,
 	)
 	if err != nil {
 		return models.Exercise{}, err
@@ -177,7 +178,7 @@ func (s *ExerciseStore) Create(name, muscleGroup, equipment, category, descripti
 // Update edits a custom exercise in place. It returns ErrNotCustomExercise if
 // the row exists but isn't source=custom (library rows are never editable),
 // or sql.ErrNoRows if the id doesn't exist at all.
-func (s *ExerciseStore) Update(id int64, name, muscleGroup, equipment, category, description, imageURL string, secondaryMuscles []string) (models.Exercise, error) {
+func (s *ExerciseStore) Update(id int64, name, muscleGroup, equipment, category, description, imageURL string, secondaryMuscles []string, isTimed bool, defaultDurationSeconds int) (models.Exercise, error) {
 	existing, err := s.Get(id)
 	if err != nil {
 		return models.Exercise{}, err
@@ -193,9 +194,9 @@ func (s *ExerciseStore) Update(id int64, name, muscleGroup, equipment, category,
 		secondaryJSON = []byte("[]")
 	}
 	res, err := s.db.Exec(
-		`UPDATE exercises SET name = ?, muscle_group = ?, category = ?, equipment = ?, description = ?, image_url = ?, secondary_muscles = ?
+		`UPDATE exercises SET name = ?, muscle_group = ?, category = ?, equipment = ?, description = ?, image_url = ?, secondary_muscles = ?, is_timed = ?, default_duration_seconds = ?
 		 WHERE id = ? AND source = ?`,
-		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), id, seed.SourceCustom,
+		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), isTimed, defaultDurationSeconds, id, seed.SourceCustom,
 	)
 	if err != nil {
 		return models.Exercise{}, err

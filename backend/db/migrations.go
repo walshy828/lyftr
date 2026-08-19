@@ -416,6 +416,12 @@ CREATE INDEX IF NOT EXISTS idx_program_sets_program_exercise ON program_sets(pro
 	// WipeAndReseed's prune both need it to tell libraries apart.
 	ensureColumn("exercises", "source", `ALTER TABLE exercises ADD COLUMN source TEXT NOT NULL DEFAULT ''`)
 
+	// is_timed/default_duration_seconds support hold/stretch-style exercises
+	// (see models.Exercise.IsTimed) logged by a Gym Mode countdown instead of
+	// reps/weight.
+	ensureColumn("exercises", "is_timed", `ALTER TABLE exercises ADD COLUMN is_timed INTEGER NOT NULL DEFAULT 0`)
+	ensureColumn("exercises", "default_duration_seconds", `ALTER TABLE exercises ADD COLUMN default_duration_seconds INTEGER NOT NULL DEFAULT 0`)
+
 	// Faceted filtering on the library. Honest note: at ~870 rows these fix no
 	// measured problem — the `name LIKE '%q%'` scan dominates and cannot use
 	// them anyway. They're here because they're free and correct by default,
