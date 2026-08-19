@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Sparkles, Camera, ImagePlus, X, AlertCircle, Dumbbell, Trash2 } from 'lucide-react'
+import { Sparkles, Camera, ImagePlus, X, AlertCircle, Dumbbell, Trash2, Timer } from 'lucide-react'
 import { Sheet } from '../ui'
 import { exerciseAPI, apiErrorMessage } from '../../services/api'
 import { MUSCLE_COLORS, muscleColorBordered } from '../../utils/exerciseUtils'
@@ -38,6 +38,8 @@ export default function CreateExerciseSheet({ onClose, exercise, onCreated, onSa
   const [secondaryMuscles, setSecondaryMuscles] = useState<string[]>(exercise?.secondary_muscles ?? [])
   const [description, setDescription] = useState(exercise?.description ?? '')
   const [imageUrl, setImageUrl] = useState(exercise?.image_url ?? '')
+  const [isTimed, setIsTimed] = useState(exercise?.is_timed ?? false)
+  const [defaultDuration, setDefaultDuration] = useState(exercise?.default_duration_seconds || 30)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -51,6 +53,8 @@ export default function CreateExerciseSheet({ onClose, exercise, onCreated, onSa
     setSecondaryMuscles(exercise?.secondary_muscles ?? [])
     setDescription(exercise?.description ?? '')
     setImageUrl(exercise?.image_url ?? '')
+    setIsTimed(exercise?.is_timed ?? false)
+    setDefaultDuration(exercise?.default_duration_seconds || 30)
     setError(null)
     setConfirmDelete(false)
   }, [exercise?.id])
@@ -88,6 +92,8 @@ export default function CreateExerciseSheet({ onClose, exercise, onCreated, onSa
       image_url: imageUrl,
       equipment: exercise?.equipment,
       category: exercise?.category,
+      is_timed: isTimed,
+      default_duration_seconds: isTimed ? defaultDuration : 0,
     }
     try {
       if (isEdit) {
@@ -242,6 +248,34 @@ export default function CreateExerciseSheet({ onClose, exercise, onCreated, onSa
             className="input w-full resize-none"
           />
         </label>
+
+        <div className="mb-6">
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isTimed}
+              onChange={e => setIsTimed(e.target.checked)}
+              className="w-4 h-4 rounded accent-brand-500"
+            />
+            <Timer className="w-4 h-4 text-tx-muted" />
+            <span className="text-sm text-tx-secondary">Timed exercise (e.g. a plank or stretch)</span>
+          </label>
+          {isTimed && (
+            <label className="flex items-center gap-2 mt-3 pl-6">
+              <span className="text-xs font-medium text-tx-muted">Default hold duration</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={defaultDuration}
+                onChange={e => setDefaultDuration(Math.max(1, Math.round(Number(e.target.value) || 0)))}
+                className="input text-sm text-center py-1.5 w-20"
+                aria-label="Default hold duration in seconds"
+              />
+              <span className="text-xs text-tx-muted">sec</span>
+            </label>
+          )}
+        </div>
 
         {isEdit && (
           <div className="mb-4">

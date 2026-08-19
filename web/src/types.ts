@@ -61,6 +61,10 @@ export interface Exercise {
   source?: string
   /** Upstream dataset slug; the media cache keys on it. */
   source_id?: string
+  /** Hold/stretch-style exercise logged by duration instead of reps/weight. */
+  is_timed?: boolean
+  /** Countdown length Gym Mode pre-fills when is_timed is true. */
+  default_duration_seconds?: number
 }
 
 /** Payload shape for creating or editing a custom exercise. */
@@ -72,6 +76,8 @@ export interface ExerciseInput {
   equipment?: string
   description?: string
   image_url?: string
+  is_timed?: boolean
+  default_duration_seconds?: number
 }
 
 export interface Set {

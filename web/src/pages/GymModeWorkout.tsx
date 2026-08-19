@@ -22,8 +22,9 @@ import StepperTile from '../components/ui/StepperTile'
 import NumberField from '../components/ui/NumberField'
 import DiscardConfirm from '../components/DiscardConfirm'
 import CardioEntry from '../components/CardioEntry'
+import TimedExerciseEntry from '../components/TimedExerciseEntry'
 import { clampStep, clampValue } from '../utils/number'
-import { nextIncompleteSet, isCardio } from '../utils/workoutSets'
+import { nextIncompleteSet, isCardio, isTimed } from '../utils/workoutSets'
 import { displayWeight, displayToLbs } from '../stores/settings'
 
 function buildBodyData(exercise: types.Exercise): IExerciseData[] {
@@ -570,6 +571,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
   if (!set) return null
 
   const cardio = isCardio(ex.exercise)
+  const timed = isTimed(ex.exercise)
 
   // Rest-timer view state for this exercise (restExIdx/restSetIdx are cleared or
   // remapped by the store on structural edits, so they're safe to key on here).
@@ -647,7 +649,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
         )}
 
         {/* Target reference for this set (the goal to hit) */}
-        {!cardio && (set.target_reps > 0 || set.target_weight > 0) && (
+        {!cardio && !timed && (set.target_reps > 0 || set.target_weight > 0) && (
           <p className="text-sm text-tx-muted text-center">
             Target{' '}
             <span className="font-semibold text-tx-secondary tabular-nums">{set.target_reps > 0 ? set.target_reps : '—'} reps</span>
@@ -674,10 +676,24 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
           </div>
         )}
 
+        {/* Timed: a live countdown from the exercise's default hold duration,
+            replacing reps/weight the same way CardioEntry replaces them for cardio. */}
+        {timed && (
+          <div className="w-full">
+            <TimedExerciseEntry
+              defaultDurationSec={ex.exercise.default_duration_seconds || 30}
+              loggedDurationSec={set.actual_duration || 0}
+              exIdx={activeIdx}
+              setIdx={clampedSetIdx}
+              completed={set.completed}
+            />
+          </div>
+        )}
+
         {/* Reps + Weight — a tile per metric: icon header, big value, split ⊖/⊕ footer.
             Value spans the full tile (buttons are below, not flanking) so long
             weights never clip. */}
-        {!cardio && (
+        {!cardio && !timed && (
         <div className="w-full grid grid-cols-2 gap-3">
           {/* Reps — key by set so a half-typed value can't bleed to the next set */}
           <StepperTile

@@ -85,6 +85,21 @@ interface WorkoutSessionStore {
   pauseRest: () => void
   resumeRest: () => void
   clearRest: () => void
+  // Exercise timer — the live countdown for a timed (hold/stretch) set's
+  // duration, structurally identical to the rest timer above but scoped to
+  // the set currently being logged. Deliberately NOT pushed to the server
+  // (unlike rest) — it isn't part of the watch-companion contract, just an
+  // in-tab convenience that survives minimize/restore via the module
+  // singleton.
+  exTimerEndsAt: number | null
+  exTimerDurationSec: number | null
+  exTimerExIdx: number | null
+  exTimerSetIdx: number | null
+  exTimerPausedRemainingMs: number | null
+  startExerciseTimer: (durationSec: number, exIdx: number, setIdx: number) => void
+  pauseExerciseTimer: () => void
+  resumeExerciseTimer: () => void
+  clearExerciseTimer: () => void
 }
 
 // Pushes the full session (+ current position + rest timer) to the server so
@@ -136,6 +151,11 @@ const CLEARED_REST = {
   restEndsAt: null, restDurationSec: null, restExIdx: null, restSetIdx: null, restPausedRemainingMs: null,
 } as const
 
+// Same idea as CLEARED_REST, for the exercise timer.
+const CLEARED_EX_TIMER = {
+  exTimerEndsAt: null, exTimerDurationSec: null, exTimerExIdx: null, exTimerSetIdx: null, exTimerPausedRemainingMs: null,
+} as const
+
 export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
   session: loadLocal(),
   gymOpen: false,
@@ -143,6 +163,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
   gymExIdx: _savedGymUi.exIdx,
   gymSetIdx: _savedGymUi.setIdx,
   ...CLEARED_REST,
+  ...CLEARED_EX_TIMER,
   endedRemotely: null,
   clearEndedRemotely: () => set({ endedRemotely: null }),
 
@@ -190,6 +211,23 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     set({ ...CLEARED_REST })
     scheduleSync()
   },
+
+  startExerciseTimer: (durationSec, exIdx, setIdx) => {
+    set({ exTimerEndsAt: Date.now() + durationSec * 1000, exTimerDurationSec: durationSec, exTimerExIdx: exIdx, exTimerSetIdx: setIdx, exTimerPausedRemainingMs: null })
+  },
+  pauseExerciseTimer: () => {
+    set(state => {
+      if (state.exTimerEndsAt == null || state.exTimerPausedRemainingMs != null) return {}
+      return { exTimerPausedRemainingMs: Math.max(0, state.exTimerEndsAt - Date.now()), exTimerEndsAt: null }
+    })
+  },
+  resumeExerciseTimer: () => {
+    set(state => {
+      if (state.exTimerPausedRemainingMs == null) return {}
+      return { exTimerEndsAt: Date.now() + state.exTimerPausedRemainingMs, exTimerPausedRemainingMs: null }
+    })
+  },
+  clearExerciseTimer: () => set({ ...CLEARED_EX_TIMER }),
 
   openGym: () => set({ gymOpen: true }),
   minimizeGym: () => set({ gymOpen: false }),
@@ -326,9 +364,10 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     })
     const updated = { ...session, exercises }
     saveLocal(updated)
-    // Removing a set shifts set indices, invalidating the positional restSetIdx — cancel
-    // the (ephemeral) rest rather than let it point at the wrong set.
-    set({ session: updated, ...CLEARED_REST })
+    // Removing a set shifts set indices, invalidating the positional restSetIdx/
+    // exTimerSetIdx — cancel the (ephemeral) rest/exercise timers rather than let
+    // them point at the wrong set.
+    set({ session: updated, ...CLEARED_REST, ...CLEARED_EX_TIMER })
     scheduleSync()
   },
 
@@ -346,9 +385,10 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     if (!session) return
     const updated = { ...session, exercises: session.exercises.filter((_, i) => i !== exIdx) }
     saveLocal(updated)
-    // filter() shifts exercise indices, invalidating the positional restExIdx — cancel
-    // the (ephemeral) rest so it can't collapse controls on the wrong exercise.
-    set({ session: updated, ...CLEARED_REST })
+    // filter() shifts exercise indices, invalidating the positional restExIdx/
+    // exTimerExIdx — cancel the (ephemeral) rest/exercise timers so they can't
+    // collapse controls on the wrong exercise.
+    set({ session: updated, ...CLEARED_REST, ...CLEARED_EX_TIMER })
     scheduleSync()
   },
 
@@ -392,7 +432,7 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
     localStorage.removeItem(GYM_UI_KEY)
     set({
       session: null, gymOpen: false, gymPhase: 'overview', gymExIdx: 0, gymSetIdx: 0,
-      ...CLEARED_REST,
+      ...CLEARED_REST, ...CLEARED_EX_TIMER,
     })
     // Covers both "finished" and "discarded" — either way nothing should be
     // left mid-workout on the server for a watch/other device to pick up.
@@ -450,6 +490,7 @@ export async function hydrateActiveSessionFromServer() {
         restExIdx: remote.rest_ends_at != null ? exIdx : null,
         restSetIdx: remote.rest_ends_at != null ? setIdx : null,
         restPausedRemainingMs: null,
+        ...CLEARED_EX_TIMER,
       })
       _lastSyncedJson = result.data
     } else if (state.session) {
@@ -478,7 +519,7 @@ export function clearLocalSession() {
   localStorage.removeItem(GYM_UI_KEY)
   useWorkoutSession.setState({
     session: null, gymOpen: false, gymPhase: 'overview', gymExIdx: 0, gymSetIdx: 0,
-    ...CLEARED_REST,
+    ...CLEARED_REST, ...CLEARED_EX_TIMER,
   })
 }
 

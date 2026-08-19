@@ -43,6 +43,72 @@ func TestCreateExercise_withPhotoAndMuscles(t *testing.T) {
 	}
 }
 
+func TestCreateExercise_timedRoundTrips(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), nil)
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/exercises", map[string]any{
+		"name":                     "Plank",
+		"muscle_group":             "core",
+		"is_timed":                 true,
+		"default_duration_seconds": 90,
+	})
+	h.CreateExercise(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	created := decodeResponse(t, w)["data"].(map[string]any)
+	if created["is_timed"] != true {
+		t.Errorf("expected is_timed=true, got %v", created["is_timed"])
+	}
+	if created["default_duration_seconds"] != float64(90) {
+		t.Errorf("expected default_duration_seconds=90, got %v", created["default_duration_seconds"])
+	}
+	id := int64(created["id"].(float64))
+
+	upd, uw := newContext(uid, http.MethodPut, "/api/v1/exercises/"+strconv.FormatInt(id, 10), map[string]any{
+		"name":                     "Plank",
+		"muscle_group":             "core",
+		"is_timed":                 false,
+		"default_duration_seconds": 90,
+	})
+	setParam(upd, "id", strconv.FormatInt(id, 10))
+	h.UpdateExercise(upd)
+	if uw.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", uw.Code, uw.Body.String())
+	}
+	updated := decodeResponse(t, uw)["data"].(map[string]any)
+	if updated["is_timed"] != false {
+		t.Errorf("expected is_timed=false after clearing, got %v", updated["is_timed"])
+	}
+	if updated["default_duration_seconds"] != nil {
+		t.Errorf("expected default_duration_seconds cleared to 0 (omitted as zero value), got %v", updated["default_duration_seconds"])
+	}
+}
+
+func TestCreateExercise_timedDefaultsDurationWhenUnset(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), nil)
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/exercises", map[string]any{
+		"name":         "Wall Sit",
+		"muscle_group": "quadriceps",
+		"is_timed":     true,
+	})
+	h.CreateExercise(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	created := decodeResponse(t, w)["data"].(map[string]any)
+	if created["default_duration_seconds"] != float64(30) {
+		t.Errorf("expected default_duration_seconds to default to 30, got %v", created["default_duration_seconds"])
+	}
+}
+
 func TestCreateExercise_imageTooLarge(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)

@@ -12,6 +12,13 @@ export function isCardio(ex?: { category?: string } | null): boolean {
   return ex?.category === 'cardio'
 }
 
+// True for hold/stretch-style exercises (e.g. a plank) logged by a live
+// countdown instead of reps/weight. Orthogonal to category/isCardio — a timed
+// exercise can belong to any muscle group.
+export function isTimed(ex?: { is_timed?: boolean } | null): boolean {
+  return !!ex?.is_timed
+}
+
 // Parse a "m:ss" or "mm:ss" (or bare seconds/minutes) string into whole seconds.
 // Lenient: "32:10" → 1930, "5" → 300 (treated as 5:00 when no colon), "" → 0.
 export function parseClock(input: string): number {
