@@ -49,6 +49,10 @@ func alterMigrations() {
 	ensureColumn("program_exercises", "rest_seconds", `ALTER TABLE program_exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 90`)
 	ensureColumn("workout_exercises", "rest_seconds", `ALTER TABLE workout_exercises ADD COLUMN rest_seconds INTEGER NOT NULL DEFAULT 90`)
 
+	// Timed (hold/stretch) program sets — the program-level counterpart to
+	// exercises.is_timed/default_duration_seconds and sets.duration.
+	ensureColumn("program_sets", "target_duration_seconds", `ALTER TABLE program_sets ADD COLUMN target_duration_seconds INTEGER NOT NULL DEFAULT 0`)
+
 	// Manual entry / nutrition-label photo import. source distinguishes how a
 	// food_logs row was created ("off" | "saved" | "manual" | "photo"); existing
 	// rows default to '' since their real origin isn't recoverable.

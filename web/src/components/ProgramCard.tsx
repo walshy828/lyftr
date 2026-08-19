@@ -54,6 +54,7 @@ export default function ProgramCard({ program, variant, onEdit, onDelete, onShar
         target_weight: s.target_weight,
         actual_reps: s.target_reps,
         actual_weight: s.target_weight,
+        actual_duration: s.target_duration_seconds || 0,
         completed: false,
       })),
     }))

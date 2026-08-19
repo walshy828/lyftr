@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/Cawlumm/lyftr-backend/db"
@@ -76,6 +77,66 @@ func TestCreateProgram_success(t *testing.T) {
 	}
 	if len(sets) != 3 {
 		t.Errorf("expected 3 sets, got %d", len(sets))
+	}
+}
+
+func TestCreateProgram_timedExerciseRoundTrips(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	exID := createTestTimedExercise(t)
+
+	body := map[string]any{
+		"name": "Mobility Day",
+		"exercises": []map[string]any{
+			{
+				"exercise_id": exID,
+				"sets": []map[string]any{
+					{"set_number": 1, "target_duration_seconds": 60},
+				},
+			},
+		},
+	}
+
+	c, w := newContext(uid, http.MethodPost, "/api/v1/programs", body)
+	th.CreateProgram(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].(map[string]any)
+	exercises := data["exercises"].([]any)
+	ex0 := exercises[0].(map[string]any)
+
+	// The exercise's is_timed/default_duration_seconds must reach the
+	// program payload (this is the root cause the user hit: Gym Mode reads
+	// ex.exercise.is_timed to decide whether to show the countdown).
+	exObj := ex0["exercise"].(map[string]any)
+	if exObj["is_timed"] != true {
+		t.Errorf("expected exercise.is_timed=true, got %v", exObj["is_timed"])
+	}
+	if exObj["default_duration_seconds"] != float64(45) {
+		t.Errorf("expected exercise.default_duration_seconds=45, got %v", exObj["default_duration_seconds"])
+	}
+
+	sets := ex0["sets"].([]any)
+	set0 := sets[0].(map[string]any)
+	if set0["target_duration_seconds"] != float64(60) {
+		t.Errorf("expected set.target_duration_seconds=60, got %v", set0["target_duration_seconds"])
+	}
+
+	// Confirm it also survives a GetProgram fetch (separate read path).
+	id := int64(data["id"].(float64))
+	getC, getW := newContext(uid, http.MethodGet, "/api/v1/programs/"+strconv.FormatInt(id, 10), nil)
+	setParam(getC, "id", strconv.FormatInt(id, 10))
+	th.GetProgram(getC)
+	getData := decodeResponse(t, getW)["data"].(map[string]any)
+	getEx0 := getData["exercises"].([]any)[0].(map[string]any)
+	if getEx0["exercise"].(map[string]any)["is_timed"] != true {
+		t.Errorf("GetProgram: expected exercise.is_timed=true, got %v", getEx0["exercise"])
+	}
+	if getEx0["sets"].([]any)[0].(map[string]any)["target_duration_seconds"] != float64(60) {
+		t.Errorf("GetProgram: expected set.target_duration_seconds=60, got %v", getEx0["sets"])
 	}
 }
 

@@ -215,7 +215,8 @@ CREATE TABLE IF NOT EXISTS program_sets (
   program_exercise_id INTEGER NOT NULL REFERENCES program_exercises(id) ON DELETE CASCADE,
   set_number INTEGER NOT NULL DEFAULT 1,
   target_reps INTEGER NOT NULL DEFAULT 0,
-  target_weight REAL NOT NULL DEFAULT 0
+  target_weight REAL NOT NULL DEFAULT 0,
+  target_duration_seconds INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS weight_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -400,6 +401,19 @@ func createTestExercise(t *testing.T) int64 {
 	)
 	if err != nil {
 		t.Fatalf("create test exercise: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+func createTestTimedExercise(t *testing.T) int64 {
+	t.Helper()
+	res, err := db.DB.Exec(
+		`INSERT INTO exercises (name, muscle_group, category, is_timed, default_duration_seconds) VALUES (?, ?, ?, ?, ?)`,
+		"Test Plank", "core", "strength", true, 45,
+	)
+	if err != nil {
+		t.Fatalf("create test timed exercise: %v", err)
 	}
 	id, _ := res.LastInsertId()
 	return id

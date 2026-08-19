@@ -808,6 +808,7 @@ export interface ProgramSet {
   set_number: number
   target_reps: number
   target_weight: number
+  target_duration_seconds?: number
 }
 
 export interface ProgramExercise {
@@ -838,6 +839,7 @@ export interface DraftProgramSet {
   set_number: number
   target_reps: number
   target_weight: number
+  target_duration_seconds?: number
 }
 
 export interface DraftProgramExercise {

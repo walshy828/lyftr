@@ -6,7 +6,7 @@ import { useSettingsStore, weightShort, lbsToDisplay, displayToLbs } from '../st
 import WeightInput from '../components/WeightInput'
 import CardioEntry from '../components/CardioEntry'
 import ExercisePicker from '../components/ExercisePicker'
-import { isCardio } from '../utils/workoutSets'
+import { isCardio, isTimed } from '../utils/workoutSets'
 import * as types from '../types'
 import { formatExerciseName } from '../utils/exerciseUtils'
 
@@ -67,7 +67,8 @@ export default function EditWorkout() {
 
   const addExercise = (exercise: types.Exercise) => {
     setPickerExercises(prev => ({ ...prev, [exercise.id]: exercise }))
-    setFormData(prev => ({ ...prev, exercises: [...prev.exercises, { exercise_id: exercise.id, notes: '', sets: [{ set_number: 1, reps: 0, weight: 0 }] }] }))
+    const set = isTimed(exercise) ? { set_number: 1, reps: 0, weight: 0, duration: exercise.default_duration_seconds || 30 } : { set_number: 1, reps: 0, weight: 0 }
+    setFormData(prev => ({ ...prev, exercises: [...prev.exercises, { exercise_id: exercise.id, notes: '', sets: [set] }] }))
     setShowPicker(false)
     setError('')
   }
@@ -77,7 +78,9 @@ export default function EditWorkout() {
   const addSet = (exIdx: number) => {
     setFormData(prev => {
       const exercises = [...prev.exercises]
-      exercises[exIdx].sets.push({ set_number: exercises[exIdx].sets.length + 1, reps: 0, weight: 0 })
+      const exercise = pickerExercises[exercises[exIdx].exercise_id]
+      const count = exercises[exIdx].sets.length + 1
+      exercises[exIdx].sets.push(isTimed(exercise) ? { set_number: count, reps: 0, weight: 0, duration: exercise.default_duration_seconds || 30 } : { set_number: count, reps: 0, weight: 0 })
       return { ...prev, exercises }
     })
   }
@@ -253,14 +256,23 @@ export default function EditWorkout() {
                           <label className="text-xs text-tx-muted font-medium uppercase tracking-wider block">Set</label>
                           <div className="text-sm font-bold text-tx-primary bg-surface-muted px-2 py-1 rounded text-center">{set.set_number}</div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <label className="text-xs text-tx-muted font-medium uppercase tracking-wider block mb-1">Reps</label>
-                          <input type="number" inputMode="numeric" value={set.reps || ''} onChange={e => updateSet(exIdx, setIdx, 'reps', e.target.value)} placeholder="10" className="input text-sm w-full" min="0" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <label className="text-xs text-tx-muted font-medium uppercase tracking-wider block mb-1">Weight</label>
-                          <WeightInput stepper={false} size="sm" value={set.weight ? String(set.weight) : ''} onChange={v => updateSet(exIdx, setIdx, 'weight', v)} unit={wUnit} placeholder="225" />
-                        </div>
+                        {isTimed(exercise) ? (
+                          <div className="flex-1 min-w-0">
+                            <label className="text-xs text-tx-muted font-medium uppercase tracking-wider block mb-1">Duration (sec)</label>
+                            <input type="number" inputMode="numeric" value={set.duration || ''} onChange={e => updateSet(exIdx, setIdx, 'duration', e.target.value)} placeholder="30" className="input text-sm w-full" min="0" />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex-1 min-w-0">
+                              <label className="text-xs text-tx-muted font-medium uppercase tracking-wider block mb-1">Reps</label>
+                              <input type="number" inputMode="numeric" value={set.reps || ''} onChange={e => updateSet(exIdx, setIdx, 'reps', e.target.value)} placeholder="10" className="input text-sm w-full" min="0" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <label className="text-xs text-tx-muted font-medium uppercase tracking-wider block mb-1">Weight</label>
+                              <WeightInput stepper={false} size="sm" value={set.weight ? String(set.weight) : ''} onChange={v => updateSet(exIdx, setIdx, 'weight', v)} unit={wUnit} placeholder="225" />
+                            </div>
+                          </>
+                        )}
                         <button type="button" onClick={() => removeSet(exIdx, setIdx)} className="p-2 hover:bg-error-500/20 rounded transition-colors flex-shrink-0">
                           <Trash2 className="w-4 h-4 text-error-400" />
                         </button>

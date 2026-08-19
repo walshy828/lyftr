@@ -1245,11 +1245,12 @@ type ProgramExercise struct {
 }
 
 type ProgramSet struct {
-	ID                int64   `json:"id,omitempty"`
-	ProgramExerciseID int64   `json:"program_exercise_id,omitempty"`
-	SetNumber         int     `json:"set_number"`
-	TargetReps        int     `json:"target_reps"`
-	TargetWeight      float64 `json:"target_weight"`
+	ID                    int64   `json:"id,omitempty"`
+	ProgramExerciseID     int64   `json:"program_exercise_id,omitempty"`
+	SetNumber             int     `json:"set_number"`
+	TargetReps            int     `json:"target_reps"`
+	TargetWeight          float64 `json:"target_weight"`
+	TargetDurationSeconds int     `json:"target_duration_seconds"`
 }
 
 type CreateProgramRequest struct {
@@ -1266,9 +1267,10 @@ type CreateProgramExerciseReq struct {
 }
 
 type CreateProgramSetReq struct {
-	SetNumber    int     `json:"set_number"`
-	TargetReps   int     `json:"target_reps"`
-	TargetWeight float64 `json:"target_weight"`
+	SetNumber             int     `json:"set_number"`
+	TargetReps            int     `json:"target_reps"`
+	TargetWeight          float64 `json:"target_weight"`
+	TargetDurationSeconds int     `json:"target_duration_seconds"`
 }
 
 // GenerateProgramRequest is the input to the AI program builder (POST

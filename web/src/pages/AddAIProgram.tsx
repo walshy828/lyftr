@@ -21,7 +21,7 @@ function toFormData(draft: types.DraftProgram): ProgramFormData {
       exercise_id: ex.exercise_id,
       notes: ex.notes ?? '',
       rest_seconds: ex.rest_seconds ?? 90,
-      sets: (ex.sets ?? []).map(s => ({ set_number: s.set_number, target_reps: s.target_reps, target_weight: s.target_weight })),
+      sets: (ex.sets ?? []).map(s => ({ set_number: s.set_number, target_reps: s.target_reps, target_weight: s.target_weight, target_duration_seconds: s.target_duration_seconds })),
     })),
   }
 }

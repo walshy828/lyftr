@@ -5,9 +5,14 @@ import * as types from '../types'
 
 vi.mock('./ExercisePicker', () => ({
   default: ({ onSelect }: { onSelect: (e: types.Exercise) => void }) => (
-    <button onClick={() => onSelect({ id: 2, name: 'Deadlift', muscle_group: 'back', category: 'strength', equipment: 'barbell', secondary_muscles: [], description: '' })}>
-      pick-deadlift
-    </button>
+    <>
+      <button onClick={() => onSelect({ id: 2, name: 'Deadlift', muscle_group: 'back', category: 'strength', equipment: 'barbell', secondary_muscles: [], description: '' })}>
+        pick-deadlift
+      </button>
+      <button onClick={() => onSelect({ id: 3, name: 'Plank', muscle_group: 'core', category: 'strength', equipment: '', secondary_muscles: [], description: '', is_timed: true, default_duration_seconds: 45 })}>
+        pick-plank
+      </button>
+    </>
   ),
 }))
 
@@ -73,6 +78,28 @@ describe('ProgramEditor', () => {
     )
     expect(screen.getByRole('button', { name: 'Create Program' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy()
+  })
+
+  it('shows a duration field (not reps/weight) for a timed exercise, seeded from its default', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<ProgramEditor initialData={EMPTY} title="New Program" onSave={onSave} onCancel={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/push pull legs/i), { target: { value: 'Mobility' } })
+    fireEvent.click(screen.getByRole('button', { name: /add exercise/i }))
+    fireEvent.click(screen.getByText('pick-plank'))
+
+    expect(screen.getByText(/target duration/i)).toBeTruthy()
+    expect(screen.queryByText(/target reps/i)).toBeNull()
+    expect(screen.queryByText(/target weight/i)).toBeNull()
+    expect(screen.getByPlaceholderText('30')).toHaveProperty('value', '45')
+
+    fireEvent.click(screen.getByRole('button', { name: /save program/i }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      exercises: [expect.objectContaining({
+        exercise_id: 3,
+        sets: [expect.objectContaining({ target_duration_seconds: 45 })],
+      })],
+    })))
   })
 
   it('removing an exercise updates the exercise/set count', () => {

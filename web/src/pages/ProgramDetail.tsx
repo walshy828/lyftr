@@ -11,6 +11,7 @@ import { useAuthStore } from '../stores/auth'
 import { useSettingsStore, weightShort, displayWeight } from '../stores/settings'
 import * as types from '../types'
 import { muscleColor, formatExerciseName } from '../utils/exerciseUtils'
+import { isTimed, fmtClock } from '../utils/workoutSets'
 
 export default function ProgramDetail() {
   const { id } = useParams<{ id: string }>()
@@ -58,6 +59,7 @@ export default function ProgramDetail() {
         target_weight: s.target_weight,
         actual_reps: s.target_reps,
         actual_weight: s.target_weight,
+        actual_duration: s.target_duration_seconds || 0,
         completed: false,
       })),
     }))
@@ -296,7 +298,9 @@ export default function ProgramDetail() {
                         <div key={i} className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold tabular-nums leading-none ${
                           isBest ? 'bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/25' : 'bg-surface-raised text-tx-secondary'
                         }`}>
-                          {set.target_reps > 0 ? set.target_reps : '—'} × {set.target_weight > 0 ? `${displayWeight(set.target_weight, wUnit)} ${wUnit}` : 'BW'}
+                          {isTimed(ex.exercise)
+                            ? `${fmtClock(set.target_duration_seconds || 0)} hold`
+                            : <>{set.target_reps > 0 ? set.target_reps : '—'} × {set.target_weight > 0 ? `${displayWeight(set.target_weight, wUnit)} ${wUnit}` : 'BW'}</>}
                         </div>
                       )
                     })}

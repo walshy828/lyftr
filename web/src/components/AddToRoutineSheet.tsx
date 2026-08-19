@@ -45,13 +45,15 @@ export default function AddToRoutineSheet({ exercise, onClose }: Props) {
             exercise_id: ex.exercise_id,
             notes: ex.notes || '',
             rest_seconds: ex.rest_seconds ?? 90,
-            sets: ex.sets.map(s => ({ set_number: s.set_number, target_reps: s.target_reps, target_weight: s.target_weight })),
+            sets: ex.sets.map(s => ({ set_number: s.set_number, target_reps: s.target_reps, target_weight: s.target_weight, target_duration_seconds: s.target_duration_seconds })),
           })),
           {
             exercise_id: exercise.id,
             notes: '',
             rest_seconds: settings.rest_seconds_default ?? 90,
-            sets: [{ set_number: 1, target_reps: 0, target_weight: 0 }],
+            sets: [exercise.is_timed
+              ? { set_number: 1, target_reps: 0, target_weight: 0, target_duration_seconds: exercise.default_duration_seconds || 30 }
+              : { set_number: 1, target_reps: 0, target_weight: 0 }],
           },
         ],
       }

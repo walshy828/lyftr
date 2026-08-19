@@ -228,9 +228,10 @@ func (s *ProgramStore) Copy(uid, srcID int64) (models.Program, error) {
 		}
 		for _, st := range ex.Sets {
 			cex.Sets = append(cex.Sets, models.CreateProgramSetReq{
-				SetNumber:    st.SetNumber,
-				TargetReps:   st.TargetReps,
-				TargetWeight: st.TargetWeight,
+				SetNumber:             st.SetNumber,
+				TargetReps:            st.TargetReps,
+				TargetWeight:          st.TargetWeight,
+				TargetDurationSeconds: st.TargetDurationSeconds,
 			})
 		}
 		req.Exercises = append(req.Exercises, cex)
@@ -321,8 +322,8 @@ func insertProgramExercises(tx *sql.Tx, pid int64, exercises []models.CreateProg
 				sn = j + 1
 			}
 			if _, err := tx.Exec(
-				`INSERT INTO program_sets (program_exercise_id, set_number, target_reps, target_weight) VALUES (?, ?, ?, ?)`,
-				peid, sn, st.TargetReps, st.TargetWeight,
+				`INSERT INTO program_sets (program_exercise_id, set_number, target_reps, target_weight, target_duration_seconds) VALUES (?, ?, ?, ?, ?)`,
+				peid, sn, st.TargetReps, st.TargetWeight, st.TargetDurationSeconds,
 			); err != nil {
 				return err
 			}
@@ -371,7 +372,8 @@ func (s *ProgramStore) loadExercisesFor(programIDs []int64) (map[int64][]models.
 	rows, err := s.db.Query(
 		`SELECT pe.id, pe.program_id, pe.exercise_id, pe.order_index, pe.notes, pe.rest_seconds,
 		        e.name, e.muscle_group, e.category, e.equipment, e.image_url,
-		        e.image_url_end, e.gif_url, e.description, e.secondary_muscles, e.source_id
+		        e.image_url_end, e.gif_url, e.description, e.secondary_muscles, e.source_id,
+		        e.is_timed, e.default_duration_seconds
 		 FROM program_exercises pe
 		 JOIN exercises e ON e.id = pe.exercise_id
 		 WHERE pe.program_id IN (`+placeholders+`) ORDER BY pe.program_id, pe.order_index`,
@@ -390,6 +392,7 @@ func (s *ProgramStore) loadExercisesFor(programIDs []int64) (map[int64][]models.
 			&pe.Exercise.Equipment, &pe.Exercise.ImageURL,
 			&pe.Exercise.ImageEndURL, &pe.Exercise.GifURL, &pe.Exercise.Description,
 			&secondaryRaw, &pe.Exercise.SourceID,
+			&pe.Exercise.IsTimed, &pe.Exercise.DefaultDurationSeconds,
 		); err != nil {
 			rows.Close()
 			return nil, err
@@ -431,7 +434,7 @@ func (s *ProgramStore) loadSetsFor(exercises []models.ProgramExercise) (map[int6
 	}
 	placeholders, args := inArgs(ids)
 	rows, err := s.db.Query(
-		`SELECT id, program_exercise_id, set_number, target_reps, target_weight
+		`SELECT id, program_exercise_id, set_number, target_reps, target_weight, target_duration_seconds
 		 FROM program_sets WHERE program_exercise_id IN (`+placeholders+`) ORDER BY program_exercise_id, set_number`,
 		args...,
 	)
@@ -441,7 +444,7 @@ func (s *ProgramStore) loadSetsFor(exercises []models.ProgramExercise) (map[int6
 	defer rows.Close()
 	for rows.Next() {
 		var st models.ProgramSet
-		if err := rows.Scan(&st.ID, &st.ProgramExerciseID, &st.SetNumber, &st.TargetReps, &st.TargetWeight); err != nil {
+		if err := rows.Scan(&st.ID, &st.ProgramExerciseID, &st.SetNumber, &st.TargetReps, &st.TargetWeight, &st.TargetDurationSeconds); err != nil {
 			return nil, err
 		}
 		bySet[st.ProgramExerciseID] = append(bySet[st.ProgramExerciseID], st)
