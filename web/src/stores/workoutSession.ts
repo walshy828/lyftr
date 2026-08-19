@@ -119,6 +119,21 @@ let _syncTimer: ReturnType<typeof setTimeout> | null = null
 // debounced PUT lands after the local edit that produced it.
 let _lastSyncedJson: string | null = null
 
+// Strips the heavy, sync-irrelevant fields off an embedded Exercise before it
+// goes into the server-synced session payload. A custom exercise's image_url
+// is a base64 data URI up to ~5.6MB (see CreateExerciseSheet's
+// maxExerciseImageBytes) — embedding that on every debounced sync blew past
+// both nginx's body-size limit and the backend's maxActiveSessionBytes cap
+// (a real session is meant to be a few KB), silently failing every PUT and
+// eventually causing the active-session poll to conclude the session had
+// been "ended elsewhere" and tear it down client-side. None of these fields
+// are needed by a cross-device consumer (e.g. the Wear OS watch companion),
+// which only needs name/muscle group/category/sets to render.
+function leanExerciseForSync(ex: types.Exercise): types.Exercise {
+  const { image_url, video_url, image_url_end, gif_url, description, ...lean } = ex
+  return lean as types.Exercise
+}
+
 function scheduleSync(immediate = false) {
   if (_syncTimer) {
     clearTimeout(_syncTimer)
@@ -130,6 +145,7 @@ function scheduleSync(immediate = false) {
     if (!state.session) return
     const payload: types.ActiveSession = {
       ...state.session,
+      exercises: state.session.exercises.map(ex => ({ ...ex, exercise: leanExerciseForSync(ex.exercise) })),
       current_exercise_idx: state.gymExIdx,
       current_set_idx: state.gymSetIdx,
       rest_ends_at: state.restEndsAt,
