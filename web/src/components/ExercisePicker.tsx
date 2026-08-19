@@ -63,7 +63,7 @@ export default function ExercisePicker({ selectedIds, onSelect, onClose }: Props
         {/* Detail content */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <Suspense fallback={null}>
-            <ExerciseDetailContent exercise={detailExercise} />
+            <ExerciseDetailContent exercise={detailExercise} onExerciseUpdated={setDetailExercise} />
           </Suspense>
         </div>
 

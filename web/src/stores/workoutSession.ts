@@ -50,6 +50,11 @@ interface WorkoutSessionStore {
   gymSetIdx: number
   startSession: (name: string, exercises: types.ActiveSessionExercise[], programId?: number) => void
   updateSet: (exIdx: number, setIdx: number, field: 'actual_reps' | 'actual_weight' | 'actual_duration' | 'actual_distance' | 'actual_steps', val: number) => void
+  // Replaces one session exercise's `exercise` object (e.g. after the timed
+  // flag/default duration changed via TimedToggle) and remaps its sets to
+  // match the new mode — zeroing reps/weight and seeding actual_duration
+  // when it becomes timed, or the reverse when it stops being timed.
+  retagExercise: (exIdx: number, exercise: types.Exercise) => void
   completeSet: (exIdx: number, setIdx: number) => void
   /** Rate a set's effort. `stored` is on the RPE scale; 0 clears the rating. */
   setEffort: (exIdx: number, setIdx: number, stored: number) => void
@@ -271,6 +276,23 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
         }
       }
       return { ...ex, sets }
+    })
+    const updated = { ...session, exercises }
+    saveLocal(updated)
+    set({ session: updated })
+    scheduleSync()
+  },
+
+  retagExercise: (exIdx, exercise) => {
+    const session = get().session
+    if (!session) return
+    const timed = !!exercise.is_timed
+    const exercises = session.exercises.map((ex, i) => {
+      if (i !== exIdx) return ex
+      const sets = ex.sets.map(s => timed
+        ? { ...s, actual_reps: 0, actual_weight: 0, target_reps: 0, target_weight: 0, actual_duration: exercise.default_duration_seconds || 30 }
+        : { ...s, actual_duration: 0 })
+      return { ...ex, exercise, sets }
     })
     const updated = { ...session, exercises }
     saveLocal(updated)

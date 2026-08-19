@@ -167,6 +167,50 @@ func (h *Handler) DeleteExercise(c *gin.Context) {
 	utils.OK(c, gin.H{"deleted": true})
 }
 
+// setTimedBody is the narrow-scope body for SetExerciseTimed — deliberately
+// separate from exerciseWriteBody so this endpoint can never touch name/
+// muscle_group/etc. on a library row, only its timed flag/duration.
+type setTimedBody struct {
+	IsTimed                bool `json:"is_timed"`
+	DefaultDurationSeconds int  `json:"default_duration_seconds"`
+}
+
+// SetExerciseTimed marks ANY exercise (custom or library) as timed or not,
+// with a default hold duration. Unlike UpdateExercise, this isn't gated to
+// source=custom — many library exercises (e.g. "Ankle Circles") are
+// inherently timed holds/stretches rather than weighted lifts, and marking
+// them so is meant to be a permanent, library-wide correction.
+func (h *Handler) SetExerciseTimed(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid exercise id")
+		return
+	}
+	var body setTimedBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		utils.BadRequest(c, "invalid request body")
+		return
+	}
+	if body.IsTimed {
+		if body.DefaultDurationSeconds < 1 {
+			body.DefaultDurationSeconds = 30
+		} else if body.DefaultDurationSeconds > 3600 {
+			body.DefaultDurationSeconds = 3600
+		}
+	} else {
+		body.DefaultDurationSeconds = 0
+	}
+	e, err := h.s.Exercise.SetTimed(id, body.IsTimed, body.DefaultDurationSeconds)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "exercise not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, e)
+}
+
 // GetExerciseFacets returns the distinct filter values with counts, so the
 // browse page can render chips without hardcoding a taxonomy owned upstream.
 func (h *Handler) GetExerciseFacets(c *gin.Context) {

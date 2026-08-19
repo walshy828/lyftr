@@ -14,8 +14,9 @@ import FeelingPicker from '../components/FeelingPicker'
 import { workoutAPI } from '../services/api'
 import * as types from '../types'
 import { muscleColor, formatExerciseName } from '../utils/exerciseUtils'
-import { isCardio } from '../utils/workoutSets'
+import { isCardio, isTimed } from '../utils/workoutSets'
 import EffortPicker from '../components/EffortPicker'
+import TimedToggle from '../components/exercise/TimedToggle'
 
 function ExerciseNotes({ exIdx, notes, onSave }: { exIdx: number; notes: string; onSave: (i: number, v: string) => void }) {
   const [editing, setEditing] = useState(false)
@@ -62,7 +63,7 @@ function formatElapsed(seconds: number) {
 
 export default function ActiveWorkout() {
   const navigate = useNavigate()
-  const { session, updateSet, updateExerciseNotes, completeSet, setEffort, addSet, removeSet, removeExercise, addExercise, buildPayload, cancelSession, openGym } =
+  const { session, updateSet, updateExerciseNotes, completeSet, setEffort, addSet, removeSet, removeExercise, addExercise, retagExercise, buildPayload, cancelSession, openGym } =
     useWorkoutSession()
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
@@ -244,6 +245,7 @@ export default function ActiveWorkout() {
             const isActive = exIdx === activeExIdx
             const completedHere = ex.sets.filter(s => s.completed).length
             const cardio = isCardio(ex.exercise)
+            const timed = isTimed(ex.exercise)
 
             return (
               <div
@@ -294,6 +296,7 @@ export default function ActiveWorkout() {
                       </span>
                       <span className="text-xs text-tx-muted tabular-nums">
                         {cardio ? (allSetsComplete ? 'logged' : 'cardio') : `${completedHere}/${ex.sets.length} sets`}
+                        {timed && ' · timed'}
                       </span>
                     </div>
                   </button>
@@ -317,6 +320,10 @@ export default function ActiveWorkout() {
                 {/* Notes */}
                 <ExerciseNotes exIdx={exIdx} notes={ex.notes} onSave={updateExerciseNotes} />
 
+                <div className="px-3 pb-3">
+                  <TimedToggle exercise={ex.exercise} onUpdated={updated => retagExercise(exIdx, updated)} />
+                </div>
+
                 {/* Sets */}
                 <div className="px-3 pb-3 space-y-2">
                   {/* Cardio: a single time+distance+steps entry instead of sets */}
@@ -339,8 +346,14 @@ export default function ActiveWorkout() {
                   {!cardio && (
                   <div className="grid grid-cols-[2rem_1fr_1fr_3.5rem_2rem] gap-2 px-1">
                     <span className="text-xs text-tx-muted font-medium text-center">Set</span>
-                    <span className="text-xs text-tx-muted font-medium text-center">Reps</span>
-                    <span className="text-xs text-tx-muted font-medium text-center">Weight</span>
+                    {timed ? (
+                      <span className="text-xs text-tx-muted font-medium text-center col-span-2">Duration (sec)</span>
+                    ) : (
+                      <>
+                        <span className="text-xs text-tx-muted font-medium text-center">Reps</span>
+                        <span className="text-xs text-tx-muted font-medium text-center">Weight</span>
+                      </>
+                    )}
                     <span className="text-xs text-tx-muted font-medium text-center">Done</span>
                     <span />
                   </div>
@@ -366,26 +379,43 @@ export default function ActiveWorkout() {
                           }`}>{set.set_number}</span>
                         </div>
 
-                        {/* Reps */}
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          value={set.actual_reps || ''}
-                          onChange={e => updateSet(exIdx, setIdx, 'actual_reps', Number(e.target.value) || 0)}
-                          placeholder={set.target_reps > 0 ? String(set.target_reps) : '—'}
-                          className={`input text-base text-center py-3 transition-opacity ${set.completed ? 'opacity-40' : ''}`}
-                          disabled={set.completed}
-                        />
+                        {timed ? (
+                          /* Duration — a single field spanning the Reps+Weight
+                             columns, since a timed set has no reps/weight. */
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={set.actual_duration || ''}
+                            onChange={e => updateSet(exIdx, setIdx, 'actual_duration', Number(e.target.value) || 0)}
+                            placeholder={String(ex.exercise.default_duration_seconds || 30)}
+                            className={`input text-base text-center py-3 transition-opacity col-span-2 ${set.completed ? 'opacity-40' : ''}`}
+                            disabled={set.completed}
+                            min={0}
+                          />
+                        ) : (
+                          <>
+                            {/* Reps */}
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              value={set.actual_reps || ''}
+                              onChange={e => updateSet(exIdx, setIdx, 'actual_reps', Number(e.target.value) || 0)}
+                              placeholder={set.target_reps > 0 ? String(set.target_reps) : '—'}
+                              className={`input text-base text-center py-3 transition-opacity ${set.completed ? 'opacity-40' : ''}`}
+                              disabled={set.completed}
+                            />
 
-                        {/* Weight */}
-                        <WeightInput
-                          stepper={false}
-                          value={set.actual_weight ? String(displayWeight(set.actual_weight, wUnit)) : ''}
-                          onChange={v => updateSet(exIdx, setIdx, 'actual_weight', displayToLbs(Number(v) || 0, wUnit))}
-                          unit={wUnit}
-                          placeholder={set.target_weight > 0 ? String(displayWeight(set.target_weight, wUnit)) : '—'}
-                          disabled={set.completed}
-                        />
+                            {/* Weight */}
+                            <WeightInput
+                              stepper={false}
+                              value={set.actual_weight ? String(displayWeight(set.actual_weight, wUnit)) : ''}
+                              onChange={v => updateSet(exIdx, setIdx, 'actual_weight', displayToLbs(Number(v) || 0, wUnit))}
+                              unit={wUnit}
+                              placeholder={set.target_weight > 0 ? String(displayWeight(set.target_weight, wUnit)) : '—'}
+                              disabled={set.completed}
+                            />
+                          </>
+                        )}
 
                         {/* Complete toggle */}
                         <button

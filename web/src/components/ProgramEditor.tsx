@@ -7,6 +7,7 @@ import RestPicker from './RestPicker'
 import * as types from '../types'
 import { formatExerciseName } from '../utils/exerciseUtils'
 import { isTimed } from '../utils/workoutSets'
+import TimedToggle from './exercise/TimedToggle'
 
 export interface ProgramFormData {
   name: string
@@ -115,6 +116,21 @@ export default function ProgramEditor({
     setFormData(prev => {
       const exercises = [...prev.exercises]
       ;(exercises[exIdx].sets[setIdx] as any)[field] = Number(value) || 0
+      return { ...prev, exercises }
+    })
+  }
+
+  // The exercise's timed flag changed (via TimedToggle) — refresh the cached
+  // exercise object and remap this exercise's sets to match the new mode,
+  // same conditional shape addExercise/addSet already seed.
+  const retagExercise = (exIdx: number, exercise: types.Exercise) => {
+    setPickerExercises(prev => ({ ...prev, [exercise.id]: exercise }))
+    setFormData(prev => {
+      const exercises = [...prev.exercises]
+      const sets = exercises[exIdx].sets.map(s => isTimed(exercise)
+        ? { ...s, target_reps: 0, target_weight: 0, target_duration_seconds: exercise.default_duration_seconds || 30 }
+        : { ...s, target_duration_seconds: 0 })
+      exercises[exIdx] = { ...exercises[exIdx], sets }
       return { ...prev, exercises }
     })
   }
@@ -287,6 +303,12 @@ export default function ProgramEditor({
                       className="input text-sm"
                     />
                   </div>
+
+                  {exercise && (
+                    <div className="mb-4">
+                      <TimedToggle exercise={exercise} onUpdated={updated => retagExercise(exIdx, updated)} />
+                    </div>
+                  )}
 
                   <div className="mb-4">
                     <div className="flex items-center gap-1.5 mb-1">

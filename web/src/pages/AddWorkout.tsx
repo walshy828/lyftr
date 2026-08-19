@@ -10,6 +10,7 @@ import ProgramPicker from '../components/ProgramPicker'
 import RestPicker from '../components/RestPicker'
 import FeelingPicker from '../components/FeelingPicker'
 import { isCardio, isTimed } from '../utils/workoutSets'
+import TimedToggle from '../components/exercise/TimedToggle'
 import * as types from '../types'
 import { formatExerciseName } from '../utils/exerciseUtils'
 
@@ -89,6 +90,18 @@ export default function AddWorkout() {
     setFormData(prev => {
       const exercises = [...prev.exercises]
       ;(exercises[exIdx].sets[setIdx] as any)[field] = Number(value) || 0
+      return { ...prev, exercises }
+    })
+  }
+
+  const retagExercise = (exIdx: number, exercise: types.Exercise) => {
+    setPickerExercises(prev => ({ ...prev, [exercise.id]: exercise }))
+    setFormData(prev => {
+      const exercises = [...prev.exercises]
+      const sets = exercises[exIdx].sets.map(s => isTimed(exercise)
+        ? { ...s, reps: 0, weight: 0, duration: exercise.default_duration_seconds || 30 }
+        : { ...s, duration: 0 })
+      exercises[exIdx] = { ...exercises[exIdx], sets }
       return { ...prev, exercises }
     })
   }
@@ -243,6 +256,12 @@ export default function AddWorkout() {
                     <label className="text-xs text-tx-muted font-medium uppercase tracking-wider block mb-1">Notes</label>
                     <input type="text" value={workoutEx.notes} onChange={e => { const ex = [...formData.exercises]; ex[exIdx].notes = e.target.value; setFormData(p => ({ ...p, exercises: ex })) }} placeholder="e.g., Felt strong" className="input text-sm" />
                   </div>
+
+                  {exercise && (
+                    <div className="mb-4">
+                      <TimedToggle exercise={exercise} onUpdated={updated => retagExercise(exIdx, updated)} />
+                    </div>
+                  )}
 
                   <div className="mb-4">
                     <div className="flex items-center gap-1.5 mb-1">

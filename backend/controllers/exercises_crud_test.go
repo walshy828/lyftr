@@ -109,6 +109,64 @@ func TestCreateExercise_timedDefaultsDurationWhenUnset(t *testing.T) {
 	}
 }
 
+func TestSetExerciseTimed_worksOnLibraryExercise(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), nil)
+
+	// A library ("free") exercise — UpdateExercise would 403 this, but
+	// SetExerciseTimed is deliberately not gated to source=custom.
+	id := createTestExerciseWithSource(t, "Ankle Circles", "free")
+
+	c, w := newContext(uid, http.MethodPatch, "/api/v1/exercises/"+strconv.FormatInt(id, 10)+"/timed", map[string]any{
+		"is_timed":                 true,
+		"default_duration_seconds": 30,
+	})
+	setParam(c, "id", strconv.FormatInt(id, 10))
+	h.SetExerciseTimed(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeResponse(t, w)["data"].(map[string]any)
+	if body["is_timed"] != true {
+		t.Errorf("expected is_timed=true, got %v", body["is_timed"])
+	}
+	if body["default_duration_seconds"] != float64(30) {
+		t.Errorf("expected default_duration_seconds=30, got %v", body["default_duration_seconds"])
+	}
+	if body["name"] != "Ankle Circles" {
+		t.Errorf("expected name to be untouched, got %v", body["name"])
+	}
+	if body["source"] != "free" {
+		t.Errorf("expected source to be untouched, got %v", body["source"])
+	}
+
+	// Confirm UpdateExercise (the full-edit path) still 403s this library row.
+	updC, updW := newContext(uid, http.MethodPut, "/api/v1/exercises/"+strconv.FormatInt(id, 10), map[string]any{
+		"name": "Hacked Name", "muscle_group": "chest",
+	})
+	setParam(updC, "id", strconv.FormatInt(id, 10))
+	h.UpdateExercise(updC)
+	if updW.Code != http.StatusForbidden {
+		t.Errorf("expected UpdateExercise to still 403 a library row, got %d", updW.Code)
+	}
+}
+
+func TestSetExerciseTimed_notFound(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	h := NewHandler(stores.New(db.DB), nil)
+
+	c, w := newContext(uid, http.MethodPatch, "/api/v1/exercises/999999/timed", map[string]any{"is_timed": true})
+	setParam(c, "id", "999999")
+	h.SetExerciseTimed(c)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCreateExercise_imageTooLarge(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)

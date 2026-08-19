@@ -237,6 +237,24 @@ func (s *ExerciseStore) Delete(id int64) error {
 	return nil
 }
 
+// SetTimed sets the is_timed/default_duration_seconds flags on ANY exercise,
+// custom or library — unlike Update, it's not gated to source=custom. It
+// touches only these two columns, so it's safe for a library row: a re-sync
+// (seed.SyncExercises/WipeAndReseed) never references either column, so this
+// survives untouched. Returns sql.ErrNoRows if the id doesn't exist.
+func (s *ExerciseStore) SetTimed(id int64, isTimed bool, defaultDurationSeconds int) (models.Exercise, error) {
+	res, err := s.db.Exec(`UPDATE exercises SET is_timed = ?, default_duration_seconds = ? WHERE id = ?`, isTimed, defaultDurationSeconds, id)
+	if err != nil {
+		return models.Exercise{}, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return models.Exercise{}, err
+	} else if n == 0 {
+		return models.Exercise{}, sql.ErrNoRows
+	}
+	return s.Get(id)
+}
+
 func (s *ExerciseStore) Count() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM exercises`).Scan(&n)

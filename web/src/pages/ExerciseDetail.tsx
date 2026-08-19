@@ -72,7 +72,7 @@ export default function ExerciseDetail() {
         </button>
       </div>
 
-      <ExerciseDetailContent exercise={exercise} />
+      <ExerciseDetailContent exercise={exercise} onExerciseUpdated={setExercise} />
 
       {showPlanSheet && <AddToRoutineSheet exercise={exercise} onClose={() => setShowPlanSheet(false)} />}
       {showEditSheet && (

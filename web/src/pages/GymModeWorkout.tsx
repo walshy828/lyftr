@@ -23,6 +23,7 @@ import NumberField from '../components/ui/NumberField'
 import DiscardConfirm from '../components/DiscardConfirm'
 import CardioEntry from '../components/CardioEntry'
 import TimedExerciseEntry from '../components/TimedExerciseEntry'
+import TimedToggle from '../components/exercise/TimedToggle'
 import { clampStep, clampValue } from '../utils/number'
 import { nextIncompleteSet, isCardio, isTimed } from '../utils/workoutSets'
 import { displayWeight, displayToLbs } from '../stores/settings'
@@ -74,7 +75,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
   const {
     session, minimizeGym,
     gymPhase: phase, gymExIdx: activeIdx, gymSetIdx: activeSetIdx, setGymState,
-    updateSet, completeSet, addSet, removeSet, removeExercise, updateExerciseNotes, addExercise,
+    updateSet, completeSet, addSet, removeSet, removeExercise, updateExerciseNotes, addExercise, retagExercise,
     buildPayload, cancelSession,
     startRest, clearRest, restExIdx, restSetIdx, setExerciseRest,
   } = useWorkoutSession()
@@ -456,6 +457,8 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
               <p className="text-[11px] text-tx-muted mt-1 mb-3">Auto-starts when you complete a set</p>
               <RestPicker value={ex.rest_seconds ?? (settings.rest_seconds_default ?? 90)} onChange={secs => setExerciseRest(activeIdx, secs)} />
             </div>
+
+            <TimedToggle exercise={exercise} onUpdated={updated => retagExercise(activeIdx, updated)} />
 
             {/* Secondary muscles */}
             {exercise.secondary_muscles?.length > 0 && (

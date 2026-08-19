@@ -89,6 +89,43 @@ describe('workoutSession exercise timer', () => {
     expect(state.exTimerSetIdx).toBeNull()
   })
 
+  it('retagExercise flips a strength exercise to timed and remaps its sets', () => {
+    const s = useWorkoutSession.getState()
+    const strengthExercise = {
+      id: 2, name: 'Ankle Circles', muscle_group: 'calves', category: 'strength',
+      equipment: '', description: '', secondary_muscles: [],
+    } as unknown as types.Exercise
+    s.startSession('Mobility', [{
+      exercise_id: 2,
+      exercise: strengthExercise,
+      notes: '',
+      sets: [{ set_number: 1, target_reps: 10, target_weight: 25, actual_reps: 10, actual_weight: 25, completed: false }],
+    }])
+
+    const timedExercise = { ...strengthExercise, is_timed: true, default_duration_seconds: 20 }
+    s.retagExercise(0, timedExercise)
+
+    const state = useWorkoutSession.getState()
+    const ex = state.session!.exercises[0]
+    expect(ex.exercise.is_timed).toBe(true)
+    expect(ex.sets[0].actual_reps).toBe(0)
+    expect(ex.sets[0].actual_weight).toBe(0)
+    expect(ex.sets[0].actual_duration).toBe(20)
+  })
+
+  it('retagExercise flips a timed exercise back to strength and clears duration', () => {
+    const s = useWorkoutSession.getState()
+    s.startSession('Core', timedSession())
+    s.updateSet(0, 0, 'actual_duration', 60)
+
+    const strengthExercise = { ...timedExercise, is_timed: false, default_duration_seconds: 0 }
+    s.retagExercise(0, strengthExercise)
+
+    const ex = useWorkoutSession.getState().session!.exercises[0]
+    expect(ex.exercise.is_timed).toBe(false)
+    expect(ex.sets[0].actual_duration).toBe(0)
+  })
+
   it('buildPayload records the logged duration on a timed set', () => {
     const s = useWorkoutSession.getState()
     s.startSession('Core', timedSession())

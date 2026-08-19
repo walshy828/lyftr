@@ -8,6 +8,7 @@ import { useSettingsStore, weightShort, displayWeight } from '../stores/settings
 import { useTheme } from '../hooks/useTheme'
 import PeriodSelector from './PeriodSelector'
 import ExerciseDemo from './exercise/ExerciseDemo'
+import TimedToggle from './exercise/TimedToggle'
 import { hasExerciseImage } from '../utils/exerciseMedia'
 import * as types from '../types'
 import { muscleColor, muscleColorBordered, EQUIPMENT_LABEL, muscleToBodySlugs } from '../utils/exerciseUtils'
@@ -34,9 +35,11 @@ function buildBodyData(exercise: types.Exercise): IExerciseData[] {
 
 interface Props {
   exercise: types.Exercise
+  /** Called with the server's updated exercise after the timed toggle changes. */
+  onExerciseUpdated?: (exercise: types.Exercise) => void
 }
 
-export default function ExerciseDetailContent({ exercise }: Props) {
+export default function ExerciseDetailContent({ exercise, onExerciseUpdated }: Props) {
   const { isDark } = useTheme()
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
@@ -137,6 +140,8 @@ export default function ExerciseDetailContent({ exercise }: Props) {
           </ol>
         </div>
       )}
+
+      <TimedToggle exercise={exercise} onUpdated={onExerciseUpdated ?? (() => {})} />
 
       {/* Watch on YouTube */}
       <a

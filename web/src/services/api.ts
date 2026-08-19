@@ -295,6 +295,14 @@ export const exerciseAPI = {
       exerciseAPI.clearCache()
       return res.data
     }),
+  /** Marks ANY exercise (custom or library) timed or not, with a default hold
+   *  duration — a permanent, library-wide change, unlike editing a custom
+   *  exercise's other fields (which stays source=custom only). */
+  setTimed: (id: number, isTimed: boolean, defaultDurationSeconds: number) =>
+    api.patch<{ data: types.Exercise }>(`/exercises/${id}/timed`, { is_timed: isTimed, default_duration_seconds: defaultDurationSeconds }).then(res => unwrap(res)).then(ex => {
+      exerciseAPI.clearCache()
+      return ex
+    }),
   clearCache: () => { _exerciseCache = null; _exerciseCachePromise = null; _facetCache = null },
   seedStatus: () => api.get<{ data: { count: number; in_progress: boolean } }>('/admin/seed-status').then(res => unwrap(res)),
   sync: () => api.post<{ data: { synced: boolean; total: number } }>('/admin/sync-exercises').then(res => unwrap(res)),
