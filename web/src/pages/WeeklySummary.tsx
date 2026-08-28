@@ -240,6 +240,7 @@ export default function WeeklySummary() {
               <thead>
                 <tr className="text-tx-muted text-left border-b border-surface-border">
                   <th className="py-1.5 pr-3 font-medium">Week of</th>
+                  <th className="py-1.5 pr-3 font-medium">Starting weight</th>
                   <th className="py-1.5 pr-3 font-medium">Weight</th>
                   <th className="py-1.5 pr-3 font-medium">Strength</th>
                   <th className="py-1.5 pr-3 font-medium">Cardio</th>
@@ -258,6 +259,9 @@ export default function WeeklySummary() {
                   return (
                     <tr key={row.range.start.toISOString()} className="border-b border-surface-border last:border-0">
                       <td className="py-1.5 pr-3 text-tx-primary whitespace-nowrap">{weekLabel(row)}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap text-tx-secondary">
+                        {row.weight.start !== null ? `${displayWeight(row.weight.start, settings.weight_unit).toFixed(1)} ${wUnit}` : '—'}
+                      </td>
                       <td className="py-1.5 pr-3">
                         {row.weight.change !== null ? (
                           <DeltaBadge
