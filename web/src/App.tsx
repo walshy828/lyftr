@@ -18,6 +18,7 @@ const ExerciseDetail = lazy(() => import('./pages/ExerciseDetail'))
 const Exercises = lazy(() => import('./pages/Exercises'))
 const Plan = lazy(() => import('./pages/Plan'))
 const Stats = lazy(() => import('./pages/Stats'))
+const WeeklySummary = lazy(() => import('./pages/WeeklySummary'))
 const AddProgram = lazy(() => import('./pages/AddProgram'))
 const AddAIProgram = lazy(() => import('./pages/AddAIProgram'))
 const EditProgram = lazy(() => import('./pages/EditProgram'))
@@ -83,6 +84,7 @@ function App() {
             {/* Schedule renamed to Plan; keep old links working. */}
             <Route path="/schedule" element={<Navigate to="/plan" replace />} />
             <Route path="/stats" element={<Stats />} />
+            <Route path="/stats/weekly" element={<WeeklySummary />} />
             <Route path="/exercises/:exerciseId" element={<ExerciseDetail />} />
             <Route path="/food" element={<Food />} />
             <Route path="/food/log" element={<LogFood />} />

@@ -88,7 +88,15 @@ export default function Stats() {
 
   return (
     <div className="space-y-4 animate-slide-up">
-      <PageHeader title="Stats" subtitle="Your training record" />
+      <PageHeader
+        title="Stats"
+        subtitle="Your training record"
+        action={
+          <Link to="/stats/weekly" className="btn-secondary inline-flex items-center gap-1.5 text-sm">
+            Weekly Summary <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        }
+      />
 
       {/* Headline totals for the trailing year */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
