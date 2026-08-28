@@ -98,6 +98,131 @@ func withOFFMock(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	return s
 }
 
+// ─── CopyFoodLogs ─────────────────────────────────────────────────────────────
+
+func TestCopyFoodLogs_preservesMealByDefault(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	src := time.Date(2026, 1, 1, 8, 30, 0, 0, time.UTC)
+	id1 := insertFoodLog(t, uid, "Oatmeal", "breakfast", 350, 12, 60, 6, src)
+	id2 := insertFoodLog(t, uid, "Coffee", "breakfast", 5, 0, 1, 0, src)
+
+	body := map[string]any{
+		"entry_ids":   []int64{id1, id2},
+		"target_date": "2026-01-02",
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/copy", body)
+	th.CopyFoodLogs(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].([]any)
+	if len(data) != 2 {
+		t.Fatalf("expected 2 copied entries, got %d", len(data))
+	}
+	for _, row := range data {
+		e := row.(map[string]any)
+		if e["meal"].(string) != "breakfast" {
+			t.Errorf("expected meal preserved as breakfast, got %v", e["meal"])
+		}
+		loggedAt := e["logged_at"].(string)
+		if !strings.HasPrefix(loggedAt, "2026-01-02") {
+			t.Errorf("expected logged_at on target date, got %v", loggedAt)
+		}
+		if !strings.Contains(loggedAt, "08:30") {
+			t.Errorf("expected time-of-day preserved, got %v", loggedAt)
+		}
+	}
+
+	logs, err := th.s.Food.ListByDay(uid, "2026-01-01")
+	if err != nil || len(logs) != 2 {
+		t.Fatalf("expected source day untouched, got %d logs, err=%v", len(logs), err)
+	}
+}
+
+func TestCopyFoodLogs_reassignsTargetMeal(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	id := insertFoodLog(t, uid, "Leftover pasta", "dinner", 500, 20, 60, 15, time.Now())
+
+	body := map[string]any{
+		"entry_ids":   []int64{id},
+		"target_date": "2026-01-05",
+		"target_meal": "lunch",
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/copy", body)
+	th.CopyFoodLogs(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].([]any)
+	e := data[0].(map[string]any)
+	if e["meal"].(string) != "lunch" {
+		t.Errorf("expected meal reassigned to lunch, got %v", e["meal"])
+	}
+}
+
+func TestCopyFoodLogs_skipsOtherUsersEntries(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	other := otherUser(t)
+	mine := insertFoodLog(t, uid, "Mine", "snacks", 100, 5, 10, 3, time.Now())
+	theirs := insertFoodLog(t, other, "Theirs", "snacks", 200, 10, 20, 5, time.Now())
+
+	body := map[string]any{
+		"entry_ids":   []int64{mine, theirs},
+		"target_date": "2026-02-01",
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/copy", body)
+	th.CopyFoodLogs(c)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	data := resp["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("expected only the caller's own entry copied, got %d", len(data))
+	}
+	if data[0].(map[string]any)["name"].(string) != "Mine" {
+		t.Errorf("expected copied entry to be the caller's own, got %v", data[0])
+	}
+}
+
+func TestCopyFoodLogs_invalidTargetDate(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	id := insertFoodLog(t, uid, "Test", "snacks", 100, 5, 10, 3, time.Now())
+
+	body := map[string]any{
+		"entry_ids":   []int64{id},
+		"target_date": "not-a-date",
+	}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/copy", body)
+	th.CopyFoodLogs(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid target_date, got %d", w.Code)
+	}
+}
+
+func TestCopyFoodLogs_missingEntryIDs(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	body := map[string]any{"target_date": "2026-01-01"}
+	c, w := newContext(uid, http.MethodPost, "/api/v1/food/copy", body)
+	th.CopyFoodLogs(c)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for missing entry_ids, got %d", w.Code)
+	}
+}
+
 // ─── ListFoodLogs ─────────────────────────────────────────────────────────────
 
 func TestListFoodLogs_empty(t *testing.T) {

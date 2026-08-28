@@ -3,6 +3,7 @@ package stores
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/models"
 )
@@ -89,6 +90,79 @@ func (s *FoodStore) Delete(uid, id int64) (int64, error) {
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
+}
+
+// CopyEntries duplicates the given (user-owned) food log entries onto
+// targetDate in a single transaction. Each copy keeps its source entry's
+// time-of-day (only the calendar day moves) so the copied entries fall in a
+// sensible order alongside anything already logged that day; targetMeal,
+// when non-empty, reassigns every copy to that meal instead of preserving
+// each entry's own. Ids that don't belong to uid are silently skipped rather
+// than failing the whole copy.
+func (s *FoodStore) CopyEntries(uid int64, ids []int64, targetDate, targetMeal string) ([]models.FoodLog, error) {
+	return inTx(s.db, func(tx *sql.Tx) ([]models.FoodLog, error) {
+		placeholders, args := inArgs(ids)
+		args = append([]any{uid}, args...)
+		rows, err := tx.Query(foodLogSelect+` WHERE user_id = ? AND id IN (`+placeholders+`) ORDER BY logged_at ASC`, args...)
+		if err != nil {
+			return nil, err
+		}
+		var sources []models.FoodLog
+		for rows.Next() {
+			var f models.FoodLog
+			if err := scanFoodLog(rows, &f); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			sources = append(sources, f)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+
+		year, month, day, err := parseDay(targetDate)
+		if err != nil {
+			return nil, err
+		}
+
+		copies := make([]models.FoodLog, 0, len(sources))
+		for _, src := range sources {
+			meal := src.Meal
+			if targetMeal != "" {
+				meal = targetMeal
+			}
+			t := src.LoggedAt
+			loggedAt := time.Date(year, month, day, t.Hour(), t.Minute(), t.Second(), 0, t.Location())
+
+			res, err := tx.Exec(
+				`INSERT INTO food_logs (user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, serving_size_grams, serving_size_ml, barcode, image_url, source, logged_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				uid, src.Name, src.Brand, meal, src.Calories, src.Protein, src.Carbs, src.Fat, src.Fiber, src.Sugar, src.Sodium, src.Cholesterol,
+				src.Servings, src.ServingSize, src.ServingSizeGrams, src.ServingSizeML, src.Barcode, src.ImageURL, src.Source, loggedAt,
+			)
+			if err != nil {
+				return nil, err
+			}
+			id, _ := res.LastInsertId()
+
+			var copied models.FoodLog
+			if err := scanFoodLog(tx.QueryRow(foodLogSelect+` WHERE id = ?`, id), &copied); err != nil {
+				return nil, err
+			}
+			copies = append(copies, copied)
+		}
+		return copies, nil
+	})
+}
+
+func parseDay(date string) (year int, month time.Month, day int, err error) {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return t.Year(), t.Month(), t.Day(), nil
 }
 
 // DailyMacros returns the day's summed macros (WorkoutCount/Date are filled by

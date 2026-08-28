@@ -485,6 +485,12 @@ export const foodAPI = {
     }).then(res => unwrap(res)),
   recommend: (meal: string, date: string) =>
     api.post<{ data: { recommendations: types.MealRecommendation[] } }>('/food/recommend', { meal, date }).then(res => unwrap(res)),
+  // Duplicates `entryIds` (any owned log entries) onto targetDate. Omitting
+  // targetMeal preserves each source entry's own meal — used for whole-day
+  // copies; passing it reassigns every copy to that meal.
+  copy: (entryIds: number[], targetDate: string, targetMeal?: types.FoodLog['meal']) =>
+    api.post<{ data: types.FoodLog[] }>('/food/copy', { entry_ids: entryIds, target_date: targetDate, target_meal: targetMeal })
+      .then(res => unwrap(res)),
 }
 
 export const savedFoodsAPI = {

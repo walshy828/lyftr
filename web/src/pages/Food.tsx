@@ -4,7 +4,7 @@ import { format, subDays, addDays } from 'date-fns'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Flame, Plus, Trash2,
   AlertCircle, Coffee, Sun, Moon, Cookie, CalendarDays, Utensils, Sparkles,
-  Bookmark, BookmarkCheck,
+  Bookmark, BookmarkCheck, Copy,
 } from 'lucide-react'
 import IconButton from '../components/ui/IconButton'
 import SectionHeader from '../components/ui/SectionHeader'
@@ -16,6 +16,7 @@ import {
 } from 'recharts'
 import Loading from '../components/Loading'
 import MealRecommendations from '../components/MealRecommendations'
+import CopyMealModal from '../components/CopyMealModal'
 import PeriodSelector from '../components/PeriodSelector'
 import SourceBadge from '../components/food/SourceBadge'
 import { foodAPI, userAPI } from '../services/api'
@@ -59,6 +60,10 @@ export default function Food() {
   const hasLoadedRef = useRef(false)
   const [showMoreNutrients, setShowMoreNutrients] = useState(false)
   const [recommendMeal, setRecommendMeal] = useState<types.FoodLog['meal'] | null>(null)
+  // Copy-from-a-previous-day modal. `meal` set = per-meal copy; undefined =
+  // whole-day copy. `open` distinguishes "closed" from "open, whole day" so
+  // the latter isn't confused with a falsy meal.
+  const [copyModal, setCopyModal] = useState<{ open: boolean; meal?: types.FoodLog['meal'] }>({ open: false })
 
   // Saving a past entry into My Foods. `savedIds` only marks entries saved in
   // this session — the day's logs don't carry a "is it in My Foods?" flag, so
@@ -361,6 +366,15 @@ export default function Food() {
 
       {/* Meals */}
       <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-semibold text-tx-secondary uppercase tracking-wide">Meals</span>
+          <button
+            onClick={() => setCopyModal({ open: true })}
+            className="flex items-center gap-1.5 text-xs font-medium text-tx-muted hover:text-tx-primary transition-colors"
+          >
+            <Copy className="w-3.5 h-3.5" /> Copy day
+          </button>
+        </div>
         {MEALS.map(meal => {
             const MealIcon = MEAL_ICONS[meal]
             const iconColor = MEAL_COLORS[meal]
@@ -385,6 +399,12 @@ export default function Food() {
                     variant="brand"
                     label={`Suggest ${MEAL_LABELS[meal]} ideas`}
                     onClick={() => setRecommendMeal(meal)}
+                  />
+                  <IconButton
+                    icon={Copy}
+                    variant="ghost"
+                    label={`Copy from a previous day into ${MEAL_LABELS[meal]}`}
+                    onClick={() => setCopyModal({ open: true, meal })}
                   />
                   <IconButton
                     icon={Plus}
@@ -679,6 +699,18 @@ export default function Food() {
           onClose={() => setRecommendMeal(null)}
           onLogged={() => {
             setRecommendMeal(null)
+            loadDay(selectedDate)
+          }}
+        />
+      )}
+
+      {copyModal.open && (
+        <CopyMealModal
+          targetDate={selectedDate}
+          meal={copyModal.meal}
+          onClose={() => setCopyModal({ open: false })}
+          onCopied={() => {
+            setCopyModal({ open: false })
             loadDay(selectedDate)
           }}
         />

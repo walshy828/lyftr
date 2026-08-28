@@ -127,6 +127,37 @@ func (h *Handler) LogFood(c *gin.Context) {
 	utils.Created(c, f)
 }
 
+// CopyFoodLogs duplicates a set of the caller's own food log entries onto
+// another day — powers "copy yesterday's breakfast" / "copy a whole day"
+// from the food diary. Entry ids the caller doesn't own are silently
+// skipped by the store rather than failing the whole request.
+func (h *Handler) CopyFoodLogs(c *gin.Context) {
+	uid := middleware.UserID(c)
+	var req models.CopyFoodLogsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	if _, err := time.Parse("2006-01-02", req.TargetDate); err != nil {
+		utils.BadRequest(c, "target_date must be YYYY-MM-DD")
+		return
+	}
+	if len(req.EntryIDs) > 100 {
+		utils.BadRequest(c, "cannot copy more than 100 entries at once")
+		return
+	}
+
+	logs, err := h.s.Food.CopyEntries(uid, req.EntryIDs, req.TargetDate, req.TargetMeal)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.Created(c, logs)
+}
+
 func (h *Handler) UpdateFoodLog(c *gin.Context) {
 	uid := middleware.UserID(c)
 	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)

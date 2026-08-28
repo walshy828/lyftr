@@ -1128,6 +1128,16 @@ type LogFoodRequest struct {
 	LoggedAt         time.Time `json:"logged_at"`
 }
 
+// CopyFoodLogsRequest duplicates a set of the user's own food log entries
+// (identified by id) onto TargetDate. TargetMeal, if set, reassigns every
+// copied entry to that meal; left empty, each copy keeps its source entry's
+// own meal — the shape a whole-day copy needs.
+type CopyFoodLogsRequest struct {
+	EntryIDs   []int64 `json:"entry_ids" validate:"required,min=1"`
+	TargetDate string  `json:"target_date" validate:"required,len=10"`
+	TargetMeal string  `json:"target_meal" validate:"omitempty,oneof=breakfast lunch dinner snacks"`
+}
+
 type AnalyzeLabelRequest struct {
 	ImageBase64 string `json:"image_base64" validate:"required"`
 	MediaType   string `json:"media_type" validate:"required,oneof=image/jpeg image/png image/webp"`
