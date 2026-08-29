@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { format, subDays } from 'date-fns'
-import { X, AlertCircle, Copy, Check, Square, CheckSquare } from 'lucide-react'
+import { format, subDays, addDays } from 'date-fns'
+import { X, AlertCircle, Copy, Check, Square, CheckSquare, ChevronLeft, ChevronRight } from 'lucide-react'
 import { foodAPI } from '../services/api'
 import { dayToLocalDate } from '../utils/dateUtils'
 import * as types from '../types'
@@ -114,6 +114,13 @@ export default function CopyMealModal({ targetDate, meal, onClose, onCopied }: P
         <div className="space-y-2">
           <p className="text-xs font-medium text-tx-muted uppercase tracking-wide">Copy from</p>
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setSourceDate(format(subDays(dayToLocalDate(sourceDate), 1), 'yyyy-MM-dd'))}
+              className="p-1.5 rounded-full hover:bg-surface-muted transition-colors text-tx-secondary"
+              aria-label="Previous day"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
             {quickDates.map((d, i) => (
               <button
                 key={d}
@@ -134,6 +141,14 @@ export default function CopyMealModal({ targetDate, meal, onClose, onCopied }: P
               onChange={e => e.target.value && setSourceDate(e.target.value)}
               className="px-3 py-1.5 rounded-full text-xs font-medium border border-surface-border bg-transparent text-tx-secondary"
             />
+            <button
+              onClick={() => setSourceDate(format(addDays(dayToLocalDate(sourceDate), 1), 'yyyy-MM-dd'))}
+              disabled={sourceDate >= targetDate}
+              className="p-1.5 rounded-full hover:bg-surface-muted transition-colors text-tx-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Next day"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
           {isToday && (
             <p className="text-[11px] text-amber-400">Source day is the same as the day you're copying into.</p>
