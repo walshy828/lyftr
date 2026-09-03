@@ -6,6 +6,17 @@ import (
 	"github.com/Cawlumm/lyftr-backend/models"
 )
 
+// sleepStageMinutes returns the stage's duration in minutes, guarding
+// against a malformed end-before-start row rather than crediting negative
+// time to a day's total.
+func sleepStageMinutes(stage models.SleepStage) float64 {
+	m := stage.EndedAt.Sub(stage.StartedAt).Minutes()
+	if m < 0 {
+		return 0
+	}
+	return m
+}
+
 // SleepStore owns all SQL for the sleep_sessions/sleep_stages entities.
 type SleepStore struct{ db *sql.DB }
 
@@ -167,4 +178,48 @@ func (s *SleepStore) Import(uid int64, reqs []models.CreateSleepSessionRequest) 
 		return r, nil
 	})
 	return res.Imported, res.Updated, err
+}
+
+// DailySummary rolls sessions up into total + per-stage minutes per night,
+// bucketed by the calendar day (UTC) the session started on — built on top
+// of List rather than its own query, since a night is already at most a
+// couple of sessions and List already assembles each one with its stages.
+func (s *SleepStore) DailySummary(uid int64, from, to sql.NullTime) ([]models.SleepDailySummary, error) {
+	sessions, err := s.List(uid, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	byDay := map[string]*models.SleepDailySummary{}
+	order := []string{}
+	for _, sess := range sessions {
+		day := sess.StartedAt.UTC().Format("2006-01-02")
+		d, ok := byDay[day]
+		if !ok {
+			d = &models.SleepDailySummary{Day: day}
+			byDay[day] = d
+			order = append(order, day)
+		}
+		d.SessionCount++
+		for _, stage := range sess.Stages {
+			minutes := sleepStageMinutes(stage)
+			d.TotalMinutes += minutes
+			switch stage.StageType {
+			case models.SleepStageAwake:
+				d.AwakeMinutes += minutes
+			case models.SleepStageLight:
+				d.LightMinutes += minutes
+			case models.SleepStageDeep:
+				d.DeepMinutes += minutes
+			case models.SleepStageREM:
+				d.RemMinutes += minutes
+			}
+		}
+	}
+
+	out := make([]models.SleepDailySummary, len(order))
+	for i, day := range order {
+		out[i] = *byDay[day]
+	}
+	return out, nil
 }

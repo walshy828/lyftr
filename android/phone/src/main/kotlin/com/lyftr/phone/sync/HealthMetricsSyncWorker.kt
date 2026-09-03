@@ -75,14 +75,27 @@ class HealthMetricsSyncWorker(context: Context, params: WorkerParameters) : Coro
         // progress, and each only advances its own watermark on success so a
         // partial failure re-reads just that type's gap next run.
         try {
-            val heartRate = HealthConnectSync.readHeartRateSamples(client, tokenStore.lastHeartRateSyncAt)
-            totalFound += heartRate.size
-            if (heartRate.isNotEmpty()) {
-                val result = api.importHeartRateSamples(heartRate) ?: return record(Status.IMPORT_FAILED, found = totalFound, ok = false)
+            // Streamed batch-by-batch (not collected into one list first) —
+            // raw HR volume on a full-history first sync can mean years of
+            // continuous samples, and buffering all of it before uploading
+            // anything previously OOM'd the worker. The watermark advances
+            // after each batch's import succeeds, so a crash or failure
+            // partway through a large backfill resumes from where it left
+            // off next run instead of restarting the whole history.
+            var importFailed = false
+            HealthConnectSync.readHeartRateSamples(client, tokenStore.lastHeartRateSyncAt) { batch, latest ->
+                totalFound += batch.size
+                val result = api.importHeartRateSamples(batch)
+                if (result == null) {
+                    importFailed = true
+                    return@readHeartRateSamples false
+                }
                 totalImported += result.imported
                 totalUpdated += result.updated
+                tokenStore.lastHeartRateSyncAt = latest
+                true
             }
-            tokenStore.lastHeartRateSyncAt = Instant.now()
+            if (importFailed) return record(Status.IMPORT_FAILED, found = totalFound, ok = false)
 
             val metrics = HealthConnectSync.readHealthMetrics(client, tokenStore.lastHealthMetricsSyncAt)
             totalFound += metrics.size

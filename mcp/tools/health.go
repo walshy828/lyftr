@@ -24,6 +24,12 @@ type getSleepSessionInput struct {
 	ID int64 `json:"id" jsonschema:"Sleep session id"`
 }
 
+type heartRateZonesInput struct {
+	MaxHR int    `json:"max_hr,omitempty" jsonschema:"Max heart rate to base zone percentages on. Omit to estimate from the user's profile birth date (220-age) — fails if neither is available."`
+	From  string `json:"from,omitempty" jsonschema:"Start date (YYYY-MM-DD or RFC3339), inclusive"`
+	To    string `json:"to,omitempty" jsonschema:"End date (YYYY-MM-DD or RFC3339), inclusive"`
+}
+
 // registerHealth exposes read access to the health data imported from a
 // companion device's health platform (e.g. Health Connect): raw heart rate
 // samples, scalar metrics (HRV, SpO2, resting heart rate, active calories,
@@ -50,6 +56,18 @@ func registerHealth(server *mcp.Server, c *client.Client) {
 		setIfNonEmpty(q, "from", in.From)
 		setIfNonEmpty(q, "to", in.To)
 		data, err := c.Get(ctx, "/heart-rate/daily", q)
+		return nil, data, err
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_heart_rate_zones",
+		Description: "Get per-day time-in-zone minutes (the standard 5-zone model, as a percentage of max heart rate: zone 1 = 50-60%, zone 2 = 60-70%, zone 3 = 70-80%, zone 4 = 80-90%, zone 5 = 90%+), computed from raw heart rate samples.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in heartRateZonesInput) (*mcp.CallToolResult, any, error) {
+		q := url.Values{}
+		setIfPositive(q, "max_hr", in.MaxHR)
+		setIfNonEmpty(q, "from", in.From)
+		setIfNonEmpty(q, "to", in.To)
+		data, err := c.Get(ctx, "/heart-rate/zones", q)
 		return nil, data, err
 	})
 
@@ -81,6 +99,17 @@ func registerHealth(server *mcp.Server, c *client.Client) {
 		Description: "Get one sleep session by id, with its stage breakdown.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in getSleepSessionInput) (*mcp.CallToolResult, any, error) {
 		data, err := c.Get(ctx, fmt.Sprintf("/sleep/%d", in.ID), nil)
+		return nil, data, err
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_sleep_daily_summary",
+		Description: "Get per-night total and per-stage (awake/light/deep/REM) sleep minutes, rolled up from sleep sessions.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in dateRangeInput) (*mcp.CallToolResult, any, error) {
+		q := url.Values{}
+		setIfNonEmpty(q, "from", in.From)
+		setIfNonEmpty(q, "to", in.To)
+		data, err := c.Get(ctx, "/sleep/daily", q)
 		return nil, data, err
 	})
 }

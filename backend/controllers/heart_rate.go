@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"strconv"
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/middleware"
@@ -50,6 +51,46 @@ func (h *Handler) GetHeartRateDailyStats(c *gin.Context) {
 		return
 	}
 	utils.OK(c, stats)
+}
+
+// resolveMaxHR takes an explicit ?max_hr= override if present, otherwise
+// estimates it from the user's profile birth date (220-age, the standard
+// estimate). Returns ok=false when neither is available — the caller must
+// have set a birth date in their profile or pass max_hr explicitly, since a
+// silently wrong default would make every zone-minutes number meaningless.
+func (h *Handler) resolveMaxHR(c *gin.Context, uid int64) (maxHR int, ok bool) {
+	if raw := c.Query("max_hr"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			return v, true
+		}
+	}
+	profile, err := h.s.Profile.Get(uid)
+	if err != nil {
+		return 0, false
+	}
+	age, hasAge := utils.AgeFromBirthDate(profile.BirthDate, time.Now())
+	if !hasAge {
+		return 0, false
+	}
+	return 220 - age, true
+}
+
+// GetHeartRateZones returns per-day time-in-zone minutes (the standard
+// 5-zone model, as a percentage of max HR). Requires either ?max_hr= or a
+// birth date set in the user's profile — see resolveMaxHR.
+func (h *Handler) GetHeartRateZones(c *gin.Context) {
+	uid := middleware.UserID(c)
+	maxHR, ok := h.resolveMaxHR(c, uid)
+	if !ok {
+		utils.BadRequest(c, "max_hr is required, or set a birth date in your profile so it can be estimated")
+		return
+	}
+	from, to := parseFromTo(c)
+	zones, err := h.s.HeartRate.ZoneMinutes(uid, from, to, maxHR)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, zones)
 }
 
 // ImportHeartRateSamples accepts a batch of raw heart rate samples from a

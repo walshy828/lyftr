@@ -14,6 +14,19 @@
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
 
+    <!-- Full health-data archive (HealthMetricsSyncWorker): raw HR samples
+         reuse READ_HEART_RATE above; these cover the scalar metrics and sleep.
+         Every permission HealthConnectSync.PERMISSIONS requests must be
+         declared here or the system permission picker silently does nothing
+         when launched (no dialog, no error) instead of granting/denying. -->
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
+    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_VO2_MAX" />
+    <uses-permission android:name="android.permission.health.READ_FLOORS_CLIMBED" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+
     <!-- Without this, Health Connect's aggregate() call throws SecurityException
          whenever CardioSyncWorker runs as a background WorkManager job (i.e.
          every periodic run — the normal case), silently failing the whole

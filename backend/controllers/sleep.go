@@ -20,6 +20,16 @@ func (h *Handler) ListSleepSessions(c *gin.Context) {
 	utils.OK(c, sessions)
 }
 
+func (h *Handler) GetSleepDailySummary(c *gin.Context) {
+	uid := middleware.UserID(c)
+	from, to := parseFromTo(c)
+	summary, err := h.s.Sleep.DailySummary(uid, from, to)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, summary)
+}
+
 func (h *Handler) GetSleepSession(c *gin.Context) {
 	uid := middleware.UserID(c)
 	sid, err := strconv.ParseInt(c.Param("id"), 10, 64)

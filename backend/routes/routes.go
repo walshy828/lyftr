@@ -143,10 +143,12 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		// registered before sleep/:id for the same reason as cardio above.
 		protected.GET("heart-rate", h.ListHeartRateSamples)
 		protected.GET("heart-rate/daily", h.GetHeartRateDailyStats)
+		protected.GET("heart-rate/zones", h.GetHeartRateZones)
 		protected.POST("heart-rate/import", h.ImportHeartRateSamples)
 		protected.GET("health-metrics", h.ListHealthMetrics)
 		protected.POST("health-metrics/import", h.ImportHealthMetrics)
 		protected.GET("sleep", h.ListSleepSessions)
+		protected.GET("sleep/daily", h.GetSleepDailySummary)
 		protected.POST("sleep/import", h.ImportSleepSessions)
 		protected.GET("sleep/:id", h.GetSleepSession)
 

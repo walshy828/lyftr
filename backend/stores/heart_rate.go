@@ -2,6 +2,7 @@ package stores
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/models"
 )
@@ -147,4 +148,100 @@ func (s *HeartRateStore) DailyStats(uid int64, from, to sql.NullTime) ([]models.
 		stats = append(stats, d)
 	}
 	return stats, rows.Err()
+}
+
+// maxGapForZones is the longest silence between two consecutive samples that
+// still counts as "in zone" for the earlier sample. Health Connect doesn't
+// sample continuously (the watch isn't always worn, or samples arrive
+// sparsely between workouts) — without a cap, an overnight gap between the
+// last evening reading and the first morning one would attribute several
+// hours of zone time to a single stale sample. 15 minutes is generous enough
+// to cover typical background (non-workout) sampling cadence, which is often
+// every 5-15 minutes rather than continuous — a tighter cap would silently
+// exclude most non-workout time from every zone, undercounting the day.
+const maxGapForZones = 15 * time.Minute
+
+// ZoneMinutes computes per-day time-in-zone from raw samples, in Go rather
+// than SQL: HeartRateSample.RecordedAt is scanned into a real time.Time by
+// the driver (unlike the raw text heartRateDayExpr works around above), so
+// ordering and subtracting timestamps here is exact regardless of how the
+// column happens to be stored on disk — no date-parsing pitfalls to dodge.
+//
+// Each sample's bpm is assumed to hold from that sample until the next one
+// (capped at maxGapForZones), and its duration is credited to whichever zone
+// that bpm falls in. Zone boundaries are percentages of maxHR (the standard
+// 5-zone model): <50% below zone 1, then 50/60/70/80/90% cutoffs for zones
+// 1-5. Days are calendar days by the sample's own timestamp (UTC), matching
+// DailyStats above.
+func (s *HeartRateStore) ZoneMinutes(uid int64, from, to sql.NullTime, maxHR int) ([]models.HeartRateZoneMinutes, error) {
+	q := `SELECT recorded_at, bpm FROM heart_rate_samples WHERE user_id = ?`
+	args := []any{uid}
+	clause, args := dateRangeClause("recorded_at", from, to, args)
+	q += clause + ` ORDER BY recorded_at ASC`
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byDay := map[string]*models.HeartRateZoneMinutes{}
+	order := []string{}
+	var prevAt time.Time
+	var prevBPM int
+	havePrev := false
+
+	for rows.Next() {
+		var at time.Time
+		var bpm int
+		if err := rows.Scan(&at, &bpm); err != nil {
+			return nil, err
+		}
+		if havePrev {
+			gap := at.Sub(prevAt)
+			if gap > 0 && gap <= maxGapForZones {
+				day := prevAt.UTC().Format("2006-01-02")
+				d, ok := byDay[day]
+				if !ok {
+					d = &models.HeartRateZoneMinutes{Day: day, MaxHR: maxHR}
+					byDay[day] = d
+					order = append(order, day)
+				}
+				addZoneMinutes(d, prevBPM, maxHR, gap.Minutes())
+			}
+		}
+		prevAt, prevBPM, havePrev = at, bpm, true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	out := make([]models.HeartRateZoneMinutes, len(order))
+	for i, day := range order {
+		out[i] = *byDay[day]
+	}
+	return out, nil
+}
+
+// addZoneMinutes credits `minutes` to the zone bucket bpm falls into, as a
+// percentage of maxHR: <50% below zone 1, 50/60/70/80/90% the zone 1-5 cutoffs.
+func addZoneMinutes(d *models.HeartRateZoneMinutes, bpm, maxHR int, minutes float64) {
+	if maxHR <= 0 {
+		return
+	}
+	pct := float64(bpm) / float64(maxHR) * 100
+	switch {
+	case pct < 50:
+		d.BelowZone1Mins += minutes
+	case pct < 60:
+		d.Zone1Minutes += minutes
+	case pct < 70:
+		d.Zone2Minutes += minutes
+	case pct < 80:
+		d.Zone3Minutes += minutes
+	case pct < 90:
+		d.Zone4Minutes += minutes
+	default:
+		d.Zone5Minutes += minutes
+	}
 }

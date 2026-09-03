@@ -119,6 +119,41 @@ func TestGetSleepSession_scopesToOwner(t *testing.T) {
 	}
 }
 
+func TestGetSleepDailySummary(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	start := time.Date(2026, 3, 4, 23, 0, 0, 0, time.UTC)
+	c, w := newContext(uid, "POST", "/sleep/import", map[string]any{
+		"sessions": []map[string]any{sleepSessionBody("sl-summary", start)},
+	})
+	th.ImportSleepSessions(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	c, w = newContext(uid, "GET", "/sleep/daily", nil)
+	th.GetSleepDailySummary(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	days := decodeResponse(t, w)["data"].([]any)
+	if len(days) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(days))
+	}
+	d := days[0].(map[string]any)
+	// sleepSessionBody: 2h light, 2h deep, 4h rem = 480 total minutes.
+	if d["total_minutes"].(float64) != 480 {
+		t.Errorf("total_minutes = %v, want 480", d["total_minutes"])
+	}
+	if d["light_minutes"].(float64) != 120 || d["deep_minutes"].(float64) != 120 || d["rem_minutes"].(float64) != 240 {
+		t.Errorf("unexpected stage minutes: %v", d)
+	}
+	if d["session_count"].(float64) != 1 {
+		t.Errorf("session_count = %v, want 1", d["session_count"])
+	}
+}
+
 func TestImportSleepSessions_validation(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)

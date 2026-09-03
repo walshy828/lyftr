@@ -240,6 +240,21 @@ type HeartRateDailyStat struct {
 	Count int    `json:"count"`
 }
 
+// HeartRateZoneMinutes is one day's time-in-zone breakdown, bucketed by
+// percentage of the user's estimated max heart rate (the standard 5-zone
+// training model). BelowZone1Minutes covers <50% max HR (rest/light
+// activity) for completeness, even though it isn't one of the 5 named zones.
+type HeartRateZoneMinutes struct {
+	Day            string  `json:"day"` // 'YYYY-MM-DD'
+	MaxHR          int     `json:"max_hr"`
+	BelowZone1Mins float64 `json:"below_zone_1_minutes"`
+	Zone1Minutes   float64 `json:"zone_1_minutes"` // 50-60% max HR: very light
+	Zone2Minutes   float64 `json:"zone_2_minutes"` // 60-70%: light / fat burn
+	Zone3Minutes   float64 `json:"zone_3_minutes"` // 70-80%: moderate / aerobic
+	Zone4Minutes   float64 `json:"zone_4_minutes"` // 80-90%: hard / anaerobic
+	Zone5Minutes   float64 `json:"zone_5_minutes"` // 90-100%+: maximum
+}
+
 // Health metrics (#healthMetrics) -------------------------------------------
 
 // Metric types for HealthMetric.MetricType. One generic table covers all of
@@ -331,6 +346,18 @@ type CreateSleepSessionRequest struct {
 
 type BatchImportSleepSessionsRequest struct {
 	Sessions []CreateSleepSessionRequest `json:"sessions" validate:"required,dive"`
+}
+
+// SleepDailySummary rolls up one night's sleep session(s) into total and
+// per-stage duration, bucketed by the calendar day the session started on.
+type SleepDailySummary struct {
+	Day          string  `json:"day"` // 'YYYY-MM-DD', the session's start date
+	TotalMinutes float64 `json:"total_minutes"`
+	AwakeMinutes float64 `json:"awake_minutes"`
+	LightMinutes float64 `json:"light_minutes"`
+	DeepMinutes  float64 `json:"deep_minutes"`
+	RemMinutes   float64 `json:"rem_minutes"`
+	SessionCount int     `json:"session_count"`
 }
 
 // Blood pressure (#bloodPressure) ------------------------------------------

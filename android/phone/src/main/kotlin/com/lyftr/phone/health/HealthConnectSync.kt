@@ -215,29 +215,51 @@ object HealthConnectSync {
     }
 
     /**
-     * Raw beats-per-minute samples in (since, now]. `since` null means "every
-     * sample Health Connect has" — the one-time full-history backfill on a
-     * device's first sync; every run after that passes the sync watermark
-     * (see HealthMetricsSyncWorker), never the full history again, since raw
-     * HR volume makes re-scanning everything on every run too expensive.
+     * Raw beats-per-minute samples in (since, now], delivered one Health
+     * Connect page at a time via [onBatch] rather than collected into one
+     * list. `since` null means "every sample Health Connect has" — the
+     * one-time full-history backfill on a device's first sync, which can
+     * mean years of continuous watch data; accumulating that across every
+     * page before returning is what caused an OutOfMemoryError in practice
+     * (each HeartRateRecord page holds many samples, and pages kept
+     * appending to one growing list for the whole history). Streaming a
+     * page — converted, uploaded, and discarded — through [onBatch] keeps
+     * peak memory bounded to one page regardless of history length.
      */
-    suspend fun readHeartRateSamples(client: HealthConnectClient, since: Instant?): List<HeartRateSampleDto> {
+    suspend fun readHeartRateSamples(
+        client: HealthConnectClient,
+        since: Instant?,
+        // Returns whether to keep reading further pages — false stops early
+        // (e.g. once an upload batch fails) instead of burning through the
+        // rest of a potentially years-long history for no reason.
+        onBatch: suspend (samples: List<HeartRateSampleDto>, latest: Instant) -> Boolean,
+    ) {
         val range = TimeRangeFilter.after(since ?: Instant.EPOCH)
-        val records = readAllPages(client) { token ->
+        var token: String? = null
+        do {
+            // Smaller than the 1000-record default: each HeartRateRecord can
+            // itself hold a burst of many samples, so 1000 records/page can
+            // still mean far more than 1000 samples held at once — the
+            // OutOfMemoryError this streaming rewrite fixed came from
+            // buffering across pages, but a defensively smaller page size
+            // keeps peak memory for a single page low too.
             val page = client.readRecords(
-                ReadRecordsRequest(recordType = HeartRateRecord::class, timeRangeFilter = range, pageToken = token),
+                ReadRecordsRequest(recordType = HeartRateRecord::class, timeRangeFilter = range, pageToken = token, pageSize = 200),
             )
-            page.records to page.pageToken
-        }
-        return records.flatMap { record ->
-            record.samples.map { sample ->
-                HeartRateSampleDto(
-                    external_id = "${record.metadata.id}:${sample.time.epochSecond}",
-                    recorded_at = ISO_FORMAT.format(sample.time),
-                    bpm = sample.beatsPerMinute.toInt(),
-                )
+            var latest: Instant? = null
+            val batch = page.records.flatMap { record ->
+                record.samples.map { sample ->
+                    if (latest == null || sample.time.isAfter(latest)) latest = sample.time
+                    HeartRateSampleDto(
+                        external_id = "${record.metadata.id}:${sample.time.epochSecond}",
+                        recorded_at = ISO_FORMAT.format(sample.time),
+                        bpm = sample.beatsPerMinute.toInt(),
+                    )
+                }
             }
-        }
+            if (batch.isNotEmpty() && !onBatch(batch, latest!!)) return
+            token = page.pageToken
+        } while (token != null)
     }
 
     /**
