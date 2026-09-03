@@ -170,7 +170,7 @@ export default function BloodPressurePanel() {
 
       {/* The AI report is an explicit, user-triggered destination — never
           generated on page load. */}
-      <Link to="/health/bp/insight" className="card card-interactive p-4 flex items-center gap-3">
+      <Link to="/stats/bp/insight" className="card card-interactive p-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
           <Sparkles className="w-5 h-5 text-brand-500" />
         </div>

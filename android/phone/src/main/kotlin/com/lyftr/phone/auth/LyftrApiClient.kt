@@ -73,6 +73,7 @@ data class CardioSessionDto(
     val distance_meters: Double = 0.0,
     val avg_heart_rate: Int = 0,
     val calories: Double = 0.0,
+    val avg_cadence: Double? = null,
 )
 
 @Serializable

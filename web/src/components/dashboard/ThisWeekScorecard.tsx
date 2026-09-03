@@ -68,8 +68,8 @@ export default function ThisWeekScorecard({
         />
         <StatTile
           label="Synced Cardio"
-          to="/health"
-          linkLabel="Synced cardio this week — view health"
+          to="/stats?tab=cardio"
+          linkLabel="Synced cardio this week — view cardio stats"
           icon={HeartPulse}
           accent="#ef4444"
           value={cardioNow.sessions}

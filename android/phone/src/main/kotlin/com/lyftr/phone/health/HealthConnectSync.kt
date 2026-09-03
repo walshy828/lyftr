@@ -8,6 +8,7 @@ import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.aggregate.AggregationResult
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
+import androidx.health.connect.client.records.CyclingPedalingCadenceRecord
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.FloorsClimbedRecord
@@ -16,6 +17,7 @@ import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.OxygenSaturationRecord
 import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
+import androidx.health.connect.client.records.StepsCadenceRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.Vo2MaxRecord
@@ -63,6 +65,12 @@ object HealthConnectSync {
         HealthPermission.getReadPermission(FloorsClimbedRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
         HealthPermission.getReadPermission(StepsRecord::class),
+        // Per-session average cadence (cycling RPM or running/walking steps/min)
+        // for cardio sessions — read raw and averaged in aggregateTotals()
+        // since neither record type exposes an AggregateMetric in
+        // connect-client 1.1.0-alpha07 (verified against the resolved SDK jar).
+        HealthPermission.getReadPermission(CyclingPedalingCadenceRecord::class),
+        HealthPermission.getReadPermission(StepsCadenceRecord::class),
         HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND,
     )
 
@@ -137,13 +145,19 @@ object HealthConnectSync {
                 distance_meters = totals.distanceMeters,
                 avg_heart_rate = totals.avgHeartRate,
                 calories = totals.calories,
+                avg_cadence = totals.avgCadence,
             )
         }
     }
 
     private const val TAG = "CardioSync"
 
-    private data class SessionTotals(val distanceMeters: Double, val avgHeartRate: Int, val calories: Double)
+    private data class SessionTotals(
+        val distanceMeters: Double,
+        val avgHeartRate: Int,
+        val calories: Double,
+        val avgCadence: Double?,
+    )
 
     private suspend fun aggregateTotals(client: HealthConnectClient, start: Instant, end: Instant): SessionTotals {
         val result: AggregationResult = client.aggregate(
@@ -160,7 +174,35 @@ object HealthConnectSync {
             distanceMeters = result[DistanceRecord.DISTANCE_TOTAL]?.inMeters ?: 0.0,
             avgHeartRate = result[HeartRateRecord.BPM_AVG]?.toInt() ?: 0,
             calories = result[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0,
+            avgCadence = averageCadence(client, start, end),
         )
+    }
+
+    /**
+     * Average cadence over a session window. Neither CyclingPedalingCadenceRecord
+     * nor StepsCadenceRecord exposes an AggregateMetric in connect-client
+     * 1.1.0-alpha07 (verified against the resolved SDK jar — only
+     * SpeedRecord/PowerRecord have AVG/MAX/MIN companions), so this reads the
+     * raw per-sample records for the window and averages them in Kotlin
+     * instead. A session can be cycling (pedaling RPM) or running/walking
+     * (steps cadence) — whichever type actually has samples in this window
+     * wins; cycling is checked first since it's unambiguous when present.
+     */
+    private suspend fun averageCadence(client: HealthConnectClient, start: Instant, end: Instant): Double? {
+        val range = TimeRangeFilter.between(start, end)
+        val cyclingSamples = client.readRecords(
+            ReadRecordsRequest(recordType = CyclingPedalingCadenceRecord::class, timeRangeFilter = range),
+        ).records.flatMap { it.samples }
+        if (cyclingSamples.isNotEmpty()) {
+            return cyclingSamples.map { it.revolutionsPerMinute }.average()
+        }
+        val stepsSamples = client.readRecords(
+            ReadRecordsRequest(recordType = StepsCadenceRecord::class, timeRangeFilter = range),
+        ).records.flatMap { it.samples }
+        if (stepsSamples.isNotEmpty()) {
+            return stepsSamples.map { it.rate }.average()
+        }
+        return null
     }
 
     /**

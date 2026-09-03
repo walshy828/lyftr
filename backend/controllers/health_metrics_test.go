@@ -99,6 +99,89 @@ func TestImportHealthMetrics_upsertsOnResubmit(t *testing.T) {
 	}
 }
 
+func TestGetHealthMetricsDaily_sumsStepsByDefault(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	day := time.Date(2026, 3, 4, 8, 0, 0, 0, time.UTC)
+	c, w := newContext(uid, "POST", "/health-metrics/import", map[string]any{
+		"metrics": []map[string]any{
+			healthMetricBody("steps", "steps-1", day, 3000),
+			healthMetricBody("steps", "steps-2", day.Add(4*time.Hour), 4500),
+		},
+	})
+	th.ImportHealthMetrics(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	c, w = newContext(uid, "GET", "/health-metrics/daily?metric_type=steps&from=2026-03-01&to=2026-03-10&tz_offset=0", nil)
+	th.GetHealthMetricsDaily(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	stats := decodeResponse(t, w)["data"].([]any)
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 daily row, got %d", len(stats))
+	}
+	s := stats[0].(map[string]any)
+	if s["value"].(float64) != 7500 {
+		t.Errorf("value = %v, want 7500 (sum, default agg for steps)", s["value"])
+	}
+	if s["count"].(float64) != 2 {
+		t.Errorf("count = %v, want 2", s["count"])
+	}
+}
+
+func TestGetHealthMetricsDaily_averagesByDefaultForOtherMetrics(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	day := time.Date(2026, 3, 4, 8, 0, 0, 0, time.UTC)
+	c, w := newContext(uid, "POST", "/health-metrics/import", map[string]any{
+		"metrics": []map[string]any{
+			healthMetricBody("hrv_rmssd", "hrv-1", day, 40.0),
+			healthMetricBody("hrv_rmssd", "hrv-2", day.Add(4*time.Hour), 60.0),
+		},
+	})
+	th.ImportHealthMetrics(c)
+
+	c, w = newContext(uid, "GET", "/health-metrics/daily?metric_type=hrv_rmssd&from=2026-03-01&to=2026-03-10&tz_offset=0", nil)
+	th.GetHealthMetricsDaily(c)
+	stats := decodeResponse(t, w)["data"].([]any)
+	if len(stats) != 1 || stats[0].(map[string]any)["value"].(float64) != 50 {
+		t.Errorf("expected averaged value 50, got %v", stats)
+	}
+}
+
+func TestGetHealthMetricsDaily_requiresKnownMetricType(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	c, w := newContext(uid, "GET", "/health-metrics/daily", nil)
+	th.GetHealthMetricsDaily(c)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing metric_type, got %d", w.Code)
+	}
+
+	c, w = newContext(uid, "GET", "/health-metrics/daily?metric_type=not_a_real_metric", nil)
+	th.GetHealthMetricsDaily(c)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for unknown metric_type, got %d", w.Code)
+	}
+}
+
+func TestGetHealthMetricsDaily_rejectsInvalidAgg(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	c, w := newContext(uid, "GET", "/health-metrics/daily?metric_type=steps&agg=median", nil)
+	th.GetHealthMetricsDaily(c)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid agg, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestImportHealthMetrics_validation(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)

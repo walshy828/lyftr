@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Home, Apple, HeartPulse, CalendarDays, BarChart3, List,
+  Home, Apple, CalendarDays, BarChart3, List,
   LogOut, Moon, Sun, User,
   Shield, Timer, ChevronRight,
 } from 'lucide-react'
@@ -20,7 +20,6 @@ const NAV = [
   { path: '/',        label: 'Home',   icon: Home },
   { path: '/plan',    label: 'Plan',   icon: CalendarDays },
   { path: '/food',    label: 'Food',   icon: Apple },
-  { path: '/health',  label: 'Health', icon: HeartPulse },
   { path: '/stats',   label: 'Stats',  icon: BarChart3 },
 ]
 

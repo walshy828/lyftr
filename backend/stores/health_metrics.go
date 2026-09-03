@@ -60,6 +60,44 @@ func (s *HealthMetricStore) Latest(uid int64, metricType string) (models.HealthM
 	))
 }
 
+// healthMetricDayExpr buckets a reading into the user's LOCAL calendar day.
+// recorded_at is bound as a raw Go time.Time on insert, same write path as
+// heart_rate_samples.recorded_at — see heartRateDayExpr for why the substr
+// fallback is needed alongside date().
+const healthMetricDayExpr = `COALESCE(date(recorded_at, ?1), substr(recorded_at, 1, 10))`
+
+// DailyStats rolls readings of one metric_type up into per-day sum or
+// average, computed in SQL. agg must be "sum" or "avg" — validated by the
+// caller (see GetHealthMetricsDaily); this method only ever builds one of
+// two fixed aggregate expressions, never interpolates the caller's string.
+func (s *HealthMetricStore) DailyStats(uid int64, metricType, from, to string, tzOffset int, agg string) ([]models.HealthMetricDailyStat, error) {
+	aggExpr := "AVG(value)"
+	if agg == "sum" {
+		aggExpr = "SUM(value)"
+	}
+	q := `SELECT ` + healthMetricDayExpr + ` AS day, ` + aggExpr + `, COUNT(*)
+	        FROM health_metrics
+	       WHERE user_id = ?2 AND metric_type = ?3
+	         AND ` + healthMetricDayExpr + ` BETWEEN ?4 AND ?5
+	       GROUP BY day
+	       ORDER BY day ASC`
+
+	rows, err := s.db.Query(q, tzModifier(tzOffset), uid, metricType, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	stats := []models.HealthMetricDailyStat{}
+	for rows.Next() {
+		var d models.HealthMetricDailyStat
+		if err := rows.Scan(&d.Day, &d.Value, &d.Count); err != nil {
+			return nil, err
+		}
+		stats = append(stats, d)
+	}
+	return stats, rows.Err()
+}
+
 type healthMetricImportResult struct{ Imported, Updated int }
 
 // Import upserts every metric in the batch, matched on (user_id, metric_type, external_id).

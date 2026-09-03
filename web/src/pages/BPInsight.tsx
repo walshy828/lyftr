@@ -60,7 +60,7 @@ export default function BPInsight() {
 
   return (
     <div className="space-y-5 animate-slide-up">
-      <Link to="/health?tab=bp" className="inline-flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
+      <Link to="/stats?tab=bp" className="inline-flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
         <ArrowLeft className="w-4 h-4" />
         Blood Pressure
       </Link>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { TrendingDown, TrendingUp, Minus, Plus, Calendar, Sunrise, AlertCircle, ChevronRight, Scale, Activity, ArrowDown, ArrowUp, X, Sparkles } from 'lucide-react'
-import { format, subDays } from 'date-fns'
+import { format } from 'date-fns'
 import { Link } from 'react-router-dom'
 import { HelpTip } from '../Tooltip'
 import Loading from '../Loading'
@@ -8,15 +8,11 @@ import DateInput from '../ui/DateInput'
 import PeriodSelector from '../PeriodSelector'
 import WeightInput from '../WeightInput'
 import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
+import { usePeriodFilter } from '../../hooks/usePeriodFilter'
 import { todayStr, dayToIsoNoon, isoToDayInput } from '../../utils/dateUtils'
 import { weightAPI } from '../../services/api'
 import { useSettingsStore, weightShort, lbsToDisplay, displayToLbs, displayWeight, round1 , weightError, maxWeight } from '../../stores/settings'
 import * as types from '../../types'
-
-const PERIODS = ['7d', '30d', '90d', 'All'] as const
-type Period = typeof PERIODS[number]
-
-const PERIOD_DAYS: Record<Period, number | null> = { '7d': 7, '30d': 30, '90d': 90, 'All': null }
 
 interface ChartPoint {
   ts: number
@@ -207,7 +203,7 @@ function TrendChart({ points, wUnit }: { points: ChartPoint[]; wUnit: string }) 
 export default function WeightPanel() {
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
-  const [period, setPeriod] = useState<Period>('30d')
+  const { period, setPeriod, from: periodFrom, PERIODS } = usePeriodFilter('30d')
   const [stats, setStats] = useState<types.WeightStats | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -222,13 +218,11 @@ export default function WeightPanel() {
 
   useEffect(() => {
     setChartLoading(true)
-    const days = PERIOD_DAYS[period]
-    const from = days != null ? format(subDays(new Date(), days), 'yyyy-MM-dd') : undefined
-    weightAPI.list({ limit: 1000, from })
+    weightAPI.list({ limit: 1000, from: periodFrom })
       .then(data => setChartLogs(data || []))
       .catch(() => {})
       .finally(() => setChartLoading(false))
-  }, [period])
+  }, [period, periodFrom])
 
   useEffect(() => {
     weightAPI.stats().then(setStats).catch(() => {})
@@ -295,9 +289,7 @@ export default function WeightPanel() {
       duplicateWarningDismissedRef.current = false
       reload()
       weightAPI.stats().then(setStats).catch(() => {})
-      const days = PERIOD_DAYS[period]
-      const from = days != null ? format(subDays(new Date(), days), 'yyyy-MM-dd') : undefined
-      weightAPI.list({ limit: 1000, from }).then(data => setChartLogs(data || [])).catch(() => {})
+      weightAPI.list({ limit: 1000, from: periodFrom }).then(data => setChartLogs(data || [])).catch(() => {})
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to log weight')
     } finally {

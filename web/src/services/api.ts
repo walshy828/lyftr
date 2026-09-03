@@ -371,6 +371,9 @@ export const cardioAPI = {
     api.get<{ data: types.CardioSession[] }>('/cardio', { params }).then(res => unwrap(res)),
   get:    (id: number) => api.get<{ data: types.CardioSession }>(`/cardio/${id}`).then(res => unwrap(res)),
   delete: (id: number) => api.delete(`/cardio/${id}`),
+  /** Per-session HR-zone breakdown + max observed BPM. `maxHr` overrides the profile-derived estimate. */
+  zones:  (id: number, maxHr?: number) =>
+    api.get<{ data: types.CardioSessionDetail }>(`/cardio/${id}/zones`, { params: { max_hr: maxHr } }).then(res => unwrap(res)),
   /**
    * Server-side cardio aggregates over a date window, mirroring workoutAPI.stats.
    * `combinedStreak` additionally requests the cross-domain streak (workout OR
@@ -391,6 +394,39 @@ export const cardioAPI = {
         tz_offset: -new Date().getTimezoneOffset(),
       },
     }).then(res => unwrap(res)),
+}
+
+// Sleep sessions imported from a companion device (Health Connect via the
+// Android app) — read-only here, entries only arrive via that import.
+export const sleepAPI = {
+  list:   (from?: string, to?: string) =>
+    api.get<{ data: types.SleepSession[] }>('/sleep', { params: { from, to } }).then(res => unwrap(res)),
+  daily:  (from?: string, to?: string) =>
+    api.get<{ data: types.SleepDailySummary[] }>('/sleep/daily', { params: { from, to } }).then(res => unwrap(res)),
+  get:    (id: number) => api.get<{ data: types.SleepSession }>(`/sleep/${id}`).then(res => unwrap(res)),
+  /** Raw HR samples + HRV/resting-HR readings captured during this session. */
+  detail: (id: number) => api.get<{ data: types.SleepSessionDetail }>(`/sleep/${id}/detail`).then(res => unwrap(res)),
+  /** Sleep-stage averages bucketed by day or ISO week, paired with resting HR. */
+  trend:  (from?: string, to?: string, bucket?: 'day' | 'week') =>
+    api.get<{ data: types.SleepTrendPoint[] }>('/sleep/trend', { params: { from, to, bucket } }).then(res => unwrap(res)),
+}
+
+export const heartRateAPI = {
+  daily: (from?: string, to?: string) =>
+    api.get<{ data: types.HeartRateDailyStat[] }>('/heart-rate/daily', { params: { from, to } }).then(res => unwrap(res)),
+  /** Per-day time-in-zone minutes. `maxHr` overrides the profile-derived estimate. */
+  zones: (from?: string, to?: string, maxHr?: number) =>
+    api.get<{ data: types.HeartRateZoneMinutes[] }>('/heart-rate/zones', { params: { from, to, max_hr: maxHr } }).then(res => unwrap(res)),
+}
+
+// Generic scalar health metrics (HRV, resting HR, SpO2, VO2max, floors, steps)
+// imported from a companion device — read-only, one endpoint keyed by metric_type.
+export const healthMetricsAPI = {
+  list:  (metricType: types.MetricType, from?: string, to?: string) =>
+    api.get<{ data: types.HealthMetric[] }>('/health-metrics', { params: { metric_type: metricType, from, to } }).then(res => unwrap(res)),
+  /** Day-bucketed rollup — summed for 'steps', averaged for everything else unless `agg` overrides it. */
+  daily: (metricType: types.MetricType, from?: string, to?: string, agg?: 'avg' | 'sum') =>
+    api.get<{ data: types.HealthMetricDailyStat[] }>('/health-metrics/daily', { params: { metric_type: metricType, from, to, agg } }).then(res => unwrap(res)),
 }
 
 // Blood pressure (#bloodPressure). No unit conversion anywhere: mmHg is

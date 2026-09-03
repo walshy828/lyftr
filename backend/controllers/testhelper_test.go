@@ -260,6 +260,7 @@ CREATE TABLE IF NOT EXISTS cardio_sessions (
   distance_meters   REAL     NOT NULL DEFAULT 0,
   avg_heart_rate    INTEGER  NOT NULL DEFAULT 0,
   calories          REAL     NOT NULL DEFAULT 0,
+  avg_cadence       REAL,
   source            TEXT     NOT NULL DEFAULT 'health_connect',
   created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id, external_id)

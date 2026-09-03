@@ -2,6 +2,9 @@ package stores
 
 import (
 	"database/sql"
+	"fmt"
+	"sort"
+	"time"
 
 	"github.com/Cawlumm/lyftr-backend/models"
 )
@@ -220,6 +223,75 @@ func (s *SleepStore) DailySummary(uid int64, from, to sql.NullTime) ([]models.Sl
 	out := make([]models.SleepDailySummary, len(order))
 	for i, day := range order {
 		out[i] = *byDay[day]
+	}
+	return out, nil
+}
+
+// SleepTrendBucketKey buckets a timestamp into the client's local calendar
+// day ("YYYY-MM-DD") or ISO week ("YYYY-Www"), given the client's tz_offset
+// (minutes east of UTC — same convention as tzModifier). Exported so callers
+// composing cross-entity trend data (e.g. resting heart rate alongside sleep,
+// in GetSleepTrend) bucket their own readings into the exact same keys Trend
+// produces below.
+func SleepTrendBucketKey(t time.Time, tzOffset int, bucket string) string {
+	local := t.UTC().Add(time.Duration(tzOffset) * time.Minute)
+	if bucket == "day" {
+		return local.Format("2006-01-02")
+	}
+	year, week := local.ISOWeek()
+	return fmt.Sprintf("%04d-W%02d", year, week)
+}
+
+// Trend rolls sessions in [from, to] up into per-bucket (day or ISO week)
+// averages of total/stage minutes, built on top of List rather than its own
+// query — same "call the simpler primitive and re-bucket in Go" approach as
+// DailySummary, since a trend view spans at most a few hundred sessions.
+func (s *SleepStore) Trend(uid int64, from, to sql.NullTime, tzOffset int, bucket string) ([]models.SleepTrendPoint, error) {
+	sessions, err := s.List(uid, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	byBucket := map[string]*models.SleepTrendPoint{}
+	order := []string{}
+	for _, sess := range sessions {
+		key := SleepTrendBucketKey(sess.StartedAt, tzOffset, bucket)
+		p, ok := byBucket[key]
+		if !ok {
+			p = &models.SleepTrendPoint{Bucket: key}
+			byBucket[key] = p
+			order = append(order, key)
+		}
+		p.SessionCount++
+		for _, stage := range sess.Stages {
+			minutes := sleepStageMinutes(stage)
+			p.AvgTotalMinutes += minutes
+			switch stage.StageType {
+			case models.SleepStageAwake:
+				p.AvgAwakeMinutes += minutes
+			case models.SleepStageLight:
+				p.AvgLightMinutes += minutes
+			case models.SleepStageDeep:
+				p.AvgDeepMinutes += minutes
+			case models.SleepStageREM:
+				p.AvgRemMinutes += minutes
+			}
+		}
+	}
+
+	sort.Strings(order)
+	out := make([]models.SleepTrendPoint, len(order))
+	for i, key := range order {
+		p := *byBucket[key]
+		if p.SessionCount > 0 {
+			n := float64(p.SessionCount)
+			p.AvgTotalMinutes /= n
+			p.AvgAwakeMinutes /= n
+			p.AvgLightMinutes /= n
+			p.AvgDeepMinutes /= n
+			p.AvgRemMinutes /= n
+		}
+		out[i] = p
 	}
 	return out, nil
 }

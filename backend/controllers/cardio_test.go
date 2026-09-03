@@ -203,6 +203,117 @@ func TestGetCardioSession_scopesToOwner(t *testing.T) {
 	}
 }
 
+// avg_cadence must round-trip through import/get and be omitted (null) for
+// sessions that never reported it.
+func TestImportCardioSessions_avgCadenceRoundTrips(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	start := time.Date(2026, 3, 4, 7, 0, 0, 0, time.UTC)
+	withCadence := cardioSessionBody("hc-cadence", start)
+	withCadence["avg_cadence"] = 88.5
+	noCadence := cardioSessionBody("hc-no-cadence", start.Add(time.Hour))
+
+	c, w := newContext(uid, "POST", "/cardio/import", map[string]any{
+		"sessions": []map[string]any{withCadence, noCadence},
+	})
+	th.ImportCardioSessions(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	c, w = newContext(uid, "GET", "/cardio", nil)
+	th.ListCardioSessions(c)
+	sessions := decodeResponse(t, w)["data"].([]any)
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(sessions))
+	}
+	for _, s := range sessions {
+		sess := s.(map[string]any)
+		switch sess["external_id"] {
+		case "hc-cadence":
+			if sess["avg_cadence"].(float64) != 88.5 {
+				t.Errorf("avg_cadence = %v, want 88.5", sess["avg_cadence"])
+			}
+		case "hc-no-cadence":
+			if _, ok := sess["avg_cadence"]; ok {
+				t.Errorf("expected avg_cadence to be omitted when not reported, got %v", sess["avg_cadence"])
+			}
+		}
+	}
+}
+
+func TestGetCardioSessionZones(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	start := time.Date(2026, 3, 4, 7, 0, 0, 0, time.UTC)
+	c, w := newContext(uid, "POST", "/cardio/import", map[string]any{
+		"sessions": []map[string]any{cardioSessionBody("hc-zones", start)},
+	})
+	th.ImportCardioSessions(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import cardio: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	c, w = newContext(uid, "GET", "/cardio", nil)
+	th.ListCardioSessions(c)
+	sessions := decodeResponse(t, w)["data"].([]any)
+	id := int64(sessions[0].(map[string]any)["id"].(float64))
+
+	// max_hr=200: 100bpm=50% (zone1), 190bpm=95% (zone5).
+	c, w = newContext(uid, "POST", "/heart-rate/import", map[string]any{
+		"samples": []map[string]any{
+			heartRateSampleBody("hr-zone-1", start.Add(time.Minute), 100),
+			heartRateSampleBody("hr-zone-2", start.Add(10*time.Minute), 190),
+			heartRateSampleBody("hr-zone-3", start.Add(20*time.Minute), 190),
+		},
+	})
+	th.ImportHeartRateSamples(c)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import hr: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	c, w = newContext(uid, "GET", fmt.Sprintf("/cardio/%d/zones?max_hr=200", id), nil)
+	setParam(c, "id", fmt.Sprintf("%d", id))
+	th.GetCardioSessionZones(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].(map[string]any)
+	if data["max_observed_bpm"].(float64) != 190 {
+		t.Errorf("max_observed_bpm = %v, want 190", data["max_observed_bpm"])
+	}
+	zones := data["zones"].(map[string]any)
+	if zones["zone_1_minutes"].(float64) != 9 {
+		t.Errorf("zone_1_minutes = %v, want 9", zones["zone_1_minutes"])
+	}
+	if zones["zone_5_minutes"].(float64) != 10 {
+		t.Errorf("zone_5_minutes = %v, want 10", zones["zone_5_minutes"])
+	}
+}
+
+func TestGetCardioSessionZones_requiresMaxHROrBirthDate(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	start := time.Date(2026, 3, 4, 7, 0, 0, 0, time.UTC)
+	c, w := newContext(uid, "POST", "/cardio/import", map[string]any{
+		"sessions": []map[string]any{cardioSessionBody("hc-no-maxhr", start)},
+	})
+	th.ImportCardioSessions(c)
+	c, w = newContext(uid, "GET", "/cardio", nil)
+	th.ListCardioSessions(c)
+	sessions := decodeResponse(t, w)["data"].([]any)
+	id := int64(sessions[0].(map[string]any)["id"].(float64))
+
+	c, w = newContext(uid, "GET", fmt.Sprintf("/cardio/%d/zones", id), nil)
+	setParam(c, "id", fmt.Sprintf("%d", id))
+	th.GetCardioSessionZones(c)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 with no max_hr and no birth date, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestDeleteCardioSession(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)

@@ -399,14 +399,14 @@ type SleepSessionDetail struct {
 // average resting heart rate so a chart can show sleep quality and recovery
 // side by side without a client-side join.
 type SleepTrendPoint struct {
-	Bucket           string   `json:"bucket"` // 'YYYY-MM-DD' for bucket=day, 'YYYY-Www' for bucket=week
-	AvgTotalMinutes  float64  `json:"avg_total_minutes"`
-	AvgAwakeMinutes  float64  `json:"avg_awake_minutes"`
-	AvgLightMinutes  float64  `json:"avg_light_minutes"`
-	AvgDeepMinutes   float64  `json:"avg_deep_minutes"`
-	AvgRemMinutes    float64  `json:"avg_rem_minutes"`
-	AvgRestingHR     *float64 `json:"avg_resting_hr,omitempty"`
-	SessionCount     int      `json:"session_count"`
+	Bucket          string   `json:"bucket"` // 'YYYY-MM-DD' for bucket=day, 'YYYY-Www' for bucket=week
+	AvgTotalMinutes float64  `json:"avg_total_minutes"`
+	AvgAwakeMinutes float64  `json:"avg_awake_minutes"`
+	AvgLightMinutes float64  `json:"avg_light_minutes"`
+	AvgDeepMinutes  float64  `json:"avg_deep_minutes"`
+	AvgRemMinutes   float64  `json:"avg_rem_minutes"`
+	AvgRestingHR    *float64 `json:"avg_resting_hr,omitempty"`
+	SessionCount    int      `json:"session_count"`
 }
 
 // Blood pressure (#bloodPressure) ------------------------------------------

@@ -142,8 +142,136 @@ export interface CardioSession {
   distance_meters: number
   avg_heart_rate: number
   calories: number
+  /** Average cadence (steps/min or RPM) over the session, when the source device reported it. */
+  avg_cadence?: number
   source: string
   created_at?: string
+}
+
+// Sleep, heart rate, and generic scalar health metrics — all synced from a
+// companion device's health platform (Health Connect via the Android app),
+// same read-only-on-web posture as CardioSession above.
+
+export type SleepStageType = 'awake' | 'light' | 'deep' | 'rem'
+
+export interface SleepStage {
+  id: number
+  sleep_session_id: number
+  stage_type: SleepStageType
+  started_at: string
+  ended_at: string
+}
+
+export interface SleepSession {
+  id: number
+  user_id?: number
+  external_id: string
+  started_at: string
+  ended_at: string
+  source: string
+  created_at?: string
+  stages?: SleepStage[]
+}
+
+/** One night's stage-minute rollup (GET /sleep/daily). */
+export interface SleepDailySummary {
+  day: string
+  total_minutes: number
+  awake_minutes: number
+  light_minutes: number
+  deep_minutes: number
+  rem_minutes: number
+  session_count: number
+}
+
+export interface HeartRateSample {
+  id: number
+  user_id?: number
+  external_id: string
+  recorded_at: string
+  bpm: number
+  source: string
+  created_at?: string
+}
+
+export interface HealthMetric {
+  id: number
+  user_id?: number
+  metric_type: MetricType
+  external_id: string
+  recorded_at: string
+  value: number
+  unit: string
+  source: string
+  created_at?: string
+}
+
+/** One sleep session's raw heart-rate samples and HRV/resting-HR readings
+ *  captured during its [started_at, ended_at] window (GET /sleep/:id/detail). */
+export interface SleepSessionDetail extends SleepSession {
+  heart_rate_samples: HeartRateSample[]
+  hrv_readings: HealthMetric[]
+  resting_hr_readings: HealthMetric[]
+}
+
+/** One bucket (day or ISO week) of sleep-stage averages, paired with the same
+ *  period's average resting HR (GET /sleep/trend). */
+export interface SleepTrendPoint {
+  bucket: string
+  avg_total_minutes: number
+  avg_deep_minutes: number
+  avg_rem_minutes: number
+  avg_light_minutes: number
+  avg_awake_minutes: number
+  avg_resting_hr?: number
+  session_count: number
+}
+
+export interface HeartRateDailyStat {
+  day: string
+  min: number
+  avg: number
+  max: number
+  count: number
+}
+
+/** Time-in-zone minutes over a day or a single session (GET /heart-rate/zones,
+ *  GET /cardio/:id/zones). `day` is absent when scoped to one session. */
+export interface HeartRateZoneMinutes {
+  day?: string
+  max_hr: number
+  below_zone1_mins: number
+  zone1_minutes: number
+  zone2_minutes: number
+  zone3_minutes: number
+  zone4_minutes: number
+  zone5_minutes: number
+}
+
+/** GET /cardio/:id/zones — the session's row plus its HR-zone breakdown. */
+export interface CardioSessionDetail extends CardioSession {
+  zones?: HeartRateZoneMinutes
+  max_observed_bpm?: number
+}
+
+/** The generic scalar `health_metrics` types — anything that's a single value
+ *  at a point in time, as opposed to heart rate (own table) or sleep/cardio
+ *  (span + nested detail, own tables). */
+export type MetricType =
+  | 'hrv_rmssd'
+  | 'spo2'
+  | 'resting_heart_rate'
+  | 'active_calories'
+  | 'vo2_max'
+  | 'floors_climbed'
+  | 'steps'
+
+/** One day's rollup of a scalar metric (GET /health-metrics/daily) — summed
+ *  for 'steps', averaged for everything else. */
+export interface HealthMetricDailyStat {
+  day: string
+  value: number
+  count: number
 }
 
 // Blood pressure (#bloodPressure)

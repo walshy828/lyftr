@@ -134,6 +134,35 @@ export const BP_ZONE_COLORS = {
   crisis: '#b91c1c',
 } as const
 
+// ── Heart-rate zones ────────────────────────────────────────────────────
+// Sequential cool→hot ramp (blue → green → amber → orange → red) so "more
+// intense zone" reads as "hotter" regardless of theme — same instinct as a
+// gym heart-rate display. belowZone1 (warm-up/recovery) is a neutral grey
+// rather than the coolest hue in the ramp, since it isn't a training zone.
+export const HR_ZONE_COLORS = {
+  belowZone1: '#94a3b8',
+  zone1: '#0ea5e9',
+  zone2: '#10b981',
+  zone3: '#f59e0b',
+  zone4: '#f97316',
+  zone5: '#ef4444',
+} as const
+
+// ── Sleep stages ────────────────────────────────────────────────────────
+// Categorical, four distinct hues chosen for clear separation on a stacked
+// stage timeline in both themes — deep sleep gets the darkest/most saturated
+// color since it's the stage users most care about tracking.
+export const SLEEP_STAGE_COLORS = {
+  awake: '#f59e0b',
+  light: '#60a5fa',
+  deep: '#4338ca',
+  rem: '#a78bfa',
+} as const
+
+// Cadence line series — reuses the cardio hue so cadence reads as "part of
+// the cardio-session family" rather than introducing another accent color.
+export const CADENCE_COLOR = CARDIO_HEX
+
 // ── Muscle group donut colors ──────────────────────────────────────────
 const MUSCLE_HEX: Record<string, string> = {
   chest: '#f87171', back: '#60a5fa', shoulders: '#818cf8', biceps: '#f472b6',
