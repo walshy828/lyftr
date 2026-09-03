@@ -97,5 +97,28 @@ func (c *Client) do(ctx context.Context, method, url string, body io.Reader) (js
 		}
 		return nil, &apiError{status: resp.StatusCode, msg: msg}
 	}
-	return envelope.Data, nil
+	return wrapArray(envelope.Data), nil
+}
+
+// wrapArray guards against a bare top-level JSON array reaching an MCP tool's
+// StructuredContent: the MCP spec requires structured content to be an
+// object, but the backend's REST API legitimately returns a top-level array
+// for every list endpoint (GET /weight, /cardio, /heart-rate, ...) inside its
+// {"data": ...} envelope. do() unwraps that envelope above, so a list
+// response comes out of it as a bare array — this re-wraps it as {"items":
+// [...]}. An object or null response (single-record and stats endpoints)
+// passes through unchanged. Fixing this once here, rather than per tool,
+// covers every current and future list endpoint.
+func wrapArray(data json.RawMessage) json.RawMessage {
+	trimmed := bytes.TrimLeft(data, " \t\r\n")
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		return data
+	}
+	wrapped, err := json.Marshal(struct {
+		Items json.RawMessage `json:"items"`
+	}{Items: data})
+	if err != nil {
+		return data
+	}
+	return wrapped
 }
