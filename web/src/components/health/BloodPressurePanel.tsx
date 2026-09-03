@@ -11,6 +11,7 @@ import BPProtocolCard from './BPProtocolCard'
 import SectionHeader from '../ui/SectionHeader'
 import EmptyState from '../ui/EmptyState'
 import SegmentedControl from '../ui/SegmentedControl'
+import { useStatsControlsContext } from '../../context/StatsControlsContext'
 import * as types from '../../types'
 
 const WINDOW_LABELS: Record<number, string> = { 7: '7 days', 30: '30 days', 90: '90 days' }
@@ -22,6 +23,7 @@ const TREND_META = {
 } as const
 
 export default function BloodPressurePanel() {
+  const { from, to, aggregation } = useStatsControlsContext()
   const [stats, setStats] = useState<types.BPStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -158,7 +160,7 @@ export default function BloodPressurePanel() {
 
       <div className="card p-4 min-w-0">
         <SectionHeader icon={HeartPulse} title="Trend" className="mb-2" />
-        <BPTrendChart days={stats.daily} />
+        <BPTrendChart days={stats.daily} from={from} to={to} aggregation={aggregation} />
         {stats.trend.label && stats.trend.points >= 3 && (
           <p className="text-xs text-tx-muted text-center mt-2">
             {stats.trend.sys_per_30d < 0 ? 'Down' : 'Up'}{' '}

@@ -32,6 +32,14 @@ interface Props<T extends Record<string, any>, G = any> {
   renderGranular?: (rows: G[]) => ReactNode
   emptyMessage?: string
   minPoints?: number
+  /** Lift the chart/table toggle into the caller's own header row (e.g. next to
+   *  a title) instead of rendering it in the default `justify-end` row above
+   *  the chart. When given, `view` must be provided too. */
+  onViewChange?: (view: 'chart' | 'table') => void
+  view?: 'chart' | 'table'
+  /** Suppresses the built-in toggle row — use with `view`/`onViewChange` when
+   *  the caller renders its own toggle inline with a chart title. */
+  hideToggle?: boolean
 }
 
 /**
@@ -43,8 +51,11 @@ interface Props<T extends Record<string, any>, G = any> {
 export default function DrillableTrendChart<T extends Record<string, any>, G = any>({
   data, xKey, columns, renderChart, granularFetcher, renderGranular,
   emptyMessage = 'Not enough data yet.', minPoints = 2,
+  view: controlledView, onViewChange, hideToggle = false,
 }: Props<T, G>) {
-  const [view, setView] = useState<'chart' | 'table'>('chart')
+  const [internalView, setInternalView] = useState<'chart' | 'table'>('chart')
+  const view = controlledView ?? internalView
+  const setView = onViewChange ?? setInternalView
   const [range, setRange] = useState<{ startIndex: number; endIndex: number } | null>(null)
   const [granular, setGranular] = useState<G[] | null>(null)
   const [granularLoading, setGranularLoading] = useState(false)
@@ -71,14 +82,16 @@ export default function DrillableTrendChart<T extends Record<string, any>, G = a
 
   return (
     <div>
-      <div className="flex justify-end mb-2">
-        <SegmentedControl
-          options={[{ value: 'chart', label: 'Chart' }, { value: 'table', label: 'Table' }] as const}
-          value={view}
-          onChange={setView}
-          size="sm"
-        />
-      </div>
+      {!hideToggle && (
+        <div className="flex justify-end mb-2">
+          <SegmentedControl
+            options={[{ value: 'chart', label: 'Chart' }, { value: 'table', label: 'Table' }] as const}
+            value={view}
+            onChange={setView}
+            size="sm"
+          />
+        </div>
+      )}
 
       {view === 'chart' ? (
         renderChart(data, handleBrushChange)
@@ -117,6 +130,20 @@ export default function DrillableTrendChart<T extends Record<string, any>, G = a
         </div>
       )}
     </div>
+  )
+}
+
+/** The chart/table toggle, factored out so a panel can render it inline in its
+ *  own title row (via `hideToggle` + controlled `view`/`onViewChange` above)
+ *  instead of in `DrillableTrendChart`'s default row above the chart. */
+export function ChartTableToggle({ view, onChange }: { view: 'chart' | 'table'; onChange: (v: 'chart' | 'table') => void }) {
+  return (
+    <SegmentedControl
+      options={[{ value: 'chart', label: 'Chart' }, { value: 'table', label: 'Table' }] as const}
+      value={view}
+      onChange={onChange}
+      size="sm"
+    />
   )
 }
 

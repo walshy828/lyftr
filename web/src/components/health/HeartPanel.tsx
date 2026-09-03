@@ -3,9 +3,9 @@ import { HeartPulse, Activity } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Bar, ComposedChart, Brush } from 'recharts'
 import Loading from '../Loading'
-import PeriodSelector from '../PeriodSelector'
-import DrillableTrendChart, { RawSeriesChart } from '../charts/DrillableTrendChart'
-import { usePeriodFilter } from '../../hooks/usePeriodFilter'
+import DrillableTrendChart, { RawSeriesChart, ChartTableToggle } from '../charts/DrillableTrendChart'
+import { useStatsControlsContext } from '../../context/StatsControlsContext'
+import { aggregateByPeriod, type Granularity } from '../../utils/aggregate'
 import { healthMetricsAPI, sleepAPI } from '../../services/api'
 import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, SLEEP_STAGE_COLORS } from '../../utils/chartTheme'
 import * as types from '../../types'
@@ -22,17 +22,22 @@ const fmtDay = (d: string) => { try { return format(parseISO(d), 'MMM d') } catc
 
 /** A day-bucketed metric trend + chart/table toggle + highlight-to-drill-down
  *  into the raw samples behind any selected stretch. */
-function MetricTrendCard({ data, color, unit, label, metricType }: {
+function MetricTrendCard({ data, color, unit, label, metricType, view, onViewChange }: {
   data: { day: string; value: number }[]
   color: string
   unit: string
   label: string
   metricType: types.MetricType
+  view: 'chart' | 'table'
+  onViewChange: (v: 'chart' | 'table') => void
 }) {
   return (
     <DrillableTrendChart
       data={data}
       xKey="day"
+      view={view}
+      onViewChange={onViewChange}
+      hideToggle
       emptyMessage={`Not enough ${label.toLowerCase()} data synced yet.`}
       columns={[
         { key: 'day', label: 'Date', format: r => fmtDay(r.day) },
@@ -65,18 +70,20 @@ function MetricTrendCard({ data, color, unit, label, metricType }: {
 /** HRV, resting heart rate, and how deep sleep tracks alongside them — all
  *  synced read-only from a companion device via Health Connect. */
 export default function HeartPanel() {
-  const { period, setPeriod, from, to, PERIODS } = usePeriodFilter('30d')
+  const { from, to, aggregation } = useStatsControlsContext()
   const [hrv, setHrv] = useState<types.HealthMetricDailyStat[]>([])
   const [restingHr, setRestingHr] = useState<types.HealthMetricDailyStat[]>([])
   const [sleepTrend, setSleepTrend] = useState<types.SleepTrendPoint[]>([])
   const [loading, setLoading] = useState(true)
+  const [hrvView, setHrvView] = useState<'chart' | 'table'>('chart')
+  const [restingView, setRestingView] = useState<'chart' | 'table'>('chart')
 
   useEffect(() => {
     setLoading(true)
     Promise.all([
       healthMetricsAPI.daily('hrv_rmssd', from, to, 'avg').catch(() => []),
       healthMetricsAPI.daily('resting_heart_rate', from, to, 'avg').catch(() => []),
-      sleepAPI.trend(from, to, 'week').catch(() => []),
+      sleepAPI.trend(from, to, 'day').catch(() => []),
     ]).then(([h, r, s]) => {
       setHrv(h || [])
       setRestingHr(r || [])
@@ -84,29 +91,38 @@ export default function HeartPanel() {
     }).finally(() => setLoading(false))
   }, [from, to])
 
-  const hrvData = useMemo(() => hrv.map(d => ({ day: d.day, value: Math.round(d.value) })), [hrv])
-  const restingHrData = useMemo(() => restingHr.map(d => ({ day: d.day, value: Math.round(d.value) })), [restingHr])
+  const bucketAvg = (points: { day: string; value: number }[], granularity: Granularity) =>
+    aggregateByPeriod(points, 'day', granularity, [{ key: 'value', agg: 'avg' }])
+      .map(p => ({ day: p.day, value: Math.round(p.value ?? 0) }))
+
+  const hrvData = useMemo(
+    () => bucketAvg(hrv.map(d => ({ day: d.day, value: d.value })), aggregation),
+    [hrv, aggregation],
+  )
+  const restingHrData = useMemo(
+    () => bucketAvg(restingHr.map(d => ({ day: d.day, value: d.value })), aggregation),
+    [restingHr, aggregation],
+  )
 
   const avgHrv = useMemo(() => average(hrv.map(d => d.value)), [hrv])
   const avgRestingHr = useMemo(() => average(restingHr.map(d => d.value)), [restingHr])
 
-  const contextData = useMemo(
-    () => sleepTrend.map(t => ({
-      bucket: t.bucket,
-      deepMinutes: Math.round(t.avg_deep_minutes),
-      restingHR: t.avg_resting_hr != null ? Math.round(t.avg_resting_hr) : null,
-    })),
-    [sleepTrend],
-  )
+  const contextData = useMemo(() => {
+    const points = sleepTrend.map(t => ({ bucket: t.bucket, deepMinutes: t.avg_deep_minutes, restingHR: t.avg_resting_hr }))
+    return aggregateByPeriod(points, 'bucket', aggregation, [
+      { key: 'deepMinutes', agg: 'avg' },
+      { key: 'restingHR', agg: 'avg' },
+    ]).map(p => ({
+      bucket: p.bucket,
+      deepMinutes: Math.round(p.deepMinutes ?? 0),
+      restingHR: p.restingHR != null ? Math.round(p.restingHR) : null,
+    }))
+  }, [sleepTrend, aggregation])
 
   if (loading) return <Loading />
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-end">
-        <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
-      </div>
-
       <div className="grid grid-cols-2 gap-3">
         <div className="card p-4">
           <div className="flex items-center gap-1.5 mb-1">
@@ -125,13 +141,19 @@ export default function HeartPanel() {
       </div>
 
       <div className="card p-4">
-        <h2 className="section-title mb-3">HRV trend</h2>
-        <MetricTrendCard data={hrvData} color={HRV_COLOR} unit="ms" label="HRV" metricType="hrv_rmssd" />
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <h2 className="section-title">HRV trend</h2>
+          <ChartTableToggle view={hrvView} onChange={setHrvView} />
+        </div>
+        <MetricTrendCard data={hrvData} color={HRV_COLOR} unit="ms" label="HRV" metricType="hrv_rmssd" view={hrvView} onViewChange={setHrvView} />
       </div>
 
       <div className="card p-4">
-        <h2 className="section-title mb-3">Resting heart rate trend</h2>
-        <MetricTrendCard data={restingHrData} color={RESTING_HR_COLOR} unit="bpm" label="Resting HR" metricType="resting_heart_rate" />
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <h2 className="section-title">Resting heart rate trend</h2>
+          <ChartTableToggle view={restingView} onChange={setRestingView} />
+        </div>
+        <MetricTrendCard data={restingHrData} color={RESTING_HR_COLOR} unit="bpm" label="Resting HR" metricType="resting_heart_rate" view={restingView} onViewChange={setRestingView} />
       </div>
 
       <div className="card p-4">

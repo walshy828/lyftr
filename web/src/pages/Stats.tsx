@@ -2,7 +2,9 @@ import { lazy, Suspense, type ComponentType } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/ui/PageHeader'
 import SegmentedControl from '../components/ui/SegmentedControl'
+import StatsControlBar from '../components/StatsControlBar'
 import Loading from '../components/Loading'
+import { StatsControlsProvider } from '../context/StatsControlsContext'
 
 const TrainingPanel = lazy(() => import('../components/training/TrainingPanel'))
 const WeightPanel = lazy(() => import('../components/health/WeightPanel'))
@@ -32,6 +34,10 @@ const TABS: { key: string; label: string; Panel: ComponentType }[] = [
 ]
 
 const DEFAULT_TAB = TABS[0].key
+
+// Panels with at least one trend chart get the global period/aggregation bar.
+// Training (fixed windows) and Cardio (session list, no chart) opt out.
+const CONTROL_BAR_TABS = new Set(['sleep', 'heart', 'activity', 'nutrition', 'weight', 'bp'])
 
 const SUBTITLES: Record<string, string> = {
   training: 'Your training record',
@@ -78,9 +84,18 @@ export default function Stats() {
       </div>
 
       {/* Only the active panel mounts, so the inactive ones never fire their fetches. */}
-      <Suspense fallback={<Loading />}>
-        <active.Panel />
-      </Suspense>
+      {CONTROL_BAR_TABS.has(tab) ? (
+        <StatsControlsProvider key={tab}>
+          <StatsControlBar />
+          <Suspense fallback={<Loading />}>
+            <active.Panel />
+          </Suspense>
+        </StatsControlsProvider>
+      ) : (
+        <Suspense fallback={<Loading />}>
+          <active.Panel />
+        </Suspense>
+      )}
     </div>
   )
 }

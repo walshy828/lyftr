@@ -6,11 +6,11 @@ import {
   Brush,
 } from 'recharts'
 import Loading from '../Loading'
-import PeriodSelector from '../PeriodSelector'
 import Sheet from '../ui/Sheet'
-import DrillableTrendChart from '../charts/DrillableTrendChart'
-import { usePeriodFilter } from '../../hooks/usePeriodFilter'
+import DrillableTrendChart, { ChartTableToggle } from '../charts/DrillableTrendChart'
 import { useCompanionSync } from '../../hooks/useCompanionSync'
+import { useStatsControlsContext } from '../../context/StatsControlsContext'
+import { aggregateByPeriod } from '../../utils/aggregate'
 import { sleepAPI } from '../../services/api'
 import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, SLEEP_STAGE_COLORS } from '../../utils/chartTheme'
 import * as types from '../../types'
@@ -32,12 +32,13 @@ function average(values: number[]): number | null {
 /** Sleep sessions arrive read-only from a companion device (Health Connect via
  *  the Android app) — no manual log form, only trend + history + drill-down. */
 export default function SleepPanel() {
-  const { period, setPeriod, from, to, PERIODS } = usePeriodFilter('30d')
+  const { from, to, aggregation } = useStatsControlsContext()
   const [trend, setTrend] = useState<types.SleepTrendPoint[]>([])
   const [trendLoading, setTrendLoading] = useState(true)
   const [sessions, setSessions] = useState<types.SleepSession[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [chartView, setChartView] = useState<'chart' | 'table'>('chart')
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detail, setDetail] = useState<types.SleepSessionDetail | null>(null)
@@ -46,7 +47,9 @@ export default function SleepPanel() {
 
   const load = () => {
     setTrendLoading(true)
-    sleepAPI.trend(from, to, 'week').then(d => setTrend(d || [])).catch(() => {}).finally(() => setTrendLoading(false))
+    // Always fetch at day granularity — weekly/monthly re-bucketing happens
+    // client-side via `aggregation` so the user's aggregation choice is honored.
+    sleepAPI.trend(from, to, 'day').then(d => setTrend(d || [])).catch(() => {}).finally(() => setTrendLoading(false))
     setSessionsLoading(true)
     // Backend already returns sessions newest-first (ORDER BY started_at DESC) —
     // render as-is, newest on top.
@@ -73,17 +76,31 @@ export default function SleepPanel() {
 
   // Trend data is chronological (oldest → newest) for the chart; DrillableTrendChart
   // reverses it for the table view so that reads newest-first.
-  const trendData = useMemo(
-    () => trend.map(t => ({
+  const trendData = useMemo(() => {
+    const points = trend.map(t => ({
       bucket: t.bucket,
-      Awake: Math.round(t.avg_awake_minutes),
-      Light: Math.round(t.avg_light_minutes),
-      Deep: Math.round(t.avg_deep_minutes),
-      REM: Math.round(t.avg_rem_minutes),
-      restingHR: t.avg_resting_hr != null ? Math.round(t.avg_resting_hr) : null,
-    })),
-    [trend],
-  )
+      Awake: t.avg_awake_minutes,
+      Light: t.avg_light_minutes,
+      Deep: t.avg_deep_minutes,
+      REM: t.avg_rem_minutes,
+      restingHR: t.avg_resting_hr,
+    }))
+    const bucketed = aggregateByPeriod(points, 'bucket', aggregation, [
+      { key: 'Awake', agg: 'avg' },
+      { key: 'Light', agg: 'avg' },
+      { key: 'Deep', agg: 'avg' },
+      { key: 'REM', agg: 'avg' },
+      { key: 'restingHR', agg: 'avg' },
+    ])
+    return bucketed.map(p => ({
+      bucket: p.bucket,
+      Awake: Math.round(p.Awake ?? 0),
+      Light: Math.round(p.Light ?? 0),
+      Deep: Math.round(p.Deep ?? 0),
+      REM: Math.round(p.REM ?? 0),
+      restingHR: p.restingHR != null ? Math.round(p.restingHR) : null,
+    }))
+  }, [trend, aggregation])
 
   const fmtBucket = (d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }
 
@@ -146,15 +163,18 @@ export default function SleepPanel() {
       <div className="card p-4">
         <div className="flex items-center justify-between mb-4 gap-2">
           <h2 className="section-title">Sleep trend</h2>
-          <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
+          <ChartTableToggle view={chartView} onChange={setChartView} />
         </div>
 
         <DrillableTrendChart
           data={trendData}
           xKey="bucket"
+          view={chartView}
+          onViewChange={setChartView}
+          hideToggle
           emptyMessage="Not enough nights synced yet for a trend."
           columns={[
-            { key: 'bucket', label: 'Week of', format: r => fmtBucket(r.bucket) },
+            { key: 'bucket', label: 'Date', format: r => fmtBucket(r.bucket) },
             { key: 'Deep', label: 'Deep (m)' },
             { key: 'REM', label: 'REM (m)' },
             { key: 'Light', label: 'Light (m)' },

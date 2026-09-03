@@ -3,10 +3,10 @@ import { AlertCircle, Footprints, Bike, Waves, RotateCw, Activity, Zap, ArrowUpF
 import { format, parseISO } from 'date-fns'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Brush } from 'recharts'
 import Loading from '../Loading'
-import PeriodSelector from '../PeriodSelector'
 import Sheet from '../ui/Sheet'
-import DrillableTrendChart, { RawSeriesChart } from '../charts/DrillableTrendChart'
-import { usePeriodFilter } from '../../hooks/usePeriodFilter'
+import DrillableTrendChart, { RawSeriesChart, ChartTableToggle } from '../charts/DrillableTrendChart'
+import { useStatsControlsContext } from '../../context/StatsControlsContext'
+import { aggregateByPeriod } from '../../utils/aggregate'
 import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
 import { cardioAPI, healthMetricsAPI } from '../../services/api'
 import { useSettingsStore, displayDistance, distanceShort } from '../../stores/settings'
@@ -58,11 +58,12 @@ function formatDuration(seconds: number): string {
 /** Steps trend + cardio session drill-down (HR zones, cadence). Sync-derived,
  *  read-only, mirrors CardioPanel's history list. */
 export default function ActivityPanel() {
-  const { period, setPeriod, from, to, PERIODS } = usePeriodFilter('30d')
+  const { from, to, aggregation } = useStatsControlsContext()
   const unit = useSettingsStore(s => s.settings.weight_unit)
   const [steps, setSteps] = useState<types.HealthMetricDailyStat[]>([])
   const [stepsLoading, setStepsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [chartView, setChartView] = useState<'chart' | 'table'>('chart')
 
   const { items, sentinelRef, hasMore, loading, initialLoading } =
     useServerInfiniteList<types.CardioSession>({
@@ -74,7 +75,11 @@ export default function ActivityPanel() {
     healthMetricsAPI.daily('steps', from, to, 'sum').then(d => setSteps(d || [])).catch(() => setError('Failed to load step data')).finally(() => setStepsLoading(false))
   }, [from, to])
 
-  const stepsData = useMemo(() => steps.map(d => ({ day: d.day, value: Math.round(d.value) })), [steps])
+  const stepsData = useMemo(() => {
+    const points = steps.map(d => ({ day: d.day, value: d.value }))
+    return aggregateByPeriod(points, 'day', aggregation, [{ key: 'value', agg: 'sum' }])
+      .map(p => ({ day: p.day, value: Math.round(p.value ?? 0) }))
+  }, [steps, aggregation])
   const avgSteps = useMemo(() => {
     if (steps.length === 0) return null
     return Math.round(steps.reduce((a, b) => a + b.value, 0) / steps.length)
@@ -107,11 +112,14 @@ export default function ActivityPanel() {
             <h2 className="section-title">Steps</h2>
             {avgSteps != null && <p className="text-xs text-tx-muted mt-0.5">{avgSteps.toLocaleString()} avg/day</p>}
           </div>
-          <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
+          <ChartTableToggle view={chartView} onChange={setChartView} />
         </div>
         <DrillableTrendChart
           data={stepsData}
           xKey="day"
+          view={chartView}
+          onViewChange={setChartView}
+          hideToggle
           emptyMessage="No step data synced yet."
           columns={[
             { key: 'day', label: 'Date', format: r => fmtDay(r.day) },

@@ -1,42 +1,61 @@
 import { useEffect, useMemo, useState } from 'react'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
 import Loading from '../Loading'
-import PeriodSelector from '../PeriodSelector'
-import DrillableTrendChart from '../charts/DrillableTrendChart'
+import DrillableTrendChart, { ChartTableToggle } from '../charts/DrillableTrendChart'
+import { useStatsControlsContext } from '../../context/StatsControlsContext'
+import { aggregateByPeriod } from '../../utils/aggregate'
 import { foodAPI } from '../../services/api'
 import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, ENERGY_COLORS } from '../../utils/chartTheme'
 import * as types from '../../types'
 
-const PERIODS = ['7d', '30d', '90d'] as const
-type Period = typeof PERIODS[number]
-const PERIOD_DAYS: Record<Period, number> = { '7d': 7, '30d': 30, '90d': 90 }
-
 /** Calorie and macro trends over time. Trend-only — per-meal detail already
- *  lives on the Food page. */
+ *  lives on the Food page.
+ *
+ *  `foodAPI.history` only takes a day count and always ends "today" (no
+ *  from/to params) — a backend limitation left as-is per the client-side-only
+ *  aggregation constraint. We derive a day count from the global `from`, then
+ *  clip the result to [from, to] client-side so a custom `to` in the past is
+ *  still honored even though the fetch itself can't target it directly. */
 export default function NutritionPanel() {
-  const [period, setPeriod] = useState<Period>('30d')
+  const { from, to, aggregation } = useStatsControlsContext()
   const [history, setHistory] = useState<types.FoodHistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
+  const [calView, setCalView] = useState<'chart' | 'table'>('chart')
+  const [macroView, setMacroView] = useState<'chart' | 'table'>('chart')
 
   useEffect(() => {
     setLoading(true)
-    foodAPI.history(PERIOD_DAYS[period]).then(d => setHistory((d || []).slice().reverse())).catch(() => setHistory([])).finally(() => setLoading(false))
-  }, [period])
+    const days = from != null ? differenceInCalendarDays(new Date(), parseISO(from)) + 1 : 3650
+    foodAPI.history(days)
+      .then(d => setHistory((d || []).slice().reverse()))
+      .catch(() => setHistory([]))
+      .finally(() => setLoading(false))
+  }, [from, to])
 
-  const calorieData = useMemo(
-    () => history.map(h => ({ date: h.date, calories: Math.round(h.calories) })),
-    [history],
+  const clipped = useMemo(
+    () => history.filter(h => (from == null || h.date >= from) && h.date <= to),
+    [history, from, to],
   )
-  const macroData = useMemo(
-    () => history.map(h => ({
-      date: h.date,
-      protein: Math.round(h.protein),
-      carbs: Math.round(h.carbs),
-      fat: Math.round(h.fat),
-    })),
-    [history],
-  )
+
+  const calorieData = useMemo(() => {
+    const points = clipped.map(h => ({ date: h.date, calories: h.calories }))
+    return aggregateByPeriod(points, 'date', aggregation, [{ key: 'calories', agg: 'avg' }])
+      .map(p => ({ date: p.date, calories: Math.round(p.calories ?? 0) }))
+  }, [clipped, aggregation])
+  const macroData = useMemo(() => {
+    const points = clipped.map(h => ({ date: h.date, protein: h.protein, carbs: h.carbs, fat: h.fat }))
+    return aggregateByPeriod(points, 'date', aggregation, [
+      { key: 'protein', agg: 'avg' },
+      { key: 'carbs', agg: 'avg' },
+      { key: 'fat', agg: 'avg' },
+    ]).map(p => ({
+      date: p.date,
+      protein: Math.round(p.protein ?? 0),
+      carbs: Math.round(p.carbs ?? 0),
+      fat: Math.round(p.fat ?? 0),
+    }))
+  }, [clipped, aggregation])
 
   const avgCalories = useMemo(() => {
     if (calorieData.length === 0) return null
@@ -55,11 +74,14 @@ export default function NutritionPanel() {
             <h2 className="section-title">Calories</h2>
             {avgCalories != null && <p className="text-xs text-tx-muted mt-0.5">{avgCalories.toLocaleString()} avg/day</p>}
           </div>
-          <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
+          <ChartTableToggle view={calView} onChange={setCalView} />
         </div>
         <DrillableTrendChart
           data={calorieData}
           xKey="date"
+          view={calView}
+          onViewChange={setCalView}
+          hideToggle
           emptyMessage="Log a few more days to see a trend."
           columns={[
             { key: 'date', label: 'Date', format: r => fmtDate(r.date) },
@@ -84,36 +106,51 @@ export default function NutritionPanel() {
       </div>
 
       <div className="card p-4">
-        <h2 className="section-title mb-3">Macros</h2>
-        {macroData.length < 2 ? (
-          <p className="text-sm text-tx-muted py-6 text-center">Log a few more days to see a trend.</p>
-        ) : (
-          <>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={macroData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-                <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDate} />
-                <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} unit="g" />
-                <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  labelFormatter={fmtDate}
-                  formatter={(v: number, name: string) => [`${v} g`, name]}
-                />
-                <Bar dataKey="protein" name="Protein" stackId="m" fill={ENERGY_COLORS.protein} isAnimationActive={false} />
-                <Bar dataKey="carbs" name="Carbs" stackId="m" fill={ENERGY_COLORS.carbs} isAnimationActive={false} />
-                <Bar dataKey="fat" name="Fat" stackId="m" fill={ENERGY_COLORS.fat} radius={[3, 3, 0, 0]} isAnimationActive={false} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex items-center justify-center gap-4 mt-2">
-              {(['protein', 'carbs', 'fat'] as const).map(k => (
-                <span key={k} className="flex items-center gap-1.5 text-[11px] text-tx-muted capitalize">
-                  <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: ENERGY_COLORS[k] }} />
-                  {k}
-                </span>
-              ))}
-            </div>
-          </>
-        )}
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <h2 className="section-title">Macros</h2>
+          <ChartTableToggle view={macroView} onChange={setMacroView} />
+        </div>
+        <DrillableTrendChart
+          data={macroData}
+          xKey="date"
+          view={macroView}
+          onViewChange={setMacroView}
+          hideToggle
+          emptyMessage="Log a few more days to see a trend."
+          columns={[
+            { key: 'date', label: 'Date', format: r => fmtDate(r.date) },
+            { key: 'protein', label: 'Protein (g)' },
+            { key: 'carbs', label: 'Carbs (g)' },
+            { key: 'fat', label: 'Fat (g)' },
+          ]}
+          renderChart={data => (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+                  <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDate} />
+                  <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} unit="g" />
+                  <Tooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    labelFormatter={fmtDate}
+                    formatter={(v: number, name: string) => [`${v} g`, name]}
+                  />
+                  <Bar dataKey="protein" name="Protein" stackId="m" fill={ENERGY_COLORS.protein} isAnimationActive={false} />
+                  <Bar dataKey="carbs" name="Carbs" stackId="m" fill={ENERGY_COLORS.carbs} isAnimationActive={false} />
+                  <Bar dataKey="fat" name="Fat" stackId="m" fill={ENERGY_COLORS.fat} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="flex items-center justify-center gap-4 mt-2">
+                {(['protein', 'carbs', 'fat'] as const).map(k => (
+                  <span key={k} className="flex items-center gap-1.5 text-[11px] text-tx-muted capitalize">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: ENERGY_COLORS[k] }} />
+                    {k}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+        />
       </div>
     </div>
   )

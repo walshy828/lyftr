@@ -5,10 +5,11 @@ import { Link } from 'react-router-dom'
 import { HelpTip } from '../Tooltip'
 import Loading from '../Loading'
 import DateInput from '../ui/DateInput'
-import PeriodSelector from '../PeriodSelector'
 import WeightInput from '../WeightInput'
+import { ChartTableToggle } from '../charts/DrillableTrendChart'
 import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
-import { usePeriodFilter } from '../../hooks/usePeriodFilter'
+import { useStatsControlsContext } from '../../context/StatsControlsContext'
+import { aggregateByPeriod } from '../../utils/aggregate'
 import { todayStr, dayToIsoNoon, isoToDayInput } from '../../utils/dateUtils'
 import { weightAPI } from '../../services/api'
 import { useSettingsStore, weightShort, lbsToDisplay, displayToLbs, displayWeight, round1 , weightError, maxWeight } from '../../stores/settings'
@@ -203,9 +204,10 @@ function TrendChart({ points, wUnit }: { points: ChartPoint[]; wUnit: string }) 
 export default function WeightPanel() {
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
-  const { period, setPeriod, from: periodFrom, PERIODS } = usePeriodFilter('30d')
+  const { period, from: periodFrom, to: periodTo, aggregation } = useStatsControlsContext()
   const [stats, setStats] = useState<types.WeightStats | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [chartView, setChartView] = useState<'chart' | 'table'>('chart')
 
   // Paginated history list
   const { items, sentinelRef, hasMore, loading: listLoading, initialLoading, reload } = useServerInfiniteList<types.WeightLog>({
@@ -218,11 +220,11 @@ export default function WeightPanel() {
 
   useEffect(() => {
     setChartLoading(true)
-    weightAPI.list({ limit: 1000, from: periodFrom })
+    weightAPI.list({ limit: 1000, from: periodFrom, to: periodTo })
       .then(data => setChartLogs(data || []))
       .catch(() => {})
       .finally(() => setChartLoading(false))
-  }, [period, periodFrom])
+  }, [periodFrom, periodTo])
 
   useEffect(() => {
     weightAPI.stats().then(setStats).catch(() => {})
@@ -246,16 +248,16 @@ export default function WeightPanel() {
     }
   }, [items])
 
-  // Oldest → newest for the chart
+  // Oldest → newest for the chart, bucketed per the global aggregation choice
+  // (each bucket's weight is the average of its entries).
   const chartPoints: ChartPoint[] = useMemo(() => {
-    return chartLogs
-      .slice()
-      .reverse()
-      .map(l => {
-        const d = new Date(l.logged_at)
-        return { ts: d.getTime(), weight: lbsToDisplay(l.weight, settings.weight_unit), date: d }
-      })
-  }, [chartLogs, settings.weight_unit])
+    const chrono = chartLogs.slice().reverse().map(l => ({ day: l.logged_at.slice(0, 10), weight: l.weight }))
+    const bucketed = aggregateByPeriod(chrono, 'day', aggregation, [{ key: 'weight', agg: 'avg' }])
+    return bucketed.map(p => {
+      const d = new Date(p.day)
+      return { ts: d.getTime(), weight: lbsToDisplay(p.weight ?? 0, settings.weight_unit), date: d }
+    })
+  }, [chartLogs, aggregation, settings.weight_unit])
 
   const handleLog = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -340,6 +342,7 @@ export default function WeightPanel() {
         ? 'bg-success-500/10 border-success-500/20 text-success-400'
         : 'bg-error-500/10 border-error-500/20 text-error-400'
   const changeWord = change === 0 ? 'no change' : change < 0 ? 'lost' : 'gained'
+  const periodLabel = period === 'custom' ? 'this range' : period === 'All' ? 'all time' : period
 
   return (
     <div className="space-y-5">
@@ -485,7 +488,7 @@ export default function WeightPanel() {
               </div>
             </div>
             <p className="text-xs text-tx-muted mt-3">
-              {Math.abs(change)} {wUnit} {changeWord} over {period}
+              {Math.abs(change)} {wUnit} {changeWord} over {periodLabel}
             </p>
           </>
         )}
@@ -510,11 +513,11 @@ export default function WeightPanel() {
         ))}
       </div>
 
-      {/* Chart + period selector */}
+      {/* Chart/table trend */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4 gap-2">
           <h2 className="section-title">Trend</h2>
-          <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
+          {chartPoints.length >= 2 && <ChartTableToggle view={chartView} onChange={setChartView} />}
         </div>
 
         {chartPoints.length === 0 ? (
@@ -524,6 +527,25 @@ export default function WeightPanel() {
         ) : chartPoints.length === 1 ? (
           <div className="flex items-center justify-center h-44 text-tx-muted text-sm">
             Log another entry to see the trend
+          </div>
+        ) : chartView === 'table' ? (
+          <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-tx-muted border-b border-surface-border">
+                  <th className="py-1.5 pr-4 font-medium whitespace-nowrap">Date</th>
+                  <th className="py-1.5 pr-4 font-medium whitespace-nowrap">Weight ({wUnit})</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chartPoints.slice().reverse().map(p => (
+                  <tr key={p.ts} className="border-b border-surface-border/40">
+                    <td className="py-1.5 pr-4 text-tx-primary tabular-nums whitespace-nowrap">{format(p.date, 'MMM d, yyyy')}</td>
+                    <td className="py-1.5 pr-4 text-tx-primary tabular-nums whitespace-nowrap">{round1(p.weight)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <TrendChart points={chartPoints} wUnit={wUnit} />
