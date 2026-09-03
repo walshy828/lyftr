@@ -16,6 +16,7 @@ import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.OxygenSaturationRecord
 import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
+import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.Vo2MaxRecord
 import androidx.health.connect.client.request.AggregateRequest
@@ -61,6 +62,7 @@ object HealthConnectSync {
         HealthPermission.getReadPermission(Vo2MaxRecord::class),
         HealthPermission.getReadPermission(FloorsClimbedRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
+        HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND,
     )
 
@@ -312,7 +314,14 @@ object HealthConnectSync {
             page.records to page.pageToken
         }.map { toMetric("floors_climbed", it.metadata.id, it.endTime, it.floors, "floors") }
 
-        return hrv + spo2 + restingHr + activeCalories + vo2Max + floors
+        val steps = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }.map { toMetric("steps", it.metadata.id, it.endTime, it.count.toDouble(), "steps") }
+
+        return hrv + spo2 + restingHr + activeCalories + vo2Max + floors + steps
     }
 
     private fun toMetric(metricType: String, externalId: String, at: Instant, value: Double, unit: String) =

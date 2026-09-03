@@ -268,6 +268,7 @@ const (
 	MetricTypeActiveCalories   = "active_calories"
 	MetricTypeVO2Max           = "vo2_max" // used as the cardio-load proxy — Health Connect has no native cardio-load metric
 	MetricTypeFloorsClimbed    = "floors_climbed"
+	MetricTypeSteps            = "steps"
 )
 
 // HealthMetric is one scalar reading imported from a companion device's

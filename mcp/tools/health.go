@@ -15,7 +15,7 @@ type dateRangeInput struct {
 }
 
 type listHealthMetricsInput struct {
-	MetricType string `json:"metric_type,omitempty" jsonschema:"Filter to one metric type: hrv_rmssd, spo2, resting_heart_rate, active_calories, vo2_max, floors_climbed. Omit for all types."`
+	MetricType string `json:"metric_type,omitempty" jsonschema:"Filter to one metric type: hrv_rmssd, spo2, resting_heart_rate, active_calories, vo2_max, floors_climbed, steps. Omit for all types."`
 	From       string `json:"from,omitempty" jsonschema:"Start date (YYYY-MM-DD or RFC3339), inclusive"`
 	To         string `json:"to,omitempty" jsonschema:"End date (YYYY-MM-DD or RFC3339), inclusive"`
 }
@@ -33,7 +33,7 @@ type heartRateZonesInput struct {
 // registerHealth exposes read access to the health data imported from a
 // companion device's health platform (e.g. Health Connect): raw heart rate
 // samples, scalar metrics (HRV, SpO2, resting heart rate, active calories,
-// VO2 max, floors climbed), and sleep sessions with stage detail. Import
+// VO2 max, floors climbed, steps), and sleep sessions with stage detail. Import
 // endpoints are deliberately not exposed here — those exist for the Android
 // sync job, not for the assistant to write through.
 func registerHealth(server *mcp.Server, c *client.Client) {
@@ -73,7 +73,7 @@ func registerHealth(server *mcp.Server, c *client.Client) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_health_metrics",
-		Description: "List scalar health metrics (HRV RMSSD, SpO2, resting heart rate, active calories, VO2 max as a cardio-load proxy, floors climbed) imported from Health Connect, most recent first.",
+		Description: "List scalar health metrics (HRV RMSSD, SpO2, resting heart rate, active calories, VO2 max as a cardio-load proxy, floors climbed, steps) imported from Health Connect, most recent first.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in listHealthMetricsInput) (*mcp.CallToolResult, any, error) {
 		q := url.Values{}
 		setIfNonEmpty(q, "metric_type", in.MetricType)

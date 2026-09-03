@@ -18,7 +18,7 @@ func (h *Handler) ListHealthMetrics(c *gin.Context) {
 }
 
 // ImportHealthMetrics accepts a batch of scalar health metrics (HRV, SpO2,
-// resting heart rate, active calories, VO2 max, floors climbed) from a sync
+// resting heart rate, active calories, VO2 max, floors climbed, steps) from a sync
 // job (e.g. the Android companion app reading Health Connect). Safe to call
 // repeatedly — metrics are upserted on (metric_type, external_id).
 func (h *Handler) ImportHealthMetrics(c *gin.Context) {
