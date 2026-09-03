@@ -426,7 +426,7 @@ export const healthMetricsAPI = {
     api.get<{ data: types.HealthMetric[] }>('/health-metrics', { params: { metric_type: metricType, from, to } }).then(res => unwrap(res)),
   /** Day-bucketed rollup — summed for 'steps', averaged for everything else unless `agg` overrides it. */
   daily: (metricType: types.MetricType, from?: string, to?: string, agg?: 'avg' | 'sum') =>
-    api.get<{ data: types.HealthMetricDailyStat[] }>('/health-metrics/daily', { params: { metric_type: metricType, from, to, agg } }).then(res => unwrap(res)),
+    api.get<{ data: types.HealthMetricDailyStat[] }>('/health-metrics/daily', { params: { metric_type: metricType, from, to, agg, tz_offset: -new Date().getTimezoneOffset() } }).then(res => unwrap(res)),
 }
 
 // Blood pressure (#bloodPressure). No unit conversion anywhere: mmHg is
