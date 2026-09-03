@@ -21,6 +21,7 @@ import androidx.health.connect.client.records.StepsCadenceRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.Vo2MaxRecord
+import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -364,26 +365,35 @@ object HealthConnectSync {
         // types above: a phone's built-in pedometer, a watch companion app,
         // Google Fit, etc. can each write their own overlapping StepsRecords
         // for the same physical steps, and naively summing every record
-        // roughly doubled real daily totals in practice. aggregateGroupByPeriod
-        // is Health Connect's own priority-ordered, per-source-deduplicated
-        // total — the same number Health Connect's own UI shows — bucketed to
-        // one value per local calendar day (matching how the backend already
-        // buckets/sums this metric).
+        // roughly doubled real daily totals in practice. Restricted to
+        // STEPS_DATA_ORIGIN (the Pixel Watch) rather than trusting Health
+        // Connect's own cross-source priority/dedup — see readStepsAggregate.
         val steps = readStepsAggregate(client, since)
 
         return hrv + spo2 + restingHr + activeCalories + vo2Max + floors + steps
     }
 
     /**
-     * Daily step totals in (since, now], via Health Connect's deduplicated
-     * per-day aggregate rather than summing raw StepsRecord entries — see the
-     * call site in [readHealthMetrics]. Windowed into ~1-year chunks: a
-     * `since = null` full-history backfill spans decades back to
-     * [Instant.EPOCH], and one [HealthConnectClient.aggregateGroupByPeriod]
-     * call for a multi-decade range with a daily slicer was observed to fail
-     * outright (surfacing as a generic "couldn't read Health Connect" sync
-     * error) rather than just being slow — chunking keeps each call's bucket
-     * count small regardless of how far back the backfill goes.
+     * The Pixel Watch (via the Fitbit/Google Health app) is treated as the
+     * sole system of record for steps — Health Connect's own cross-source
+     * priority/dedup logic didn't reliably match the watch's own numbers in
+     * practice, so instead of trusting it, every other contributing source
+     * (e.g. the phone's own step counter) is excluded outright via
+     * `dataOriginFilter`.
+     */
+    private val STEPS_DATA_ORIGIN = DataOrigin("com.fitbit.FitbitMobile")
+
+    /**
+     * Daily step totals in (since, now], via Health Connect's per-day
+     * aggregate restricted to [STEPS_DATA_ORIGIN] rather than summing raw
+     * StepsRecord entries — see the call site in [readHealthMetrics].
+     * Windowed into ~1-year chunks: a `since = null` full-history backfill
+     * spans decades back to [Instant.EPOCH], and one
+     * [HealthConnectClient.aggregateGroupByPeriod] call for a multi-decade
+     * range with a daily slicer was observed to fail outright (surfacing as
+     * a generic "couldn't read Health Connect" sync error) rather than just
+     * being slow — chunking keeps each call's bucket count small regardless
+     * of how far back the backfill goes.
      */
     private suspend fun readStepsAggregate(client: HealthConnectClient, since: Instant?): List<HealthMetricDto> {
         val zone = ZoneId.systemDefault()
@@ -397,6 +407,7 @@ object HealthConnectSync {
                     metrics = setOf(StepsRecord.COUNT_TOTAL),
                     timeRangeFilter = TimeRangeFilter.between(windowStart, windowEnd),
                     timeRangeSlicer = Period.ofDays(1),
+                    dataOriginFilter = setOf(STEPS_DATA_ORIGIN),
                 ),
             )
             for (bucket in buckets) {

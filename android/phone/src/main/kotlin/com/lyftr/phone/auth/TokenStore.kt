@@ -163,6 +163,12 @@ class TokenStore(context: Context) {
      * Health Connect's deduplicated per-day aggregate: anyone who already ran
      * the v1 backfill needs one more full re-read under the corrected logic,
      * which a fresh (defaults-false) key naturally forces.
+     *
+     * Bumped again (v3) when the aggregate was further restricted to
+     * [HealthConnectSync.STEPS_DATA_ORIGIN] (the Pixel Watch's Fitbit app)
+     * only — Health Connect's own cross-source priority/dedup still didn't
+     * reliably match the watch's own numbers, so every other source is now
+     * excluded outright rather than trusted to dedup correctly.
      */
     var stepsBackfillDone: Boolean
         get() = prefs.getBoolean(KEY_STEPS_BACKFILL_DONE, false)
@@ -218,6 +224,6 @@ class TokenStore(context: Context) {
         const val KEY_LAST_HEALTH_METRICS_SYNC = "last_health_metrics_sync_at"
         const val KEY_LAST_SLEEP_SYNC = "last_sleep_sync_at"
         const val KEY_HEALTH_SYNC_LOG = "health_sync_log"
-        const val KEY_STEPS_BACKFILL_DONE = "steps_backfill_done_v2"
+        const val KEY_STEPS_BACKFILL_DONE = "steps_backfill_done_v3"
     }
 }
