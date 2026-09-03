@@ -42,6 +42,7 @@ export default function SleepPanel() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detail, setDetail] = useState<types.SleepSessionDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [hoveredSegment, setHoveredSegment] = useState<number | null>(null)
 
   const load = () => {
     setTrendLoading(true)
@@ -64,6 +65,7 @@ export default function SleepPanel() {
   }, [syncStatus])
 
   useEffect(() => {
+    setHoveredSegment(null)
     if (selectedId == null) { setDetail(null); return }
     setDetailLoading(true)
     sleepAPI.detail(selectedId).then(setDetail).catch(() => setDetail(null)).finally(() => setDetailLoading(false))
@@ -102,10 +104,19 @@ export default function SleepPanel() {
       const sEnd = new Date(s.ended_at).getTime()
       return {
         stage: s.stage_type,
+        start: sStart,
+        end: sEnd,
         leftPct: ((sStart - start) / span) * 100,
         widthPct: Math.max(((sEnd - sStart) / span) * 100, 0.3),
       }
     })
+
+    // Minutes spent in each stage, for the "time in stage" summary beneath the bar.
+    const stageTotals: Record<string, number> = {}
+    for (const s of stages) {
+      const mins = (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000
+      stageTotals[s.stage_type] = (stageTotals[s.stage_type] ?? 0) + mins
+    }
 
     const hrPoints = hr.map(s => ({ t: new Date(s.recorded_at).getTime(), bpm: s.bpm })).sort((a, b) => a.t - b.t)
     const hrvPoints = hrv.map(r => ({ t: new Date(r.recorded_at).getTime(), value: Math.round(r.value) })).sort((a, b) => a.t - b.t)
@@ -118,7 +129,7 @@ export default function SleepPanel() {
     for (let t = firstTick.getTime(); t <= end; t += 3600_000) ticks.push(t)
     if (ticks.length === 0) { ticks.push(start, end) }
 
-    return { stageSegments, hrPoints, hrvPoints, start, end, span, ticks }
+    return { stageSegments, stageTotals, hrPoints, hrvPoints, start, end, span, ticks }
   }, [detail])
 
   if (trendLoading && sessionsLoading) return <Loading />
@@ -277,18 +288,40 @@ export default function SleepPanel() {
               {/* Stage timeline — a proportional bar with hourly clock labels beneath it. */}
               <div>
                 <p className="text-[11px] text-tx-muted mb-1">Sleep stages</p>
-                <div className="relative h-6 rounded-lg overflow-hidden bg-surface-overlay flex">
-                  {detailTimeline.stageSegments.map((seg, i) => (
-                    <div
-                      key={i}
-                      className="absolute top-0 bottom-0"
-                      style={{
-                        left: `${seg.leftPct}%`,
-                        width: `${seg.widthPct}%`,
-                        backgroundColor: SLEEP_STAGE_COLORS[seg.stage as keyof typeof SLEEP_STAGE_COLORS] ?? '#94a3b8',
-                      }}
-                    />
-                  ))}
+                <div className="relative">
+                  {hoveredSegment != null && (() => {
+                    const seg = detailTimeline.stageSegments[hoveredSegment]
+                    const mins = (seg.end - seg.start) / 60000
+                    return (
+                      <div
+                        className="absolute bottom-full mb-1.5 -translate-x-1/2 z-10 pointer-events-none"
+                        style={{ left: `${seg.leftPct + seg.widthPct / 2}%` }}
+                      >
+                        <div className="px-2.5 py-1.5 bg-surface-overlay border border-surface-border rounded-lg shadow-dropdown text-xs text-tx-secondary whitespace-nowrap">
+                          <span className="capitalize font-medium text-tx-primary">{seg.stage}</span>
+                          {' · '}
+                          {format(new Date(seg.start), 'h:mm a')}–{format(new Date(seg.end), 'h:mm a')}
+                          {' · '}
+                          {formatMinutes(mins)}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                  <div className="relative h-6 rounded-lg overflow-hidden bg-surface-overlay flex">
+                    {detailTimeline.stageSegments.map((seg, i) => (
+                      <div
+                        key={i}
+                        className="absolute top-0 bottom-0 cursor-default"
+                        style={{
+                          left: `${seg.leftPct}%`,
+                          width: `${seg.widthPct}%`,
+                          backgroundColor: SLEEP_STAGE_COLORS[seg.stage as keyof typeof SLEEP_STAGE_COLORS] ?? '#94a3b8',
+                        }}
+                        onMouseEnter={() => setHoveredSegment(i)}
+                        onMouseLeave={() => setHoveredSegment(prev => (prev === i ? null : prev))}
+                      />
+                    ))}
+                  </div>
                 </div>
                 <div className="relative h-4 mt-1">
                   {detailTimeline.ticks.map(t => (
@@ -307,6 +340,16 @@ export default function SleepPanel() {
                       <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: SLEEP_STAGE_COLORS[k] }} />
                       {k}
                     </span>
+                  ))}
+                </div>
+                <div className="grid grid-cols-4 gap-2 mt-3">
+                  {(['deep', 'rem', 'light', 'awake'] as const).map(k => (
+                    <div key={k} className="bg-surface-overlay rounded-lg px-2 py-1.5 text-center">
+                      <p className="text-[10px] text-tx-muted capitalize">{k}</p>
+                      <p className="text-xs font-semibold text-tx-primary mt-0.5">
+                        {formatMinutes(detailTimeline.stageTotals[k] ?? 0)}
+                      </p>
+                    </div>
                   ))}
                 </div>
               </div>

@@ -149,14 +149,13 @@ export const HR_ZONE_COLORS = {
 } as const
 
 // ── Sleep stages ────────────────────────────────────────────────────────
-// Categorical, four distinct hues chosen for clear separation on a stacked
-// stage timeline in both themes — deep sleep gets the darkest/most saturated
-// color since it's the stage users most care about tracking.
+// A green ramp (light → deep) for the sleep-only stages so depth reads as
+// intensity, plus amber for awake to stand apart as the non-sleep stage.
 export const SLEEP_STAGE_COLORS = {
   awake: '#f59e0b',
-  light: '#60a5fa',
-  deep: '#4338ca',
-  rem: '#a78bfa',
+  light: '#86efac',
+  deep: '#14532d',
+  rem: '#16a34a',
 } as const
 
 // Cadence line series — reuses the cardio hue so cadence reads as "part of
