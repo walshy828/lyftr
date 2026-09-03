@@ -369,22 +369,44 @@ object HealthConnectSync {
         // total — the same number Health Connect's own UI shows — bucketed to
         // one value per local calendar day (matching how the backend already
         // buckets/sums this metric).
-        val steps = client.aggregateGroupByPeriod(
-            AggregateGroupByPeriodRequest(
-                metrics = setOf(StepsRecord.COUNT_TOTAL),
-                timeRangeFilter = TimeRangeFilter.between(
-                    LocalDateTime.ofInstant(since ?: Instant.EPOCH, ZoneId.systemDefault()),
-                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
-                ),
-                timeRangeSlicer = Period.ofDays(1),
-            ),
-        ).mapNotNull { bucket ->
-            val total = bucket.result[StepsRecord.COUNT_TOTAL] ?: return@mapNotNull null
-            val dayEnd = bucket.endTime.atZone(ZoneId.systemDefault()).toInstant()
-            toMetric("steps", "steps-daily-${bucket.startTime.toLocalDate()}", dayEnd, total.toDouble(), "steps")
-        }
+        val steps = readStepsAggregate(client, since)
 
         return hrv + spo2 + restingHr + activeCalories + vo2Max + floors + steps
+    }
+
+    /**
+     * Daily step totals in (since, now], via Health Connect's deduplicated
+     * per-day aggregate rather than summing raw StepsRecord entries — see the
+     * call site in [readHealthMetrics]. Windowed into ~1-year chunks: a
+     * `since = null` full-history backfill spans decades back to
+     * [Instant.EPOCH], and one [HealthConnectClient.aggregateGroupByPeriod]
+     * call for a multi-decade range with a daily slicer was observed to fail
+     * outright (surfacing as a generic "couldn't read Health Connect" sync
+     * error) rather than just being slow — chunking keeps each call's bucket
+     * count small regardless of how far back the backfill goes.
+     */
+    private suspend fun readStepsAggregate(client: HealthConnectClient, since: Instant?): List<HealthMetricDto> {
+        val zone = ZoneId.systemDefault()
+        var windowStart = LocalDateTime.ofInstant(since ?: Instant.EPOCH, zone)
+        val end = LocalDateTime.ofInstant(Instant.now(), zone)
+        val out = mutableListOf<HealthMetricDto>()
+        while (windowStart.isBefore(end)) {
+            val windowEnd = minOf(windowStart.plusYears(1), end)
+            val buckets = client.aggregateGroupByPeriod(
+                AggregateGroupByPeriodRequest(
+                    metrics = setOf(StepsRecord.COUNT_TOTAL),
+                    timeRangeFilter = TimeRangeFilter.between(windowStart, windowEnd),
+                    timeRangeSlicer = Period.ofDays(1),
+                ),
+            )
+            for (bucket in buckets) {
+                val total = bucket.result[StepsRecord.COUNT_TOTAL] ?: continue
+                val dayEnd = bucket.endTime.atZone(zone).toInstant()
+                out += toMetric("steps", "steps-daily-${bucket.startTime.toLocalDate()}", dayEnd, total.toDouble(), "steps")
+            }
+            windowStart = windowEnd
+        }
+        return out
     }
 
     private fun toMetric(metricType: String, externalId: String, at: Instant, value: Double, unit: String) =
