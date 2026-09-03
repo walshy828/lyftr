@@ -126,6 +126,38 @@ class TokenStore(context: Context) {
         prefs.edit().putString(KEY_SYNC_LOG, Json.encodeToString(ListSerializer(SyncLogEntry.serializer()), updated)).apply()
     }
 
+    /**
+     * Watermarks for HealthMetricsSyncWorker's three data types — unlike
+     * [lastCardioSyncAt] (display-only; cardio always resubmits a fixed
+     * lookback window), these actually bound each sync's Health Connect read,
+     * because raw heart rate volume makes "resubmit everything every run" too
+     * expensive. Null means "never synced" — the next run reads Health
+     * Connect's full available history, which is exactly the one-time
+     * full-history backfill this data needs on a device's first sync.
+     */
+    var lastHeartRateSyncAt: Instant?
+        get() = prefs.getLong(KEY_LAST_HEART_RATE_SYNC, -1L).takeIf { it >= 0 }?.let(Instant::ofEpochMilli)
+        set(value) = prefs.edit().putLong(KEY_LAST_HEART_RATE_SYNC, value?.toEpochMilli() ?: -1L).apply()
+
+    var lastHealthMetricsSyncAt: Instant?
+        get() = prefs.getLong(KEY_LAST_HEALTH_METRICS_SYNC, -1L).takeIf { it >= 0 }?.let(Instant::ofEpochMilli)
+        set(value) = prefs.edit().putLong(KEY_LAST_HEALTH_METRICS_SYNC, value?.toEpochMilli() ?: -1L).apply()
+
+    var lastSleepSyncAt: Instant?
+        get() = prefs.getLong(KEY_LAST_SLEEP_SYNC, -1L).takeIf { it >= 0 }?.let(Instant::ofEpochMilli)
+        set(value) = prefs.edit().putLong(KEY_LAST_SLEEP_SYNC, value?.toEpochMilli() ?: -1L).apply()
+
+    /** Last 10 HealthMetricsSyncWorker outcomes, newest first — mirrors [syncLog]. */
+    val healthSyncLog: List<SyncLogEntry>
+        get() = prefs.getString(KEY_HEALTH_SYNC_LOG, null)
+            ?.let { runCatching { Json.decodeFromString(ListSerializer(SyncLogEntry.serializer()), it) }.getOrNull() }
+            ?: emptyList()
+
+    fun appendHealthSyncLogEntry(entry: SyncLogEntry) {
+        val updated = (listOf(entry) + healthSyncLog).take(10)
+        prefs.edit().putString(KEY_HEALTH_SYNC_LOG, Json.encodeToString(ListSerializer(SyncLogEntry.serializer()), updated)).apply()
+    }
+
     fun saveTokens(access: String, refresh: String) {
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, access)
@@ -161,5 +193,9 @@ class TokenStore(context: Context) {
         const val KEY_LAST_CARDIO_SYNC = "last_cardio_sync_at"
         const val KEY_SESSION_EXPIRED = "session_expired"
         const val KEY_SYNC_LOG = "cardio_sync_log"
+        const val KEY_LAST_HEART_RATE_SYNC = "last_heart_rate_sync_at"
+        const val KEY_LAST_HEALTH_METRICS_SYNC = "last_health_metrics_sync_at"
+        const val KEY_LAST_SLEEP_SYNC = "last_sleep_sync_at"
+        const val KEY_HEALTH_SYNC_LOG = "health_sync_log"
     }
 }

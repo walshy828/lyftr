@@ -550,6 +550,80 @@ CREATE INDEX IF NOT EXISTS idx_cardio_sessions_user_started ON cardio_sessions(u
 	// session, so the UI can show it instead of falling back to the generic
 	// type. Empty for older imports and any source that doesn't set a title.
 	ensureColumn("cardio_sessions", "title", `ALTER TABLE cardio_sessions ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
+
+	// Raw heart rate samples imported from Health Connect. High-volume
+	// (potentially thousands/day from a watch), so this is a separate table
+	// from health_metrics rather than folded into that generic table — a
+	// different query/index shape (dense time series vs. sparse daily
+	// scalars) and a different sync strategy on the Android side (watermark,
+	// not whole-window resubmit; see android/phone's HealthMetricsSyncWorker).
+	heartRate := `
+CREATE TABLE IF NOT EXISTS heart_rate_samples (
+  id           INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  external_id  TEXT     NOT NULL,
+  recorded_at  DATETIME NOT NULL,
+  bpm          INTEGER  NOT NULL,
+  source       TEXT     NOT NULL DEFAULT 'health_connect',
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_heart_rate_samples_user_recorded ON heart_rate_samples(user_id, recorded_at DESC);`
+	if _, err := DB.Exec(heartRate); err != nil {
+		log.Fatalf("create heart_rate_samples: %v", err)
+	}
+
+	// Generic scalar health metrics imported from Health Connect — HRV
+	// (RMSSD), SpO2, resting heart rate, active calories, VO2 max (used as
+	// the cardio-load proxy; Health Connect has no native cardio-load
+	// metric), and floors climbed. One table for all of these since they
+	// share the same shape (a single value at a point in time) rather than
+	// six near-identical tables.
+	healthMetrics := `
+CREATE TABLE IF NOT EXISTS health_metrics (
+  id           INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  metric_type  TEXT     NOT NULL,
+  external_id  TEXT     NOT NULL,
+  recorded_at  DATETIME NOT NULL,
+  value        REAL     NOT NULL,
+  unit         TEXT     NOT NULL DEFAULT '',
+  source       TEXT     NOT NULL DEFAULT 'health_connect',
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, metric_type, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_health_metrics_user_type_recorded ON health_metrics(user_id, metric_type, recorded_at DESC);`
+	if _, err := DB.Exec(healthMetrics); err != nil {
+		log.Fatalf("create health_metrics: %v", err)
+	}
+
+	// Sleep sessions imported from Health Connect, with per-stage detail
+	// (light/deep/REM/awake) in a child table — Health Connect exposes stages
+	// as a nested list on SleepSessionRecord itself, not a separate record
+	// type, so they're written together in one Import call.
+	sleep := `
+CREATE TABLE IF NOT EXISTS sleep_sessions (
+  id          INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  external_id TEXT     NOT NULL,
+  started_at  DATETIME NOT NULL,
+  ended_at    DATETIME NOT NULL,
+  source      TEXT     NOT NULL DEFAULT 'health_connect',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sleep_sessions_user_started ON sleep_sessions(user_id, started_at DESC);
+CREATE TABLE IF NOT EXISTS sleep_stages (
+  id                INTEGER  PRIMARY KEY AUTOINCREMENT,
+  sleep_session_id  INTEGER  NOT NULL REFERENCES sleep_sessions(id) ON DELETE CASCADE,
+  stage_type        TEXT     NOT NULL,
+  started_at        DATETIME NOT NULL,
+  ended_at          DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sleep_stages_session ON sleep_stages(sleep_session_id);`
+	if _, err := DB.Exec(sleep); err != nil {
+		log.Fatalf("create sleep_sessions: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

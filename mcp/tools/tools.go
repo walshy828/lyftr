@@ -22,6 +22,8 @@ func Register(server *mcp.Server, c *client.Client) {
 	registerFood(server, c)
 	registerExercises(server, c)
 	registerPrograms(server, c)
+	registerCardio(server, c)
+	registerHealth(server, c)
 }
 
 // setIfPositive adds key=v to q when v is above zero, so an omitted (zero

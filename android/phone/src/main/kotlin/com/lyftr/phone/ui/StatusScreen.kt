@@ -42,8 +42,10 @@ import com.lyftr.phone.auth.SyncLogEntry
 import com.lyftr.phone.auth.TokenStore
 import com.lyftr.phone.health.HealthConnectSync
 import com.lyftr.phone.sync.CardioSyncWorker
+import com.lyftr.phone.sync.HealthMetricsSyncWorker
 import com.lyftr.phone.sync.SessionRepository
 import com.lyftr.phone.sync.SessionSyncService
+import com.lyftr.phone.sync.healthStatusOrNull
 import com.lyftr.phone.sync.statusOrNull
 import com.lyftr.phone.ui.theme.LyftrBrandHeader
 import com.lyftr.phone.ui.theme.LyftrColors
@@ -115,6 +117,34 @@ private fun manualSyncStatusText(info: WorkInfo?): String? = when (info?.state) 
     else -> null
 }
 
+/** HealthMetricsSyncWorker's analogue of [syncStatusText] — "sessions" -> "readings" since it covers HR samples/metrics/sleep, not discrete sessions. */
+private fun healthSyncStatusText(status: HealthMetricsSyncWorker.Status?, imported: Int, updated: Int): String = when (status) {
+    HealthMetricsSyncWorker.Status.OK -> when {
+        imported > 0 && updated > 0 -> "Synced $imported new reading${if (imported == 1) "" else "s"}, $updated updated"
+        imported > 0 -> "Synced $imported new reading${if (imported == 1) "" else "s"}"
+        updated > 0 -> "Updated $updated reading${if (updated == 1) "" else "s"}"
+        else -> "Up to date — no new data"
+    }
+    HealthMetricsSyncWorker.Status.NOT_LOGGED_IN -> "Not logged in"
+    HealthMetricsSyncWorker.Status.HEALTH_CONNECT_UNAVAILABLE -> "Health Connect isn't available on this device"
+    HealthMetricsSyncWorker.Status.PERMISSION_NOT_GRANTED -> "Health Connect permission isn't granted"
+    HealthMetricsSyncWorker.Status.IMPORT_FAILED -> "Sync failed — check your connection and try again"
+    HealthMetricsSyncWorker.Status.READ_FAILED -> "Couldn't read Health Connect — try syncing again"
+    null -> "Sync failed — check your connection and try again"
+}
+
+/** Human-readable outcome of the most recent manual/on-open "Sync health data now" run, or null while nothing has happened yet. */
+private fun manualHealthSyncStatusText(info: WorkInfo?): String? = when (info?.state) {
+    WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING -> "Syncing…"
+    WorkInfo.State.SUCCEEDED -> healthSyncStatusText(
+        info.outputData.healthStatusOrNull(),
+        info.outputData.getInt(HealthMetricsSyncWorker.KEY_IMPORTED, 0),
+        info.outputData.getInt(HealthMetricsSyncWorker.KEY_UPDATED, 0),
+    )
+    WorkInfo.State.FAILED -> healthSyncStatusText(info.outputData.healthStatusOrNull(), 0, 0)
+    else -> null
+}
+
 @Composable
 private fun ConnectionPill(serverUrl: String?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -162,11 +192,16 @@ fun StatusScreen(tokenStore: TokenStore, onLogout: () -> Unit) {
         HealthConnectSync.permissionRequestContract(),
     ) { granted -> cardioPermissionGranted = granted.containsAll(HealthConnectSync.PERMISSIONS) }
 
+    var healthSyncLog by remember { mutableStateOf(tokenStore.healthSyncLog) }
+
     LaunchedEffect(healthConnectAvailable) {
         if (healthConnectAvailable) {
+            // A single permission grant covers both workers' record types —
+            // HealthConnectSync.PERMISSIONS is the union — so one check gates both.
             cardioPermissionGranted = HealthConnectSync.hasPermissions(HealthConnectSync.client(context))
             if (cardioPermissionGranted) {
                 CardioSyncWorker.schedule(context)
+                HealthMetricsSyncWorker.schedule(context)
                 // Opening the app is the cheapest possible moment to catch up
                 // a sync that Doze/App Standby deferred past the periodic
                 // interval — costs nothing extra since the device is already
@@ -176,6 +211,10 @@ fun StatusScreen(tokenStore: TokenStore, onLogout: () -> Unit) {
                 val lastSync = tokenStore.lastCardioSyncAt
                 if (lastSync == null || System.currentTimeMillis() - lastSync.toEpochMilli() > STALE_AFTER_MS) {
                     CardioSyncWorker.syncNow(context)
+                }
+                val lastHealthSync = tokenStore.lastHealthMetricsSyncAt
+                if (lastHealthSync == null || System.currentTimeMillis() - lastHealthSync.toEpochMilli() > STALE_AFTER_MS) {
+                    HealthMetricsSyncWorker.syncNow(context)
                 }
             }
         }
@@ -200,6 +239,21 @@ fun StatusScreen(tokenStore: TokenStore, onLogout: () -> Unit) {
         if (manualDone || periodicDone) {
             lastSyncedAt = tokenStore.lastCardioSyncAt
             syncLog = tokenStore.syncLog
+        }
+    }
+
+    val manualHealthSyncWorkInfos by remember(context) { HealthMetricsSyncWorker.observeManualSync(context) }
+        .collectAsState(initial = emptyList())
+    val latestManualHealthSync = manualHealthSyncWorkInfos.firstOrNull()
+    val periodicHealthSyncWorkInfos by remember(context) { HealthMetricsSyncWorker.observePeriodicSync(context) }
+        .collectAsState(initial = emptyList())
+    val latestPeriodicHealthSync = periodicHealthSyncWorkInfos.firstOrNull()
+
+    LaunchedEffect(latestManualHealthSync?.state, latestPeriodicHealthSync?.state) {
+        val manualDone = latestManualHealthSync?.state == WorkInfo.State.SUCCEEDED || latestManualHealthSync?.state == WorkInfo.State.FAILED
+        val periodicDone = latestPeriodicHealthSync?.state == WorkInfo.State.SUCCEEDED || latestPeriodicHealthSync?.state == WorkInfo.State.FAILED
+        if (manualDone || periodicDone) {
+            healthSyncLog = tokenStore.healthSyncLog
         }
     }
 
@@ -288,6 +342,33 @@ fun StatusScreen(tokenStore: TokenStore, onLogout: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                     )
+
+                    androidx.compose.material3.HorizontalDivider()
+                    Text(
+                        "Heart rate, HRV, SpO2, resting HR, active calories, VO2 max, floors climbed, and sleep also sync automatically — the first sync pulls in your full available history.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(horizontal = 2.dp))
+                        OutlinedButton(onClick = { HealthMetricsSyncWorker.syncNow(context) }) {
+                            Text("Sync health data now")
+                        }
+                    }
+                    manualHealthSyncStatusText(latestManualHealthSync)?.let { status ->
+                        Text(status, style = MaterialTheme.typography.bodySmall)
+                    }
+                    val nextHealthScheduleMillis = latestPeriodicHealthSync?.nextScheduleTimeMillis
+                    Text(
+                        if (nextHealthScheduleMillis != null && nextHealthScheduleMillis > 0) {
+                            "Next auto-sync: ${formatRelative(nextHealthScheduleMillis)}"
+                        } else {
+                            "Next auto-sync: after your next app open"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    )
                 } else {
                     Text(
                         "Grant Health Connect access to import cardio sessions from your watch",
@@ -308,6 +389,13 @@ fun StatusScreen(tokenStore: TokenStore, onLogout: () -> Unit) {
             }
         }
 
+        if (healthSyncLog.isNotEmpty()) {
+            SectionCard {
+                Text("Health data sync history", style = MaterialTheme.typography.titleMedium)
+                healthSyncLog.forEach { entry -> HealthSyncLogRow(entry) }
+            }
+        }
+
         TextButton(onClick = onLogout) {
             Text("Log out", color = MaterialTheme.colorScheme.error)
         }
@@ -325,6 +413,31 @@ private fun SyncLogRow(entry: SyncLogEntry) {
             syncStatusText(status, entry.imported, entry.updated),
             style = MaterialTheme.typography.bodySmall,
             color = if (status == CardioSyncWorker.Status.OK) {
+                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f)
+            } else {
+                MaterialTheme.colorScheme.error
+            },
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            formatAgo(entry.at),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+        )
+    }
+}
+
+@Composable
+private fun HealthSyncLogRow(entry: SyncLogEntry) {
+    val status = runCatching { HealthMetricsSyncWorker.Status.valueOf(entry.status) }.getOrNull()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            healthSyncStatusText(status, entry.imported, entry.updated),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (status == HealthMetricsSyncWorker.Status.OK) {
                 MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f)
             } else {
                 MaterialTheme.colorScheme.error

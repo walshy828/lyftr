@@ -203,6 +203,136 @@ type BatchImportCardioSessionsRequest struct {
 	Sessions []CreateCardioSessionRequest `json:"sessions" validate:"required,dive"`
 }
 
+// Heart rate samples (#heartRate) ------------------------------------------
+
+// HeartRateSample is one raw beats-per-minute reading imported from a
+// companion device's health platform (e.g. Health Connect). Deliberately its
+// own table rather than folded into HealthMetric — much higher volume than a
+// daily scalar, so it gets its own index shape and its own sync watermark on
+// the Android side instead of a whole-window resubmit every run.
+type HeartRateSample struct {
+	ID         int64     `json:"id" db:"id"`
+	UserID     int64     `json:"user_id" db:"user_id"`
+	ExternalID string    `json:"external_id" db:"external_id"`
+	RecordedAt time.Time `json:"recorded_at" db:"recorded_at"`
+	BPM        int       `json:"bpm" db:"bpm"`
+	Source     string    `json:"source" db:"source"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+}
+
+type CreateHeartRateSampleRequest struct {
+	ExternalID string    `json:"external_id" validate:"required"`
+	RecordedAt time.Time `json:"recorded_at" validate:"required"`
+	BPM        int       `json:"bpm" validate:"required,gt=0"`
+	Source     string    `json:"source"`
+}
+
+type BatchImportHeartRateSamplesRequest struct {
+	Samples []CreateHeartRateSampleRequest `json:"samples" validate:"required,dive"`
+}
+
+// HeartRateDailyStat is one day's rollup of raw heart rate samples.
+type HeartRateDailyStat struct {
+	Day   string `json:"day"` // 'YYYY-MM-DD'
+	Min   int    `json:"min"`
+	Avg   int    `json:"avg"`
+	Max   int    `json:"max"`
+	Count int    `json:"count"`
+}
+
+// Health metrics (#healthMetrics) -------------------------------------------
+
+// Metric types for HealthMetric.MetricType. One generic table covers all of
+// these since they share the same shape — a single value at a point in time
+// — unlike cardio sessions or sleep sessions which carry a duration and
+// (for sleep) nested stages.
+const (
+	MetricTypeHRVRMSSD         = "hrv_rmssd"
+	MetricTypeSpO2             = "spo2"
+	MetricTypeRestingHeartRate = "resting_heart_rate"
+	MetricTypeActiveCalories   = "active_calories"
+	MetricTypeVO2Max           = "vo2_max" // used as the cardio-load proxy — Health Connect has no native cardio-load metric
+	MetricTypeFloorsClimbed    = "floors_climbed"
+)
+
+// HealthMetric is one scalar reading imported from a companion device's
+// health platform.
+type HealthMetric struct {
+	ID         int64     `json:"id" db:"id"`
+	UserID     int64     `json:"user_id" db:"user_id"`
+	MetricType string    `json:"metric_type" db:"metric_type"`
+	ExternalID string    `json:"external_id" db:"external_id"`
+	RecordedAt time.Time `json:"recorded_at" db:"recorded_at"`
+	Value      float64   `json:"value" db:"value"`
+	Unit       string    `json:"unit,omitempty" db:"unit"`
+	Source     string    `json:"source" db:"source"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+}
+
+type CreateHealthMetricRequest struct {
+	MetricType string    `json:"metric_type" validate:"required"`
+	ExternalID string    `json:"external_id" validate:"required"`
+	RecordedAt time.Time `json:"recorded_at" validate:"required"`
+	Value      float64   `json:"value" validate:"required"`
+	Unit       string    `json:"unit"`
+	Source     string    `json:"source"`
+}
+
+type BatchImportHealthMetricsRequest struct {
+	Metrics []CreateHealthMetricRequest `json:"metrics" validate:"required,dive"`
+}
+
+// Sleep (#sleep) -------------------------------------------------------------
+
+// Sleep stage type values, matching Health Connect's SleepSessionRecord.Stage types.
+const (
+	SleepStageAwake = "awake"
+	SleepStageLight = "light"
+	SleepStageDeep  = "deep"
+	SleepStageREM   = "rem"
+)
+
+// SleepStage is one contiguous stage within a SleepSession.
+type SleepStage struct {
+	ID             int64     `json:"id" db:"id"`
+	SleepSessionID int64     `json:"sleep_session_id" db:"sleep_session_id"`
+	StageType      string    `json:"stage_type" db:"stage_type"`
+	StartedAt      time.Time `json:"started_at" db:"started_at"`
+	EndedAt        time.Time `json:"ended_at" db:"ended_at"`
+}
+
+// SleepSession is one sleep period imported from a companion device's health
+// platform, with its full stage breakdown (Health Connect exposes stages as
+// a nested list on the session record itself, not a separate record type).
+type SleepSession struct {
+	ID         int64        `json:"id" db:"id"`
+	UserID     int64        `json:"user_id" db:"user_id"`
+	ExternalID string       `json:"external_id" db:"external_id"`
+	StartedAt  time.Time    `json:"started_at" db:"started_at"`
+	EndedAt    time.Time    `json:"ended_at" db:"ended_at"`
+	Source     string       `json:"source" db:"source"`
+	CreatedAt  time.Time    `json:"created_at" db:"created_at"`
+	Stages     []SleepStage `json:"stages"`
+}
+
+type CreateSleepStageRequest struct {
+	StageType string    `json:"stage_type" validate:"required"`
+	StartedAt time.Time `json:"started_at" validate:"required"`
+	EndedAt   time.Time `json:"ended_at" validate:"required"`
+}
+
+type CreateSleepSessionRequest struct {
+	ExternalID string                    `json:"external_id" validate:"required"`
+	StartedAt  time.Time                 `json:"started_at" validate:"required"`
+	EndedAt    time.Time                 `json:"ended_at" validate:"required"`
+	Source     string                    `json:"source"`
+	Stages     []CreateSleepStageRequest `json:"stages" validate:"dive"`
+}
+
+type BatchImportSleepSessionsRequest struct {
+	Sessions []CreateSleepSessionRequest `json:"sessions" validate:"required,dive"`
+}
+
 // Blood pressure (#bloodPressure) ------------------------------------------
 
 // Measurement contexts. Free-form on the wire but validated to this set, so the

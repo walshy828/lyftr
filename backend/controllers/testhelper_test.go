@@ -265,6 +265,49 @@ CREATE TABLE IF NOT EXISTS cardio_sessions (
   UNIQUE(user_id, external_id)
 );
 
+CREATE TABLE IF NOT EXISTS heart_rate_samples (
+  id           INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  external_id  TEXT     NOT NULL,
+  recorded_at  DATETIME NOT NULL,
+  bpm          INTEGER  NOT NULL,
+  source       TEXT     NOT NULL DEFAULT 'health_connect',
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS health_metrics (
+  id           INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  metric_type  TEXT     NOT NULL,
+  external_id  TEXT     NOT NULL,
+  recorded_at  DATETIME NOT NULL,
+  value        REAL     NOT NULL,
+  unit         TEXT     NOT NULL DEFAULT '',
+  source       TEXT     NOT NULL DEFAULT 'health_connect',
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, metric_type, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS sleep_sessions (
+  id          INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  external_id TEXT     NOT NULL,
+  started_at  DATETIME NOT NULL,
+  ended_at    DATETIME NOT NULL,
+  source      TEXT     NOT NULL DEFAULT 'health_connect',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS sleep_stages (
+  id                INTEGER  PRIMARY KEY AUTOINCREMENT,
+  sleep_session_id  INTEGER  NOT NULL REFERENCES sleep_sessions(id) ON DELETE CASCADE,
+  stage_type        TEXT     NOT NULL,
+  started_at        DATETIME NOT NULL,
+  ended_at          DATETIME NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS food_logs (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

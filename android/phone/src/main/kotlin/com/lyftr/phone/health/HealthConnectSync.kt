@@ -7,14 +7,25 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.aggregate.AggregationResult
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.FloorsClimbedRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.OxygenSaturationRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
+import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.Vo2MaxRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.lyftr.phone.auth.CardioSessionDto
+import com.lyftr.phone.auth.HealthMetricDto
+import com.lyftr.phone.auth.HeartRateSampleDto
+import com.lyftr.phone.auth.SleepSessionDto
+import com.lyftr.phone.auth.SleepStageDto
 import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeFormatter
@@ -41,6 +52,15 @@ object HealthConnectSync {
         HealthPermission.getReadPermission(DistanceRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
         HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
+        // Added for the full health-data archive (raw HR samples + scalar
+        // metrics + sleep), on top of the cardio-session summary fields above.
+        HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class),
+        HealthPermission.getReadPermission(OxygenSaturationRecord::class),
+        HealthPermission.getReadPermission(RestingHeartRateRecord::class),
+        HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
+        HealthPermission.getReadPermission(Vo2MaxRecord::class),
+        HealthPermission.getReadPermission(FloorsClimbedRecord::class),
+        HealthPermission.getReadPermission(SleepSessionRecord::class),
         HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND,
     )
 
@@ -173,4 +193,152 @@ object HealthConnectSync {
     }
 
     private val ISO_FORMAT = DateTimeFormatter.ISO_INSTANT
+
+    /**
+     * Health Connect pages large result sets (~1000-5000 records/page
+     * depending on record type); each read function below follows the
+     * pageToken until it's null so a full-history first sync (since = null)
+     * doesn't silently truncate at one page.
+     */
+    private suspend fun <T> readAllPages(
+        client: HealthConnectClient,
+        page: suspend (pageToken: String?) -> Pair<List<T>, String?>,
+    ): List<T> {
+        val out = mutableListOf<T>()
+        var token: String? = null
+        do {
+            val (records, next) = page(token)
+            out += records
+            token = next
+        } while (token != null)
+        return out
+    }
+
+    /**
+     * Raw beats-per-minute samples in (since, now]. `since` null means "every
+     * sample Health Connect has" — the one-time full-history backfill on a
+     * device's first sync; every run after that passes the sync watermark
+     * (see HealthMetricsSyncWorker), never the full history again, since raw
+     * HR volume makes re-scanning everything on every run too expensive.
+     */
+    suspend fun readHeartRateSamples(client: HealthConnectClient, since: Instant?): List<HeartRateSampleDto> {
+        val range = TimeRangeFilter.after(since ?: Instant.EPOCH)
+        val records = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = HeartRateRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }
+        return records.flatMap { record ->
+            record.samples.map { sample ->
+                HeartRateSampleDto(
+                    external_id = "${record.metadata.id}:${sample.time.epochSecond}",
+                    recorded_at = ISO_FORMAT.format(sample.time),
+                    bpm = sample.beatsPerMinute.toInt(),
+                )
+            }
+        }
+    }
+
+    /**
+     * Scalar health metrics (HRV RMSSD, SpO2, resting heart rate, active
+     * calories, VO2 max, floors climbed) in (since, now]. See
+     * [readHeartRateSamples] for the since=null full-history meaning.
+     */
+    suspend fun readHealthMetrics(client: HealthConnectClient, since: Instant?): List<HealthMetricDto> {
+        val range = TimeRangeFilter.after(since ?: Instant.EPOCH)
+
+        val hrv = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = HeartRateVariabilityRmssdRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }.map { toMetric("hrv_rmssd", it.metadata.id, it.time, it.heartRateVariabilityMillis, "ms") }
+
+        val spo2 = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = OxygenSaturationRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }.map { toMetric("spo2", it.metadata.id, it.time, it.percentage.value, "%") }
+
+        val restingHr = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = RestingHeartRateRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }.map { toMetric("resting_heart_rate", it.metadata.id, it.time, it.beatsPerMinute.toDouble(), "bpm") }
+
+        val activeCalories = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = ActiveCaloriesBurnedRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }.map { toMetric("active_calories", it.metadata.id, it.endTime, it.energy.inKilocalories, "kcal") }
+
+        val vo2Max = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = Vo2MaxRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }.map { toMetric("vo2_max", it.metadata.id, it.time, it.vo2MillilitersPerMinuteKilogram, "ml/kg/min") }
+
+        val floors = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = FloorsClimbedRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }.map { toMetric("floors_climbed", it.metadata.id, it.endTime, it.floors, "floors") }
+
+        return hrv + spo2 + restingHr + activeCalories + vo2Max + floors
+    }
+
+    private fun toMetric(metricType: String, externalId: String, at: Instant, value: Double, unit: String) =
+        HealthMetricDto(
+            metric_type = metricType,
+            external_id = externalId,
+            recorded_at = ISO_FORMAT.format(at),
+            value = value,
+            unit = unit,
+        )
+
+    /**
+     * Sleep sessions (with their nested stage breakdown) in (since, now).
+     * Health Connect exposes stages as a list on SleepSessionRecord itself,
+     * so no separate stage-record read is needed.
+     */
+    suspend fun readSleepSessions(client: HealthConnectClient, since: Instant?): List<SleepSessionDto> {
+        val range = TimeRangeFilter.after(since ?: Instant.EPOCH)
+        val records = readAllPages(client) { token ->
+            val page = client.readRecords(
+                ReadRecordsRequest(recordType = SleepSessionRecord::class, timeRangeFilter = range, pageToken = token),
+            )
+            page.records to page.pageToken
+        }
+        return records.map { session ->
+            SleepSessionDto(
+                external_id = session.metadata.id,
+                started_at = ISO_FORMAT.format(session.startTime),
+                ended_at = ISO_FORMAT.format(session.endTime),
+                stages = session.stages.map { stage ->
+                    SleepStageDto(
+                        stage_type = sleepStageTypeOf(stage.stage),
+                        started_at = ISO_FORMAT.format(stage.startTime),
+                        ended_at = ISO_FORMAT.format(stage.endTime),
+                    )
+                },
+            )
+        }
+    }
+
+    /** Collapses Health Connect's finer stage constants to Lyftr's 4-value stage_type. */
+    private fun sleepStageTypeOf(stage: Int): String = when (stage) {
+        SleepSessionRecord.STAGE_TYPE_DEEP -> "deep"
+        SleepSessionRecord.STAGE_TYPE_REM -> "rem"
+        SleepSessionRecord.STAGE_TYPE_LIGHT -> "light"
+        SleepSessionRecord.STAGE_TYPE_AWAKE,
+        SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED,
+        SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> "awake"
+        else -> "awake" // STAGE_TYPE_UNKNOWN and any future constant
+    }
 }

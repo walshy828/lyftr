@@ -12,6 +12,7 @@ import com.lyftr.phone.auth.LyftrApiClient
 import com.lyftr.phone.auth.TokenRefreshWorker
 import com.lyftr.phone.auth.TokenStore
 import com.lyftr.phone.sync.CardioSyncWorker
+import com.lyftr.phone.sync.HealthMetricsSyncWorker
 import com.lyftr.phone.sync.SessionSyncService
 
 /**
@@ -61,6 +62,7 @@ fun LyftrPhoneApp() {
             onLogout = {
                 TokenRefreshWorker.cancel(context)
                 CardioSyncWorker.cancel(context)
+                HealthMetricsSyncWorker.cancel(context)
                 tokenStore.clear()
                 loggedIn = false
                 sessionExpired = false

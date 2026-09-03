@@ -85,6 +85,60 @@ private data class ImportCardioSessionsEnvelope(val data: ImportCardioSessionsRe
 /** Outcome of a cardio import batch: rows newly inserted vs existing rows overwritten. */
 data class CardioImportResult(val imported: Int, val updated: Int)
 
+/** Mirrors backend/models/models.go's CreateHeartRateSampleRequest. */
+@Serializable
+data class HeartRateSampleDto(
+    val external_id: String,
+    val recorded_at: String,
+    val bpm: Int,
+)
+
+/**
+ * Mirrors backend/models/models.go's CreateHealthMetricRequest. metric_type
+ * is one of the models.MetricType* constants (hrv_rmssd, spo2,
+ * resting_heart_rate, active_calories, vo2_max, floors_climbed).
+ */
+@Serializable
+data class HealthMetricDto(
+    val metric_type: String,
+    val external_id: String,
+    val recorded_at: String,
+    val value: Double,
+    val unit: String = "",
+)
+
+/** Mirrors backend/models/models.go's CreateSleepStageRequest. */
+@Serializable
+data class SleepStageDto(
+    val stage_type: String,
+    val started_at: String,
+    val ended_at: String,
+)
+
+/** Mirrors backend/models/models.go's CreateSleepSessionRequest. */
+@Serializable
+data class SleepSessionDto(
+    val external_id: String,
+    val started_at: String,
+    val ended_at: String,
+    val stages: List<SleepStageDto> = emptyList(),
+)
+
+@Serializable
+private data class ImportHeartRateSamplesRequest(val samples: List<HeartRateSampleDto>)
+@Serializable
+private data class ImportHealthMetricsRequest(val metrics: List<HealthMetricDto>)
+@Serializable
+private data class ImportSleepSessionsRequest(val sessions: List<SleepSessionDto>)
+
+@Serializable
+private data class ImportResultData(val imported: Int, val updated: Int = 0, val submitted: Int)
+@Serializable
+private data class ImportResultEnvelope(val data: ImportResultData)
+
+/** Outcome of any of the health-data import batches above. */
+data class HealthImportResult(val imported: Int, val updated: Int)
+
 /**
  * Minimal REST client for the subset of the Lyftr API (backend/routes/routes.go)
  * the phone companion needs: login/refresh and the active-session blob sync
@@ -187,6 +241,33 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
         runCatching {
             val result = json.decodeFromString(ImportCardioSessionsEnvelope.serializer(), respBody).data
             CardioImportResult(result.imported, result.updated)
+        }.getOrNull()
+    }
+
+    /** Imports raw heart rate samples. See backend/controllers/heart_rate.go ImportHeartRateSamples. */
+    suspend fun importHeartRateSamples(samples: List<HeartRateSampleDto>): HealthImportResult? =
+        importBatch("/heart-rate/import", ImportHeartRateSamplesRequest.serializer(), ImportHeartRateSamplesRequest(samples), samples.isEmpty())
+
+    /** Imports scalar health metrics (HRV, SpO2, resting HR, active calories, VO2 max, floors). See backend/controllers/health_metrics.go ImportHealthMetrics. */
+    suspend fun importHealthMetrics(metrics: List<HealthMetricDto>): HealthImportResult? =
+        importBatch("/health-metrics/import", ImportHealthMetricsRequest.serializer(), ImportHealthMetricsRequest(metrics), metrics.isEmpty())
+
+    /** Imports sleep sessions with stage detail. See backend/controllers/sleep.go ImportSleepSessions. */
+    suspend fun importSleepSessions(sessions: List<SleepSessionDto>): HealthImportResult? =
+        importBatch("/sleep/import", ImportSleepSessionsRequest.serializer(), ImportSleepSessionsRequest(sessions), sessions.isEmpty())
+
+    private suspend fun <T> importBatch(
+        path: String,
+        serializer: kotlinx.serialization.KSerializer<T>,
+        request: T,
+        empty: Boolean,
+    ): HealthImportResult? = withContext(Dispatchers.IO) {
+        if (empty) return@withContext HealthImportResult(0, 0)
+        val body = json.encodeToString(serializer, request).toRequestBody(JSON_MEDIA_TYPE)
+        val respBody = executeWithRefresh { authedRequest(path).post(body).build() } ?: return@withContext null
+        runCatching {
+            val result = json.decodeFromString(ImportResultEnvelope.serializer(), respBody).data
+            HealthImportResult(result.imported, result.updated)
         }.getOrNull()
     }
 
