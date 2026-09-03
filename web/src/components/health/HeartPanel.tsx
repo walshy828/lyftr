@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { HeartPulse, Activity } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Bar, ComposedChart } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Bar, ComposedChart, Brush } from 'recharts'
 import Loading from '../Loading'
 import PeriodSelector from '../PeriodSelector'
+import DrillableTrendChart, { RawSeriesChart } from '../charts/DrillableTrendChart'
 import { usePeriodFilter } from '../../hooks/usePeriodFilter'
 import { healthMetricsAPI, sleepAPI } from '../../services/api'
 import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, SLEEP_STAGE_COLORS } from '../../utils/chartTheme'
@@ -17,32 +18,47 @@ function average(values: number[]): number | null {
   return values.reduce((a, b) => a + b, 0) / values.length
 }
 
-/** A day-bucketed metric trend, sized for a small dashboard card. */
-function MetricLineChart({ data, dataKey, color, unit, label }: {
+const fmtDay = (d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }
+
+/** A day-bucketed metric trend + chart/table toggle + highlight-to-drill-down
+ *  into the raw samples behind any selected stretch. */
+function MetricTrendCard({ data, color, unit, label, metricType }: {
   data: { day: string; value: number }[]
-  dataKey: string
   color: string
   unit: string
   label: string
+  metricType: types.MetricType
 }) {
-  if (data.length < 2) {
-    return <p className="text-sm text-tx-muted py-6 text-center">Not enough {label.toLowerCase()} data synced yet.</p>
-  }
   return (
-    <ResponsiveContainer width="100%" height={160}>
-      <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-        <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false}
-          tickFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }} />
-        <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} domain={['auto', 'auto']} />
-        <Tooltip
-          contentStyle={TOOLTIP_STYLE}
-          labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
-          formatter={(v: number) => [`${v} ${unit}`, label]}
-        />
-        <Line dataKey={dataKey} stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
-      </LineChart>
-    </ResponsiveContainer>
+    <DrillableTrendChart
+      data={data}
+      xKey="day"
+      emptyMessage={`Not enough ${label.toLowerCase()} data synced yet.`}
+      columns={[
+        { key: 'day', label: 'Date', format: r => fmtDay(r.day) },
+        { key: 'value', label: `${label} (${unit})` },
+      ]}
+      granularFetcher={(from, to) => healthMetricsAPI.list(metricType, from, to)}
+      renderGranular={(rows: types.HealthMetric[]) => (
+        <RawSeriesChart rows={rows} xKey="recorded_at" yKey="value" color={color} unit={unit} chartType="line" />
+      )}
+      renderChart={(chartData, onBrushChange) => (
+        <ResponsiveContainer width="100%" height={160}>
+          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+            <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDay} />
+            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} domain={['auto', 'auto']} />
+            <Tooltip
+              contentStyle={TOOLTIP_STYLE}
+              labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
+              formatter={(v: number) => [`${v} ${unit}`, label]}
+            />
+            <Line dataKey="value" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+            <Brush dataKey="day" height={18} stroke={color} travellerWidth={8} tickFormatter={fmtDay} onChange={onBrushChange} />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    />
   )
 }
 
@@ -110,12 +126,12 @@ export default function HeartPanel() {
 
       <div className="card p-4">
         <h2 className="section-title mb-3">HRV trend</h2>
-        <MetricLineChart data={hrvData} dataKey="value" color={HRV_COLOR} unit="ms" label="HRV" />
+        <MetricTrendCard data={hrvData} color={HRV_COLOR} unit="ms" label="HRV" metricType="hrv_rmssd" />
       </div>
 
       <div className="card p-4">
         <h2 className="section-title mb-3">Resting heart rate trend</h2>
-        <MetricLineChart data={restingHrData} dataKey="value" color={RESTING_HR_COLOR} unit="bpm" label="Resting HR" />
+        <MetricTrendCard data={restingHrData} color={RESTING_HR_COLOR} unit="bpm" label="Resting HR" metricType="resting_heart_rate" />
       </div>
 
       <div className="card p-4">
@@ -131,7 +147,7 @@ export default function HeartPanel() {
                 tickFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }} />
               <YAxis yAxisId="mins" tick={AXIS_TICK} axisLine={false} tickLine={false} width={36}
                 tickFormatter={(v: number) => `${Math.round(v)}m`} />
-              <YAxis yAxisId="hr" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={32} />
+              <YAxis yAxisId="hr" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={32} domain={['auto', 'auto']} />
               <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }} />
               <Bar yAxisId="mins" dataKey="deepMinutes" name="Deep sleep" fill={SLEEP_STAGE_COLORS.deep} radius={[4, 4, 0, 0]} isAnimationActive={false} />
               <Line yAxisId="hr" dataKey="restingHR" name="Resting HR" stroke={RESTING_HR_COLOR} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />

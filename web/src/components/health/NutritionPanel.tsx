@@ -3,6 +3,7 @@ import { format, parseISO } from 'date-fns'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
 import Loading from '../Loading'
 import PeriodSelector from '../PeriodSelector'
+import DrillableTrendChart from '../charts/DrillableTrendChart'
 import { foodAPI } from '../../services/api'
 import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, ENERGY_COLORS } from '../../utils/chartTheme'
 import * as types from '../../types'
@@ -56,23 +57,30 @@ export default function NutritionPanel() {
           </div>
           <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
         </div>
-        {calorieData.length < 2 ? (
-          <p className="text-sm text-tx-muted py-6 text-center">Log a few more days to see a trend.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={calorieData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-              <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDate} />
-              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} />
-              <Tooltip
-                contentStyle={TOOLTIP_STYLE}
-                labelFormatter={fmtDate}
-                formatter={(v: number) => [`${v.toLocaleString()} kcal`, 'Calories']}
-              />
-              <Line dataKey="calories" stroke={ENERGY_COLORS.calories} strokeWidth={2} dot={false} isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
+        <DrillableTrendChart
+          data={calorieData}
+          xKey="date"
+          emptyMessage="Log a few more days to see a trend."
+          columns={[
+            { key: 'date', label: 'Date', format: r => fmtDate(r.date) },
+            { key: 'calories', label: 'Calories', format: r => r.calories.toLocaleString() },
+          ]}
+          renderChart={data => (
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+                <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDate} />
+                <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} domain={['auto', 'auto']} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  labelFormatter={fmtDate}
+                  formatter={(v: number) => [`${v.toLocaleString()} kcal`, 'Calories']}
+                />
+                <Line dataKey="calories" stroke={ENERGY_COLORS.calories} strokeWidth={2} dot={false} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        />
       </div>
 
       <div className="card p-4">

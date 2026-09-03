@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, Footprints, Bike, Waves, RotateCw, Activity, Zap, ArrowUpFromDot, X, HeartPulse, Flame, Timer, MapPin, Gauge } from 'lucide-react'
+import { AlertCircle, Footprints, Bike, Waves, RotateCw, Activity, Zap, ArrowUpFromDot, HeartPulse, Flame, Timer, MapPin, Gauge } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Brush } from 'recharts'
 import Loading from '../Loading'
 import PeriodSelector from '../PeriodSelector'
+import Sheet from '../ui/Sheet'
+import DrillableTrendChart, { RawSeriesChart } from '../charts/DrillableTrendChart'
 import { usePeriodFilter } from '../../hooks/usePeriodFilter'
 import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
 import { cardioAPI, healthMetricsAPI } from '../../services/api'
 import { useSettingsStore, displayDistance, distanceShort } from '../../stores/settings'
 import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, HR_ZONE_COLORS, CADENCE_COLOR } from '../../utils/chartTheme'
 import * as types from '../../types'
+
+const STEPS_COLOR = '#22d3ee'
+const fmtDay = (d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }
 
 const ACTIVITY_ICONS: Record<string, typeof Footprints> = {
   running: Footprints,
@@ -104,24 +109,35 @@ export default function ActivityPanel() {
           </div>
           <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
         </div>
-        {stepsData.length === 0 ? (
-          <p className="text-sm text-tx-muted py-6 text-center">No step data synced yet.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={stepsData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-              <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false}
-                tickFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }} />
-              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} />
-              <Tooltip
-                contentStyle={TOOLTIP_STYLE}
-                labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
-                formatter={(v: number) => [v.toLocaleString(), 'Steps']}
-              />
-              <Bar dataKey="value" fill="#22d3ee" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
+        <DrillableTrendChart
+          data={stepsData}
+          xKey="day"
+          emptyMessage="No step data synced yet."
+          columns={[
+            { key: 'day', label: 'Date', format: r => fmtDay(r.day) },
+            { key: 'value', label: 'Steps', format: r => r.value.toLocaleString() },
+          ]}
+          granularFetcher={(from, to) => healthMetricsAPI.list('steps', from, to)}
+          renderGranular={(rows: types.HealthMetric[]) => (
+            <RawSeriesChart rows={rows} xKey="recorded_at" yKey="value" color={STEPS_COLOR} unit="steps" chartType="bar" />
+          )}
+          renderChart={(data, onBrushChange) => (
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+                <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDay} />
+                <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
+                  formatter={(v: number) => [v.toLocaleString(), 'Steps']}
+                />
+                <Bar dataKey="value" fill={STEPS_COLOR} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                <Brush dataKey="day" height={18} stroke={STEPS_COLOR} travellerWidth={8} tickFormatter={fmtDay} onChange={onBrushChange} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        />
       </div>
 
       <h2 className="section-title px-1">Cardio sessions</h2>
@@ -172,20 +188,17 @@ export default function ActivityPanel() {
       <div ref={sentinelRef} />
       {hasMore && loading && <p className="text-center text-xs text-tx-muted py-2">Loading more…</p>}
 
-      {selectedId != null && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={() => setSelectedId(null)}>
-          <div className="card w-full sm:max-w-lg max-h-[85vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="section-title">Session detail</h3>
-              <button onClick={() => setSelectedId(null)} className="p-1.5 hover:bg-surface-muted rounded-lg transition-colors" aria-label="Close">
-                <X className="w-4 h-4 text-tx-muted" />
-              </button>
-            </div>
-
-            {detailLoading || !detail ? (
-              <Loading />
-            ) : (
-              <div className="space-y-4">
+      <Sheet
+        isOpen={selectedId != null}
+        onClose={() => setSelectedId(null)}
+        title="Session detail"
+        icon={<HeartPulse className="w-4 h-4 text-brand-500" />}
+      >
+        <div className="p-5">
+          {detailLoading || !detail ? (
+            <Loading />
+          ) : (
+            <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="card p-3">
                     <p className="stat-label mb-1">Avg HR</p>
@@ -234,8 +247,7 @@ export default function ActivityPanel() {
               </div>
             )}
           </div>
-        </div>
-      )}
+      </Sheet>
     </div>
   )
 }

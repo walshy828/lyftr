@@ -1,22 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, Moon, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, Moon, RefreshCw } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
-  LineChart,
+  ComposedChart, Bar, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
+  Brush,
 } from 'recharts'
 import Loading from '../Loading'
 import PeriodSelector from '../PeriodSelector'
+import Sheet from '../ui/Sheet'
+import DrillableTrendChart from '../charts/DrillableTrendChart'
 import { usePeriodFilter } from '../../hooks/usePeriodFilter'
 import { useCompanionSync } from '../../hooks/useCompanionSync'
 import { sleepAPI } from '../../services/api'
 import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, SLEEP_STAGE_COLORS } from '../../utils/chartTheme'
 import * as types from '../../types'
 
+const HRV_COLOR = '#8b5cf6'
+const HR_COLOR = '#ef4444'
+
 function formatMinutes(mins: number): string {
   const h = Math.floor(mins / 60)
   const m = Math.round(mins % 60)
   return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) return null
+  return values.reduce((a, b) => a + b, 0) / values.length
 }
 
 /** Sleep sessions arrive read-only from a companion device (Health Connect via
@@ -37,7 +47,9 @@ export default function SleepPanel() {
     setTrendLoading(true)
     sleepAPI.trend(from, to, 'week').then(d => setTrend(d || [])).catch(() => {}).finally(() => setTrendLoading(false))
     setSessionsLoading(true)
-    sleepAPI.list(from, to).then(d => setSessions((d || []).slice().reverse())).catch(() => {}).finally(() => setSessionsLoading(false))
+    // Backend already returns sessions newest-first (ORDER BY started_at DESC) —
+    // render as-is, newest on top.
+    sleepAPI.list(from, to).then(d => setSessions(d || [])).catch(() => {}).finally(() => setSessionsLoading(false))
   }
 
   useEffect(load, [from, to])
@@ -57,6 +69,8 @@ export default function SleepPanel() {
     sleepAPI.detail(selectedId).then(setDetail).catch(() => setDetail(null)).finally(() => setDetailLoading(false))
   }, [selectedId])
 
+  // Trend data is chronological (oldest → newest) for the chart; DrillableTrendChart
+  // reverses it for the table view so that reads newest-first.
   const trendData = useMemo(
     () => trend.map(t => ({
       bucket: t.bucket,
@@ -69,14 +83,20 @@ export default function SleepPanel() {
     [trend],
   )
 
+  const fmtBucket = (d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }
+
+  // Sleep-session detail: stage timeline + HR/HRV plotted on a shared, labeled
+  // clock-time axis instead of raw dumped numbers.
   const detailTimeline = useMemo(() => {
     if (!detail) return null
     const stages = detail.stages ?? []
     const hr = detail.heart_rate_samples ?? []
+    const hrv = detail.hrv_readings ?? []
     if (stages.length === 0 && hr.length === 0) return null
     const start = new Date(detail.started_at).getTime()
     const end = new Date(detail.ended_at).getTime()
     const span = Math.max(end - start, 1)
+
     const stageSegments = stages.map(s => {
       const sStart = new Date(s.started_at).getTime()
       const sEnd = new Date(s.ended_at).getTime()
@@ -86,11 +106,19 @@ export default function SleepPanel() {
         widthPct: Math.max(((sEnd - sStart) / span) * 100, 0.3),
       }
     })
-    const hrPoints = hr.map(s => ({
-      t: Math.round(((new Date(s.recorded_at).getTime() - start) / 60000)),
-      bpm: s.bpm,
-    })).sort((a, b) => a.t - b.t)
-    return { stageSegments, hrPoints }
+
+    const hrPoints = hr.map(s => ({ t: new Date(s.recorded_at).getTime(), bpm: s.bpm })).sort((a, b) => a.t - b.t)
+    const hrvPoints = hrv.map(r => ({ t: new Date(r.recorded_at).getTime(), value: Math.round(r.value) })).sort((a, b) => a.t - b.t)
+
+    // Hourly tick marks across the session span, for both the stage bar and the HR chart.
+    const ticks: number[] = []
+    const firstTick = new Date(start)
+    firstTick.setMinutes(0, 0, 0)
+    if (firstTick.getTime() < start) firstTick.setHours(firstTick.getHours() + 1)
+    for (let t = firstTick.getTime(); t <= end; t += 3600_000) ticks.push(t)
+    if (ticks.length === 0) { ticks.push(start, end) }
+
+    return { stageSegments, hrPoints, hrvPoints, start, end, span, ticks }
   }, [detail])
 
   if (trendLoading && sessionsLoading) return <Loading />
@@ -110,40 +138,76 @@ export default function SleepPanel() {
           <PeriodSelector options={PERIODS} value={period} onChange={setPeriod} />
         </div>
 
-        {trendData.length < 2 ? (
-          <p className="text-sm text-tx-muted py-6 text-center">Not enough nights synced yet for a trend.</p>
-        ) : (
-          <>
-            <ResponsiveContainer width="100%" height={220}>
-              <ComposedChart data={trendData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-                <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="bucket" tick={AXIS_TICK} axisLine={false} tickLine={false}
-                  tickFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }} />
-                <YAxis yAxisId="mins" tick={AXIS_TICK} axisLine={false} tickLine={false} width={40}
-                  tickFormatter={(v: number) => `${Math.round(v / 60)}h`} />
-                <YAxis yAxisId="hr" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={32} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }} />
-                <Bar yAxisId="mins" dataKey="Awake" stackId="s" fill={SLEEP_STAGE_COLORS.awake} isAnimationActive={false} />
-                <Bar yAxisId="mins" dataKey="Light" stackId="s" fill={SLEEP_STAGE_COLORS.light} isAnimationActive={false} />
-                <Bar yAxisId="mins" dataKey="REM" stackId="s" fill={SLEEP_STAGE_COLORS.rem} isAnimationActive={false} />
-                <Bar yAxisId="mins" dataKey="Deep" stackId="s" fill={SLEEP_STAGE_COLORS.deep} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-                <Line yAxisId="hr" dataKey="restingHR" name="Resting HR" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
-            <div className="flex items-center justify-center gap-3 mt-2 flex-wrap">
-              {(['deep', 'rem', 'light', 'awake'] as const).map(k => (
-                <span key={k} className="flex items-center gap-1.5 text-[11px] text-tx-muted capitalize">
-                  <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: SLEEP_STAGE_COLORS[k] }} />
-                  {k}
+        <DrillableTrendChart
+          data={trendData}
+          xKey="bucket"
+          emptyMessage="Not enough nights synced yet for a trend."
+          columns={[
+            { key: 'bucket', label: 'Week of', format: r => fmtBucket(r.bucket) },
+            { key: 'Deep', label: 'Deep (m)' },
+            { key: 'REM', label: 'REM (m)' },
+            { key: 'Light', label: 'Light (m)' },
+            { key: 'Awake', label: 'Awake (m)' },
+            { key: 'restingHR', label: 'Resting HR', format: r => r.restingHR != null ? `${r.restingHR} bpm` : '—' },
+          ]}
+          granularFetcher={(fromBucket, toBucket) => sleepAPI.list(fromBucket, toBucket)}
+          renderGranular={(rows: types.SleepSession[]) => (
+            rows.length === 0 ? (
+              <p className="text-xs text-tx-muted py-2 text-center">No individual sessions in this range.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {rows.map(s => {
+                  const durationMin = (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => setSelectedId(s.id)}
+                      className="w-full flex items-center justify-between text-xs bg-surface-overlay rounded-lg px-3 py-2 hover:bg-surface-muted transition-colors text-left"
+                    >
+                      <span className="text-tx-primary font-medium">{format(new Date(s.started_at), 'EEE, MMM d')}</span>
+                      <span className="text-tx-muted">{formatMinutes(durationMin)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          )}
+          renderChart={(data, onBrushChange) => (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+                  <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="bucket" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtBucket} />
+                  <YAxis yAxisId="mins" tick={AXIS_TICK} axisLine={false} tickLine={false} width={40}
+                    tickFormatter={(v: number) => `${Math.round(v / 60)}h`} />
+                  <YAxis yAxisId="hr" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={32} domain={['auto', 'auto']} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={fmtBucket} />
+                  <Bar yAxisId="mins" dataKey="Awake" stackId="s" fill={SLEEP_STAGE_COLORS.awake} isAnimationActive={false} />
+                  <Bar yAxisId="mins" dataKey="Light" stackId="s" fill={SLEEP_STAGE_COLORS.light} isAnimationActive={false} />
+                  <Bar yAxisId="mins" dataKey="REM" stackId="s" fill={SLEEP_STAGE_COLORS.rem} isAnimationActive={false} />
+                  <Bar yAxisId="mins" dataKey="Deep" stackId="s" fill={SLEEP_STAGE_COLORS.deep} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                  <Line yAxisId="hr" dataKey="restingHR" name="Resting HR" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+                  <Brush dataKey="bucket" height={18} stroke="#6366f1" travellerWidth={8} tickFormatter={fmtBucket} onChange={onBrushChange} />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <div className="flex items-center justify-center gap-3 mt-2 flex-wrap">
+                {(['deep', 'rem', 'light', 'awake'] as const).map(k => (
+                  <span key={k} className="flex items-center gap-1.5 text-[11px] text-tx-muted capitalize">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: SLEEP_STAGE_COLORS[k] }} />
+                    {k}
+                  </span>
+                ))}
+                <span className="flex items-center gap-1.5 text-[11px] text-tx-muted">
+                  <span className="w-2.5 h-0.5 rounded-full bg-error-400" />
+                  Resting HR
                 </span>
-              ))}
-              <span className="flex items-center gap-1.5 text-[11px] text-tx-muted">
-                <span className="w-2.5 h-0.5 rounded-full bg-error-400" />
-                Resting HR
-              </span>
-            </div>
-          </>
-        )}
+              </div>
+              <p className="text-[11px] text-tx-muted text-center mt-1">
+                Drag on the mini-timeline above to see the nights behind any stretch.
+              </p>
+            </>
+          )}
+        />
       </div>
 
       <div className="flex items-center justify-between px-1">
@@ -193,74 +257,112 @@ export default function SleepPanel() {
         </div>
       )}
 
-      {selectedId != null && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={() => setSelectedId(null)}>
-          <div className="card w-full sm:max-w-lg max-h-[85vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="section-title">Sleep session</h3>
-              <button onClick={() => setSelectedId(null)} className="p-1.5 hover:bg-surface-muted rounded-lg transition-colors" aria-label="Close">
-                <X className="w-4 h-4 text-tx-muted" />
-              </button>
-            </div>
+      <Sheet
+        isOpen={selectedId != null}
+        onClose={() => setSelectedId(null)}
+        title="Sleep session"
+        icon={<Moon className="w-4 h-4 text-brand-500" />}
+      >
+        <div className="p-5">
+          {detailLoading || !detail ? (
+            <Loading />
+          ) : !detailTimeline ? (
+            <p className="text-sm text-tx-muted py-6 text-center">No detailed data captured for this session.</p>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-xs text-tx-muted">
+                {format(new Date(detail.started_at), 'MMM d, h:mm a')} – {format(new Date(detail.ended_at), 'h:mm a')}
+              </p>
 
-            {detailLoading || !detail ? (
-              <Loading />
-            ) : !detailTimeline ? (
-              <p className="text-sm text-tx-muted py-6 text-center">No detailed data captured for this session.</p>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-xs text-tx-muted">
-                  {format(new Date(detail.started_at), 'MMM d, h:mm a')} – {format(new Date(detail.ended_at), 'h:mm a')}
-                </p>
-
-                {/* Stage timeline — a simple proportional bar, not a full chart library
-                    render, since the goal is "what happened when" at a glance. */}
-                <div>
-                  <p className="text-[11px] text-tx-muted mb-1">Sleep stages</p>
-                  <div className="relative h-6 rounded-lg overflow-hidden bg-surface-overlay flex">
-                    {detailTimeline.stageSegments.map((seg, i) => (
-                      <div
-                        key={i}
-                        className="absolute top-0 bottom-0"
-                        style={{
-                          left: `${seg.leftPct}%`,
-                          width: `${seg.widthPct}%`,
-                          backgroundColor: SLEEP_STAGE_COLORS[seg.stage as keyof typeof SLEEP_STAGE_COLORS] ?? '#94a3b8',
-                        }}
-                      />
-                    ))}
-                  </div>
+              {/* Stage timeline — a proportional bar with hourly clock labels beneath it. */}
+              <div>
+                <p className="text-[11px] text-tx-muted mb-1">Sleep stages</p>
+                <div className="relative h-6 rounded-lg overflow-hidden bg-surface-overlay flex">
+                  {detailTimeline.stageSegments.map((seg, i) => (
+                    <div
+                      key={i}
+                      className="absolute top-0 bottom-0"
+                      style={{
+                        left: `${seg.leftPct}%`,
+                        width: `${seg.widthPct}%`,
+                        backgroundColor: SLEEP_STAGE_COLORS[seg.stage as keyof typeof SLEEP_STAGE_COLORS] ?? '#94a3b8',
+                      }}
+                    />
+                  ))}
                 </div>
-
-                {detailTimeline.hrPoints.length > 1 && (
-                  <div>
-                    <p className="text-[11px] text-tx-muted mb-1">Heart rate</p>
-                    <ResponsiveContainer width="100%" height={120}>
-                      <LineChart data={detailTimeline.hrPoints} margin={{ top: 4, right: 4, bottom: 0, left: -28 }}>
-                        <XAxis dataKey="t" tick={false} axisLine={false} tickLine={false} />
-                        <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={32} domain={['auto', 'auto']} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [`${v} bpm`, 'HR']} labelFormatter={() => ''} />
-                        <Line dataKey="bpm" stroke="#ef4444" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-
-                {(detail.hrv_readings?.length ?? 0) > 0 && (
-                  <p className="text-xs text-tx-muted">
-                    HRV: {detail.hrv_readings.map(r => Math.round(r.value)).join(', ')} ms
-                  </p>
-                )}
-                {(detail.resting_hr_readings?.length ?? 0) > 0 && (
-                  <p className="text-xs text-tx-muted">
-                    Resting HR: {detail.resting_hr_readings.map(r => Math.round(r.value)).join(', ')} bpm
-                  </p>
-                )}
+                <div className="relative h-4 mt-1">
+                  {detailTimeline.ticks.map(t => (
+                    <span
+                      key={t}
+                      className="absolute -translate-x-1/2 text-[10px] text-tx-muted whitespace-nowrap"
+                      style={{ left: `${((t - detailTimeline.start) / detailTimeline.span) * 100}%` }}
+                    >
+                      {format(new Date(t), 'h a')}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 mt-3 flex-wrap">
+                  {(['deep', 'rem', 'light', 'awake'] as const).map(k => (
+                    <span key={k} className="flex items-center gap-1.5 text-[11px] text-tx-muted capitalize">
+                      <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: SLEEP_STAGE_COLORS[k] }} />
+                      {k}
+                    </span>
+                  ))}
+                </div>
               </div>
-            )}
-          </div>
+
+              {detailTimeline.hrPoints.length > 1 && (
+                <div>
+                  <p className="text-[11px] text-tx-muted mb-1">
+                    Heart rate{detailTimeline.hrvPoints.length > 0 ? ' & HRV' : ''}
+                  </p>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <ComposedChart margin={{ top: 4, right: detailTimeline.hrvPoints.length > 0 ? 28 : 4, bottom: 0, left: -22 }}>
+                      <XAxis
+                        dataKey="t" type="number" domain={[detailTimeline.start, detailTimeline.end]}
+                        ticks={detailTimeline.ticks} tick={AXIS_TICK} axisLine={false} tickLine={false}
+                        tickFormatter={(t: number) => format(new Date(t), 'h a')}
+                      />
+                      <YAxis yAxisId="hr" tick={AXIS_TICK} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
+                      {detailTimeline.hrvPoints.length > 0 && (
+                        <YAxis yAxisId="hrv" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={28} domain={['auto', 'auto']} />
+                      )}
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        labelFormatter={(t: number) => format(new Date(t), 'h:mm a')}
+                        formatter={(v: number, name: string) => [name === 'HRV' ? `${v} ms` : `${v} bpm`, name]}
+                      />
+                      <Line yAxisId="hr" data={detailTimeline.hrPoints} dataKey="bpm" name="HR" stroke={HR_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                      {detailTimeline.hrvPoints.length > 0 && (
+                        <Scatter yAxisId="hrv" data={detailTimeline.hrvPoints} dataKey="value" name="HRV" fill={HRV_COLOR} />
+                      )}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                  {detailTimeline.hrvPoints.length > 0 && (
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="flex items-center gap-1.5 text-[11px] text-tx-muted">
+                        <span className="w-2.5 h-0.5 rounded-full" style={{ backgroundColor: HR_COLOR }} /> Heart rate
+                      </span>
+                      <span className="flex items-center gap-1.5 text-[11px] text-tx-muted">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: HRV_COLOR }} /> HRV
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(detail.resting_hr_readings?.length ?? 0) > 0 && (
+                <div className="flex items-center justify-between text-xs bg-surface-overlay rounded-lg px-3 py-2.5">
+                  <span className="text-tx-muted">Resting HR (this session)</span>
+                  <span className="font-semibold text-tx-primary">
+                    {Math.round(average(detail.resting_hr_readings.map(r => r.value))!)} bpm
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      )}
+      </Sheet>
     </div>
   )
 }
