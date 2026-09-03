@@ -13,7 +13,7 @@ import java.io.IOException
 
 private const val TAG = "LyftrSync"
 
-@Serializable private data class LoginRequest(val email: String, val password: String)
+@Serializable private data class LoginRequest(val email: String, val password: String, val remember: Boolean = true)
 @Serializable private data class RefreshRequest(val refresh_token: String)
 @Serializable private data class AuthData(val token: String, val refresh_token: String)
 @Serializable private data class AuthEnvelope(val data: AuthData)
@@ -162,8 +162,19 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
         }
     }
 
+    /**
+     * `remember: true` is always sent (backend/controllers/auth.go startSession)
+     * — there's no "keep me signed in" checkbox here because the companion app
+     * IS the remembered device: it runs unattended in the background doing
+     * auto-sync (see TokenRefreshWorker), so it needs the long-lived
+     * REMEMBER_TTL-backed refresh token (default 30 days, sliding on every
+     * refresh) rather than the 12h default meant for an interactive browser
+     * session. Without this, the refresh token dies well before
+     * TokenRefreshWorker's daily rotation ever runs, which is exactly what was
+     * causing the app to silently log itself out and stop auto-syncing.
+     */
     suspend fun login(email: String, password: String): Boolean = withContext(Dispatchers.IO) {
-        val body = json.encodeToString(LoginRequest.serializer(), LoginRequest(email, password))
+        val body = json.encodeToString(LoginRequest.serializer(), LoginRequest(email, password, remember = true))
             .toRequestBody(JSON_MEDIA_TYPE)
         val req = Request.Builder().url(apiUrl("/auth/login")).post(body).build()
         runCatching {
