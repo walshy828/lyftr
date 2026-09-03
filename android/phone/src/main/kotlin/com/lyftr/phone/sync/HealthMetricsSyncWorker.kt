@@ -103,8 +103,12 @@ class HealthMetricsSyncWorker(context: Context, params: WorkerParameters) : Coro
             val metricsSince = if (tokenStore.stepsBackfillDone) tokenStore.lastHealthMetricsSyncAt else null
             val metrics = HealthConnectSync.readHealthMetrics(client, metricsSince)
             totalFound += metrics.size
-            if (metrics.isNotEmpty()) {
-                val result = api.importHealthMetrics(metrics) ?: return record(Status.IMPORT_FAILED, found = totalFound, ok = false)
+            // Chunked rather than one request for the whole list — a full-history
+            // backfill (since=null) can be years of steps records, and one giant
+            // request is more likely to hit a server/proxy body-size limit or a
+            // client timeout than several smaller ones.
+            for (chunk in metrics.chunked(METRICS_IMPORT_CHUNK_SIZE)) {
+                val result = api.importHealthMetrics(chunk) ?: return record(Status.IMPORT_FAILED, found = totalFound, ok = false)
                 totalImported += result.imported
                 totalUpdated += result.updated
             }
@@ -136,6 +140,9 @@ class HealthMetricsSyncWorker(context: Context, params: WorkerParameters) : Coro
         const val KEY_IMPORTED = "imported"
         const val KEY_UPDATED = "updated"
         const val KEY_FOUND = "found"
+
+        /** Caps a single /health-metrics/import request's payload during a full-history backfill. */
+        private const val METRICS_IMPORT_CHUNK_SIZE = 500
 
         /** Same 24h/2h-flex cadence as CardioSyncWorker.schedule — see its doc for the rationale. */
         fun schedule(context: Context) {

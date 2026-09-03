@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "LyftrSync"
 
@@ -147,7 +148,16 @@ data class HealthImportResult(val imported: Int, val updated: Int)
  * companion's scope, a lost connection just means the next poll/PUT retries.
  */
 class LyftrApiClient(private val tokenStore: TokenStore) {
-    private val http = OkHttpClient()
+    // Default 10s connect/read/write timeouts are too tight for a health-data
+    // import batch — a full Health Connect history backfill (e.g. years of
+    // steps records on a first sync) can take longer than that to serialize,
+    // upload, and insert server-side, and a timeout there was surfacing as a
+    // generic "check your connection" failure with a fine connection.
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
     private val json = Json { ignoreUnknownKeys = true }
 
     private fun apiUrl(path: String) =
