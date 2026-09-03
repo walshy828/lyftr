@@ -178,6 +178,7 @@ type CardioSession struct {
 	DistanceMeters  float64   `json:"distance_meters" db:"distance_meters"`
 	AvgHeartRate    int       `json:"avg_heart_rate" db:"avg_heart_rate"`
 	Calories        float64   `json:"calories" db:"calories"`
+	AvgCadence      *float64  `json:"avg_cadence,omitempty" db:"avg_cadence"` // steps/min or RPM depending on activity_type; nil when the source didn't report it
 	Source          string    `json:"source" db:"source"`
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 }
@@ -194,6 +195,7 @@ type CreateCardioSessionRequest struct {
 	DistanceMeters  float64   `json:"distance_meters" validate:"gte=0"`
 	AvgHeartRate    int       `json:"avg_heart_rate" validate:"gte=0"`
 	Calories        float64   `json:"calories" validate:"gte=0"`
+	AvgCadence      *float64  `json:"avg_cadence" validate:"omitempty,gte=0"`
 	Source          string    `json:"source"`
 }
 
@@ -255,6 +257,17 @@ type HeartRateZoneMinutes struct {
 	Zone5Minutes   float64 `json:"zone_5_minutes"` // 90-100%+: maximum
 }
 
+// CardioSessionDetail is one cardio session enriched with a heart-rate-zone
+// breakdown for its own [started_at, ended_at] window, for a workout
+// drill-down view. Zones is nil when the user has no heart-rate samples in
+// that window (e.g. no watch worn) — distinguished from an all-zero
+// breakdown, which would wrongly imply zero minutes were spent at any effort.
+type CardioSessionDetail struct {
+	CardioSession
+	Zones          *HeartRateZoneMinutes `json:"zones,omitempty"`
+	MaxObservedBPM int                   `json:"max_observed_bpm,omitempty"`
+}
+
 // Health metrics (#healthMetrics) -------------------------------------------
 
 // Metric types for HealthMetric.MetricType. One generic table covers all of
@@ -296,6 +309,15 @@ type CreateHealthMetricRequest struct {
 
 type BatchImportHealthMetricsRequest struct {
 	Metrics []CreateHealthMetricRequest `json:"metrics" validate:"required,dive"`
+}
+
+// HealthMetricDailyStat is one day's rollup of a single metric_type, either
+// summed (steps) or averaged (everything else) depending on what the caller
+// requested — see GetHealthMetricsDaily.
+type HealthMetricDailyStat struct {
+	Day   string  `json:"day"` // 'YYYY-MM-DD'
+	Value float64 `json:"value"`
+	Count int     `json:"count"`
 }
 
 // Sleep (#sleep) -------------------------------------------------------------
@@ -359,6 +381,32 @@ type SleepDailySummary struct {
 	DeepMinutes  float64 `json:"deep_minutes"`
 	RemMinutes   float64 `json:"rem_minutes"`
 	SessionCount int     `json:"session_count"`
+}
+
+// SleepSessionDetail is one sleep session enriched with the raw heart-rate
+// samples and HRV/resting-HR readings recorded during it, for a drill-down
+// view. Composed in the controller (not SleepStore) since it spans three
+// entities — see GetSleepSessionDetail.
+type SleepSessionDetail struct {
+	SleepSession
+	HeartRateSamples  []HeartRateSample `json:"heart_rate_samples"`
+	HRVReadings       []HealthMetric    `json:"hrv_readings"`
+	RestingHRReadings []HealthMetric    `json:"resting_hr_readings"`
+}
+
+// SleepTrendPoint is one bucket (day or ISO week) of sleep-stage averages
+// across however many sessions fell into it, paired with the same window's
+// average resting heart rate so a chart can show sleep quality and recovery
+// side by side without a client-side join.
+type SleepTrendPoint struct {
+	Bucket           string   `json:"bucket"` // 'YYYY-MM-DD' for bucket=day, 'YYYY-Www' for bucket=week
+	AvgTotalMinutes  float64  `json:"avg_total_minutes"`
+	AvgAwakeMinutes  float64  `json:"avg_awake_minutes"`
+	AvgLightMinutes  float64  `json:"avg_light_minutes"`
+	AvgDeepMinutes   float64  `json:"avg_deep_minutes"`
+	AvgRemMinutes    float64  `json:"avg_rem_minutes"`
+	AvgRestingHR     *float64 `json:"avg_resting_hr,omitempty"`
+	SessionCount     int      `json:"session_count"`
 }
 
 // Blood pressure (#bloodPressure) ------------------------------------------

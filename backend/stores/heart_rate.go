@@ -223,6 +223,51 @@ func (s *HeartRateStore) ZoneMinutes(uid int64, from, to sql.NullTime, maxHR int
 	return out, nil
 }
 
+// ZoneMinutesForSession computes time-in-zone plus the max observed BPM over
+// a single [start, end] window (a cardio session), rather than per calendar
+// day — same sample-holds-until-next-sample logic as ZoneMinutes, but
+// returning one aggregate for the window instead of bucketing by day. maxBPM
+// is 0 when there are no samples in the window at all.
+func (s *HeartRateStore) ZoneMinutesForSession(uid int64, start, end time.Time, maxHR int) (zones models.HeartRateZoneMinutes, maxBPM int, err error) {
+	rows, err := s.db.Query(
+		`SELECT recorded_at, bpm FROM heart_rate_samples
+		  WHERE user_id = ? AND recorded_at >= ? AND recorded_at <= ?
+		  ORDER BY recorded_at ASC`,
+		uid, start, end,
+	)
+	if err != nil {
+		return zones, 0, err
+	}
+	defer rows.Close()
+
+	zones = models.HeartRateZoneMinutes{Day: start.UTC().Format("2006-01-02"), MaxHR: maxHR}
+	var prevAt time.Time
+	var prevBPM int
+	havePrev := false
+
+	for rows.Next() {
+		var at time.Time
+		var bpm int
+		if err := rows.Scan(&at, &bpm); err != nil {
+			return zones, 0, err
+		}
+		if bpm > maxBPM {
+			maxBPM = bpm
+		}
+		if havePrev {
+			gap := at.Sub(prevAt)
+			if gap > 0 && gap <= maxGapForZones {
+				addZoneMinutes(&zones, prevBPM, maxHR, gap.Minutes())
+			}
+		}
+		prevAt, prevBPM, havePrev = at, bpm, true
+	}
+	if err := rows.Err(); err != nil {
+		return zones, 0, err
+	}
+	return zones, maxBPM, nil
+}
+
 // addZoneMinutes credits `minutes` to the zone bucket bpm falls into, as a
 // percentage of maxHR: <50% below zone 1, 50/60/70/80/90% the zone 1-5 cutoffs.
 func addZoneMinutes(d *models.HeartRateZoneMinutes, bpm, maxHR int, minutes float64) {

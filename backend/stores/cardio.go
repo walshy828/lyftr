@@ -20,14 +20,14 @@ type CardioFilter struct {
 }
 
 const cardioCols = `id, user_id, external_id, activity_type, title, started_at, ended_at,
-                     duration_seconds, distance_meters, avg_heart_rate, calories,
+                     duration_seconds, distance_meters, avg_heart_rate, calories, avg_cadence,
                      source, created_at`
 
 func scanCardio(sc interface{ Scan(...any) error }) (models.CardioSession, error) {
 	var s models.CardioSession
 	err := sc.Scan(&s.ID, &s.UserID, &s.ExternalID, &s.ActivityType, &s.Title, &s.StartedAt,
 		&s.EndedAt, &s.DurationSeconds, &s.DistanceMeters, &s.AvgHeartRate,
-		&s.Calories, &s.Source, &s.CreatedAt)
+		&s.Calories, &s.AvgCadence, &s.Source, &s.CreatedAt)
 	return s, err
 }
 
@@ -102,8 +102,8 @@ func (s *CardioStore) Import(uid int64, reqs []models.CreateCardioSessionRequest
 			_, err := tx.Exec(
 				`INSERT INTO cardio_sessions
 				 (user_id, external_id, activity_type, title, started_at, ended_at,
-				  duration_seconds, distance_meters, avg_heart_rate, calories, source)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				  duration_seconds, distance_meters, avg_heart_rate, calories, avg_cadence, source)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				 ON CONFLICT(user_id, external_id) DO UPDATE SET
 				   activity_type    = excluded.activity_type,
 				   title            = excluded.title,
@@ -112,9 +112,10 @@ func (s *CardioStore) Import(uid int64, reqs []models.CreateCardioSessionRequest
 				   duration_seconds = excluded.duration_seconds,
 				   distance_meters  = excluded.distance_meters,
 				   avg_heart_rate   = excluded.avg_heart_rate,
-				   calories         = excluded.calories`,
+				   calories         = excluded.calories,
+				   avg_cadence      = excluded.avg_cadence`,
 				uid, req.ExternalID, req.ActivityType, req.Title, req.StartedAt, req.EndedAt,
-				req.DurationSeconds, req.DistanceMeters, req.AvgHeartRate, req.Calories, source,
+				req.DurationSeconds, req.DistanceMeters, req.AvgHeartRate, req.Calories, req.AvgCadence, source,
 			)
 			if err != nil {
 				return importResult{}, err

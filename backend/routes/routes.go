@@ -136,6 +136,7 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("cardio/stats", h.GetCardioStats)
 		protected.POST("cardio/import", h.ImportCardioSessions)
 		protected.GET("cardio/:id", h.GetCardioSession)
+		protected.GET("cardio/:id/zones", h.GetCardioSessionZones)
 		protected.DELETE("cardio/:id", h.DeleteCardioSession)
 
 		// Heart rate / health metrics / sleep, imported from a companion
@@ -146,11 +147,14 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("heart-rate/zones", h.GetHeartRateZones)
 		protected.POST("heart-rate/import", h.ImportHeartRateSamples)
 		protected.GET("health-metrics", h.ListHealthMetrics)
+		protected.GET("health-metrics/daily", h.GetHealthMetricsDaily)
 		protected.POST("health-metrics/import", h.ImportHealthMetrics)
 		protected.GET("sleep", h.ListSleepSessions)
 		protected.GET("sleep/daily", h.GetSleepDailySummary)
+		protected.GET("sleep/trend", h.GetSleepTrend)
 		protected.POST("sleep/import", h.ImportSleepSessions)
 		protected.GET("sleep/:id", h.GetSleepSession)
+		protected.GET("sleep/:id/detail", h.GetSleepSessionDetail)
 
 		// Cross-metric hub summary — the seam a future metric plugs into.
 		protected.GET("health/summary", h.GetHealthSummary)

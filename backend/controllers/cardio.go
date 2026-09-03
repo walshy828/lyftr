@@ -70,6 +70,44 @@ func (h *Handler) GetCardioSession(c *gin.Context) {
 	utils.OK(c, session)
 }
 
+// GetCardioSessionZones enriches one cardio session with a heart-rate-zone
+// breakdown and max observed BPM computed over its own [started_at, ended_at]
+// window, for a workout drill-down view. Requires either ?max_hr= or a birth
+// date set in the user's profile — see resolveMaxHR.
+func (h *Handler) GetCardioSessionZones(c *gin.Context) {
+	uid := middleware.UserID(c)
+	sid, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid id")
+		return
+	}
+	session, err := h.s.Cardio.Get(uid, sid)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "cardio session not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+
+	maxHR, ok := h.resolveMaxHR(c, uid)
+	if !ok {
+		utils.BadRequest(c, "max_hr is required, or set a birth date in your profile so it can be estimated")
+		return
+	}
+
+	detail := models.CardioSessionDetail{CardioSession: session}
+	zones, maxBPM, err := h.s.HeartRate.ZoneMinutesForSession(uid, session.StartedAt, session.EndedAt, maxHR)
+	if utils.DBError(c, err) {
+		return
+	}
+	if maxBPM > 0 {
+		detail.Zones = &zones
+		detail.MaxObservedBPM = maxBPM
+	}
+	utils.OK(c, detail)
+}
+
 func (h *Handler) DeleteCardioSession(c *gin.Context) {
 	uid := middleware.UserID(c)
 	sid, err := strconv.ParseInt(c.Param("id"), 10, 64)

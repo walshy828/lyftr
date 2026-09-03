@@ -551,6 +551,12 @@ CREATE INDEX IF NOT EXISTS idx_cardio_sessions_user_started ON cardio_sessions(u
 	// type. Empty for older imports and any source that doesn't set a title.
 	ensureColumn("cardio_sessions", "title", `ALTER TABLE cardio_sessions ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
 
+	// Average cadence (steps/min or RPM, depending on activity_type) for the
+	// session, from Health Connect's StepsCadenceRecord/CyclingPedalingCadenceRecord.
+	// Nullable — most existing rows and any source that doesn't report cadence
+	// predate this column, and NULL must be distinguishable from "cadence was 0".
+	ensureColumn("cardio_sessions", "avg_cadence", `ALTER TABLE cardio_sessions ADD COLUMN avg_cadence REAL`)
+
 	// Raw heart rate samples imported from Health Connect. High-volume
 	// (potentially thousands/day from a watch), so this is a separate table
 	// from health_metrics rather than folded into that generic table — a
