@@ -147,6 +147,21 @@ class TokenStore(context: Context) {
         get() = prefs.getLong(KEY_LAST_SLEEP_SYNC, -1L).takeIf { it >= 0 }?.let(Instant::ofEpochMilli)
         set(value) = prefs.edit().putLong(KEY_LAST_SLEEP_SYNC, value?.toEpochMilli() ?: -1L).apply()
 
+    /**
+     * One-time flag so devices that already had a non-null
+     * [lastHealthMetricsSyncAt] before steps support was added still get a
+     * full-history backfill for it: steps shares that watermark with
+     * HRV/SpO2/resting-HR/etc, so on a device that had already synced once,
+     * the first steps-capable sync only picked up data since that pre-existing
+     * (already-recent) watermark instead of Health Connect's full history.
+     * Forcing one full re-read is safe — [HealthMetricStore.Import]
+     * upserts on (user_id, metric_type, external_id), so re-submitting
+     * already-imported HRV/SpO2/etc records just no-op-updates them.
+     */
+    var stepsBackfillDone: Boolean
+        get() = prefs.getBoolean(KEY_STEPS_BACKFILL_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_STEPS_BACKFILL_DONE, value).apply()
+
     /** Last 10 HealthMetricsSyncWorker outcomes, newest first — mirrors [syncLog]. */
     val healthSyncLog: List<SyncLogEntry>
         get() = prefs.getString(KEY_HEALTH_SYNC_LOG, null)
@@ -197,5 +212,6 @@ class TokenStore(context: Context) {
         const val KEY_LAST_HEALTH_METRICS_SYNC = "last_health_metrics_sync_at"
         const val KEY_LAST_SLEEP_SYNC = "last_sleep_sync_at"
         const val KEY_HEALTH_SYNC_LOG = "health_sync_log"
+        const val KEY_STEPS_BACKFILL_DONE = "steps_backfill_done"
     }
 }

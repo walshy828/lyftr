@@ -97,7 +97,11 @@ class HealthMetricsSyncWorker(context: Context, params: WorkerParameters) : Coro
             }
             if (importFailed) return record(Status.IMPORT_FAILED, found = totalFound, ok = false)
 
-            val metrics = HealthConnectSync.readHealthMetrics(client, tokenStore.lastHealthMetricsSyncAt)
+            // Forces one full-history re-read on devices whose watermark was
+            // already advanced before steps support existed — see
+            // TokenStore.stepsBackfillDone.
+            val metricsSince = if (tokenStore.stepsBackfillDone) tokenStore.lastHealthMetricsSyncAt else null
+            val metrics = HealthConnectSync.readHealthMetrics(client, metricsSince)
             totalFound += metrics.size
             if (metrics.isNotEmpty()) {
                 val result = api.importHealthMetrics(metrics) ?: return record(Status.IMPORT_FAILED, found = totalFound, ok = false)
@@ -105,6 +109,7 @@ class HealthMetricsSyncWorker(context: Context, params: WorkerParameters) : Coro
                 totalUpdated += result.updated
             }
             tokenStore.lastHealthMetricsSyncAt = Instant.now()
+            tokenStore.stepsBackfillDone = true
 
             val sleep = HealthConnectSync.readSleepSessions(client, tokenStore.lastSleepSyncAt)
             totalFound += sleep.size
