@@ -120,6 +120,7 @@ export default function ActivityPanel() {
           view={chartView}
           onViewChange={setChartView}
           hideToggle
+          minPoints={1}
           emptyMessage="No step data synced yet."
           columns={[
             { key: 'day', label: 'Date', format: r => fmtDay(r.day) },
