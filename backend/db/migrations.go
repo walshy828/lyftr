@@ -607,6 +607,20 @@ CREATE INDEX IF NOT EXISTS idx_health_metrics_user_type_recorded ON health_metri
 	// (light/deep/REM/awake) in a child table — Health Connect exposes stages
 	// as a nested list on SleepSessionRecord itself, not a separate record
 	// type, so they're written together in one Import call.
+	// Steps used to be imported as one row per raw Health Connect StepsRecord
+	// (external_id = the record's own metadata.id). Multiple data sources
+	// (phone pedometer, watch app, Google Fit, etc.) can each write their own
+	// overlapping StepsRecords for the same physical steps, so summing every
+	// row roughly doubled real daily totals. Steps are now imported as one
+	// pre-deduplicated daily total per day instead (external_id =
+	// "steps-daily-<date>"), which doesn't collide with the old per-record
+	// rows' external_ids — so the old inflated rows must be purged, not just
+	// left to be overwritten. Scoped to rows that AREN'T already in the new
+	// scheme so this is a no-op on every boot after the first.
+	if _, err := DB.Exec(`DELETE FROM health_metrics WHERE metric_type = 'steps' AND external_id NOT LIKE 'steps-daily-%'`); err != nil {
+		log.Fatalf("purge legacy per-record steps rows: %v", err)
+	}
+
 	sleep := `
 CREATE TABLE IF NOT EXISTS sleep_sessions (
   id          INTEGER  PRIMARY KEY AUTOINCREMENT,

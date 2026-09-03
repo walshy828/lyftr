@@ -21,6 +21,7 @@ import androidx.health.connect.client.records.StepsCadenceRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.Vo2MaxRecord
+import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -31,6 +32,9 @@ import com.lyftr.phone.auth.SleepSessionDto
 import com.lyftr.phone.auth.SleepStageDto
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.Period
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
@@ -356,12 +360,29 @@ object HealthConnectSync {
             page.records to page.pageToken
         }.map { toMetric("floors_climbed", it.metadata.id, it.endTime, it.floors, "floors") }
 
-        val steps = readAllPages(client) { token ->
-            val page = client.readRecords(
-                ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = range, pageToken = token),
-            )
-            page.records to page.pageToken
-        }.map { toMetric("steps", it.metadata.id, it.endTime, it.count.toDouble(), "steps") }
+        // Deliberately NOT summing raw StepsRecord.count like the other metric
+        // types above: a phone's built-in pedometer, a watch companion app,
+        // Google Fit, etc. can each write their own overlapping StepsRecords
+        // for the same physical steps, and naively summing every record
+        // roughly doubled real daily totals in practice. aggregateGroupByPeriod
+        // is Health Connect's own priority-ordered, per-source-deduplicated
+        // total — the same number Health Connect's own UI shows — bucketed to
+        // one value per local calendar day (matching how the backend already
+        // buckets/sums this metric).
+        val steps = client.aggregateGroupByPeriod(
+            AggregateGroupByPeriodRequest(
+                metrics = setOf(StepsRecord.COUNT_TOTAL),
+                timeRangeFilter = TimeRangeFilter.between(
+                    LocalDateTime.ofInstant(since ?: Instant.EPOCH, ZoneId.systemDefault()),
+                    LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()),
+                ),
+                timeRangeSlicer = Period.ofDays(1),
+            ),
+        ).mapNotNull { bucket ->
+            val total = bucket.result[StepsRecord.COUNT_TOTAL] ?: return@mapNotNull null
+            val dayEnd = bucket.endTime.atZone(ZoneId.systemDefault()).toInstant()
+            toMetric("steps", "steps-daily-${bucket.startTime.toLocalDate()}", dayEnd, total.toDouble(), "steps")
+        }
 
         return hrv + spo2 + restingHr + activeCalories + vo2Max + floors + steps
     }

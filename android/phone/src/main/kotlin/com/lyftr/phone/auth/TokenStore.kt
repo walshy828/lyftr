@@ -157,6 +157,12 @@ class TokenStore(context: Context) {
      * Forcing one full re-read is safe — [HealthMetricStore.Import]
      * upserts on (user_id, metric_type, external_id), so re-submitting
      * already-imported HRV/SpO2/etc records just no-op-updates them.
+     *
+     * Bumped to a new pref key (v2) when steps moved from summing raw,
+     * multi-source-overlapping StepsRecords (roughly doubled real totals) to
+     * Health Connect's deduplicated per-day aggregate: anyone who already ran
+     * the v1 backfill needs one more full re-read under the corrected logic,
+     * which a fresh (defaults-false) key naturally forces.
      */
     var stepsBackfillDone: Boolean
         get() = prefs.getBoolean(KEY_STEPS_BACKFILL_DONE, false)
@@ -212,6 +218,6 @@ class TokenStore(context: Context) {
         const val KEY_LAST_HEALTH_METRICS_SYNC = "last_health_metrics_sync_at"
         const val KEY_LAST_SLEEP_SYNC = "last_sleep_sync_at"
         const val KEY_HEALTH_SYNC_LOG = "health_sync_log"
-        const val KEY_STEPS_BACKFILL_DONE = "steps_backfill_done"
+        const val KEY_STEPS_BACKFILL_DONE = "steps_backfill_done_v2"
     }
 }
