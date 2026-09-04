@@ -1,17 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import { HeartPulse, Activity } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Bar, ComposedChart, Brush } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Bar, BarChart, ComposedChart, Brush, Legend } from 'recharts'
 import Loading from '../Loading'
 import DrillableTrendChart, { RawSeriesChart, ChartTableToggle } from '../charts/DrillableTrendChart'
 import { useStatsControlsContext } from '../../context/StatsControlsContext'
 import { aggregateByPeriod, type Granularity } from '../../utils/aggregate'
-import { healthMetricsAPI, sleepAPI } from '../../services/api'
-import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, SLEEP_STAGE_COLORS } from '../../utils/chartTheme'
+import { healthMetricsAPI, heartRateAPI, sleepAPI } from '../../services/api'
+import { TOOLTIP_STYLE, AXIS_TICK, GRID_STROKE, SLEEP_STAGE_COLORS, HR_ZONE_COLORS } from '../../utils/chartTheme'
 import * as types from '../../types'
 
 const HRV_COLOR = '#8b5cf6'
 const RESTING_HR_COLOR = '#ef4444'
+const HR_MIN_COLOR = HR_ZONE_COLORS.zone1
+const HR_AVG_COLOR = HR_ZONE_COLORS.zone3
+const HR_MAX_COLOR = HR_ZONE_COLORS.zone5
+
+const ZONE_FIELDS: { key: keyof types.HeartRateZoneMinutes; label: string; color: string }[] = [
+  { key: 'below_zone_1_minutes', label: 'Below zone 1', color: HR_ZONE_COLORS.belowZone1 },
+  { key: 'zone_1_minutes', label: 'Zone 1', color: HR_ZONE_COLORS.zone1 },
+  { key: 'zone_2_minutes', label: 'Zone 2', color: HR_ZONE_COLORS.zone2 },
+  { key: 'zone_3_minutes', label: 'Zone 3', color: HR_ZONE_COLORS.zone3 },
+  { key: 'zone_4_minutes', label: 'Zone 4', color: HR_ZONE_COLORS.zone4 },
+  { key: 'zone_5_minutes', label: 'Zone 5', color: HR_ZONE_COLORS.zone5 },
+]
 
 function average(values: number[]): number | null {
   if (values.length === 0) return null
@@ -67,6 +79,62 @@ function MetricTrendCard({ data, color, unit, label, metricType, view, onViewCha
   )
 }
 
+/** Daily min/avg/max BPM trend. At the finest ('transactional') granularity the
+ *  data is already one row per day, so min/max would just mirror day-to-day
+ *  noise rather than show a real range — collapse to a single avg line there,
+ *  and only draw the min/max band once bucketing (weekly/monthly) makes it
+ *  represent an actual spread. */
+function HeartRateTrendCard({ data, aggregation, view, onViewChange }: {
+  data: (types.HeartRateDailyStat & { day: string })[]
+  aggregation: Granularity
+  view: 'chart' | 'table'
+  onViewChange: (v: 'chart' | 'table') => void
+}) {
+  const showRange = aggregation !== 'transactional'
+  return (
+    <DrillableTrendChart
+      data={data}
+      xKey="day"
+      view={view}
+      onViewChange={onViewChange}
+      hideToggle
+      emptyMessage="Not enough heart rate data synced yet."
+      columns={[
+        { key: 'day', label: 'Date', format: r => fmtDay(r.day) },
+        { key: 'min', label: 'Min (bpm)' },
+        { key: 'avg', label: 'Avg (bpm)' },
+        { key: 'max', label: 'Max (bpm)' },
+      ]}
+      granularFetcher={(from, to) => heartRateAPI.list(from, to)}
+      renderGranular={(rows: types.HeartRateSample[]) => (
+        <RawSeriesChart rows={rows} xKey="recorded_at" yKey="bpm" color={HR_AVG_COLOR} unit="bpm" chartType="line" />
+      )}
+      renderChart={(chartData, onBrushChange) => (
+        <ResponsiveContainer width="100%" height={160}>
+          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+            <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDay} />
+            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} domain={['auto', 'auto']} />
+            <Tooltip
+              contentStyle={TOOLTIP_STYLE}
+              labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
+              formatter={(v: number, name: string) => [`${v} bpm`, name]}
+            />
+            {showRange && (
+              <Line dataKey="min" name="Min" stroke={HR_MIN_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+            )}
+            <Line dataKey="avg" name={showRange ? 'Avg' : 'Heart rate'} stroke={HR_AVG_COLOR} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+            {showRange && (
+              <Line dataKey="max" name="Max" stroke={HR_MAX_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+            )}
+            <Brush dataKey="day" height={18} stroke={HR_AVG_COLOR} travellerWidth={8} tickFormatter={fmtDay} onChange={onBrushChange} />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    />
+  )
+}
+
 /** HRV, resting heart rate, and how deep sleep tracks alongside them — all
  *  synced read-only from a companion device via Health Connect. */
 export default function HeartPanel() {
@@ -74,9 +142,12 @@ export default function HeartPanel() {
   const [hrv, setHrv] = useState<types.HealthMetricDailyStat[]>([])
   const [restingHr, setRestingHr] = useState<types.HealthMetricDailyStat[]>([])
   const [sleepTrend, setSleepTrend] = useState<types.SleepTrendPoint[]>([])
+  const [hrDaily, setHrDaily] = useState<types.HeartRateDailyStat[]>([])
+  const [hrZones, setHrZones] = useState<types.HeartRateZoneMinutes[]>([])
   const [loading, setLoading] = useState(true)
   const [hrvView, setHrvView] = useState<'chart' | 'table'>('chart')
   const [restingView, setRestingView] = useState<'chart' | 'table'>('chart')
+  const [hrView, setHrView] = useState<'chart' | 'table'>('chart')
 
   useEffect(() => {
     setLoading(true)
@@ -84,10 +155,14 @@ export default function HeartPanel() {
       healthMetricsAPI.daily('hrv_rmssd', from, to, 'avg').catch(() => []),
       healthMetricsAPI.daily('resting_heart_rate', from, to, 'avg').catch(() => []),
       sleepAPI.trend(from, to, 'day').catch(() => []),
-    ]).then(([h, r, s]) => {
+      heartRateAPI.daily(from, to).catch(() => []),
+      heartRateAPI.zones(from, to).catch(() => []),
+    ]).then(([h, r, s, hr, z]) => {
       setHrv(h || [])
       setRestingHr(r || [])
       setSleepTrend(s || [])
+      setHrDaily(hr || [])
+      setHrZones(z || [])
     }).finally(() => setLoading(false))
   }, [from, to])
 
@@ -106,6 +181,19 @@ export default function HeartPanel() {
 
   const avgHrv = useMemo(() => average(hrv.map(d => d.value)), [hrv])
   const avgRestingHr = useMemo(() => average(restingHr.map(d => d.value)), [restingHr])
+
+  const hrTrendData = useMemo(() => (
+    aggregateByPeriod(hrDaily, 'day', aggregation, [
+      { key: 'min', agg: 'min' },
+      { key: 'avg', agg: 'avg' },
+      { key: 'max', agg: 'max' },
+    ]).map(d => ({ ...d, min: Math.round(d.min), avg: Math.round(d.avg), max: Math.round(d.max) }))
+  ), [hrDaily, aggregation])
+
+  const hrZonesData = useMemo(() => (
+    aggregateByPeriod(hrZones, 'day', aggregation, ZONE_FIELDS.map(f => ({ key: f.key, agg: 'sum' as const })))
+      .map(d => ({ ...d, ...Object.fromEntries(ZONE_FIELDS.map(f => [f.key, Math.round((d[f.key] as number) ?? 0)])) }))
+  ), [hrZones, aggregation])
 
   const contextData = useMemo(() => {
     const points = sleepTrend.map(t => ({ bucket: t.bucket, deepMinutes: t.avg_deep_minutes, restingHR: t.avg_resting_hr }))
@@ -154,6 +242,47 @@ export default function HeartPanel() {
           <ChartTableToggle view={restingView} onChange={setRestingView} />
         </div>
         <MetricTrendCard data={restingHrData} color={RESTING_HR_COLOR} unit="bpm" label="Resting HR" metricType="resting_heart_rate" view={restingView} onViewChange={setRestingView} />
+      </div>
+
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <h2 className="section-title">Heart rate trend</h2>
+          <ChartTableToggle view={hrView} onChange={setHrView} />
+        </div>
+        <HeartRateTrendCard data={hrTrendData} aggregation={aggregation} view={hrView} onViewChange={setHrView} />
+      </div>
+
+      <div className="card p-4">
+        <h2 className="section-title mb-1">Time in heart rate zones</h2>
+        <p className="text-xs text-tx-muted mb-3">Minutes spent in each zone, based on your estimated max HR.</p>
+        {hrZonesData.length === 0 ? (
+          <p className="text-sm text-tx-muted py-6 text-center">Not enough heart rate data synced yet.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={hrZonesData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+              <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDay} />
+              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={32} tickFormatter={(v: number) => `${v}m`} />
+              <Tooltip
+                contentStyle={TOOLTIP_STYLE}
+                labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
+                formatter={(v: number, name: string) => [`${v} min`, name]}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {ZONE_FIELDS.map((f, i) => (
+                <Bar
+                  key={String(f.key)}
+                  dataKey={f.key as string}
+                  name={f.label}
+                  stackId="zones"
+                  fill={f.color}
+                  isAnimationActive={false}
+                  radius={i === ZONE_FIELDS.length - 1 ? [4, 4, 0, 0] : undefined}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       <div className="card p-4">

@@ -412,6 +412,8 @@ export const sleepAPI = {
 }
 
 export const heartRateAPI = {
+  list: (from?: string, to?: string) =>
+    api.get<{ data: types.HeartRateSample[] }>('/heart-rate', { params: { from, to } }).then(res => unwrap(res)),
   daily: (from?: string, to?: string) =>
     api.get<{ data: types.HeartRateDailyStat[] }>('/heart-rate/daily', { params: { from, to } }).then(res => unwrap(res)),
   /** Per-day time-in-zone minutes. `maxHr` overrides the profile-derived estimate. */

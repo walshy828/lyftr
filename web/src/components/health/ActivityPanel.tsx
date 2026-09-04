@@ -41,12 +41,12 @@ const ACTIVITY_LABELS: Record<string, string> = {
 }
 
 const ZONE_LABELS: { key: keyof types.HeartRateZoneMinutes; label: string; color: string }[] = [
-  { key: 'below_zone1_mins', label: 'Below Z1', color: HR_ZONE_COLORS.belowZone1 },
-  { key: 'zone1_minutes', label: 'Zone 1', color: HR_ZONE_COLORS.zone1 },
-  { key: 'zone2_minutes', label: 'Zone 2', color: HR_ZONE_COLORS.zone2 },
-  { key: 'zone3_minutes', label: 'Zone 3', color: HR_ZONE_COLORS.zone3 },
-  { key: 'zone4_minutes', label: 'Zone 4', color: HR_ZONE_COLORS.zone4 },
-  { key: 'zone5_minutes', label: 'Zone 5', color: HR_ZONE_COLORS.zone5 },
+  { key: 'below_zone_1_minutes', label: 'Below Z1', color: HR_ZONE_COLORS.belowZone1 },
+  { key: 'zone_1_minutes', label: 'Zone 1', color: HR_ZONE_COLORS.zone1 },
+  { key: 'zone_2_minutes', label: 'Zone 2', color: HR_ZONE_COLORS.zone2 },
+  { key: 'zone_3_minutes', label: 'Zone 3', color: HR_ZONE_COLORS.zone3 },
+  { key: 'zone_4_minutes', label: 'Zone 4', color: HR_ZONE_COLORS.zone4 },
+  { key: 'zone_5_minutes', label: 'Zone 5', color: HR_ZONE_COLORS.zone5 },
 ]
 
 function formatDuration(seconds: number): string {

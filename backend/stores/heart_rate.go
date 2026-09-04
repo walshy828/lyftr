@@ -132,7 +132,7 @@ func (s *HeartRateStore) DailyStats(uid int64, from, to sql.NullTime) ([]models.
 	        FROM heart_rate_samples WHERE user_id = ?`
 	args := []any{uid}
 	clause, args := dateRangeClause("recorded_at", from, to, args)
-	q += clause + ` GROUP BY day ORDER BY day DESC`
+	q += clause + ` GROUP BY day ORDER BY day ASC`
 
 	rows, err := s.db.Query(q, args...)
 	if err != nil {

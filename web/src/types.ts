@@ -240,12 +240,12 @@ export interface HeartRateDailyStat {
 export interface HeartRateZoneMinutes {
   day?: string
   max_hr: number
-  below_zone1_mins: number
-  zone1_minutes: number
-  zone2_minutes: number
-  zone3_minutes: number
-  zone4_minutes: number
-  zone5_minutes: number
+  below_zone_1_minutes: number
+  zone_1_minutes: number
+  zone_2_minutes: number
+  zone_3_minutes: number
+  zone_4_minutes: number
+  zone_5_minutes: number
 }
 
 /** GET /cardio/:id/zones — the session's row plus its HR-zone breakdown. */
