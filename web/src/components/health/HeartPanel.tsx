@@ -79,18 +79,12 @@ function MetricTrendCard({ data, color, unit, label, metricType, view, onViewCha
   )
 }
 
-/** Daily min/avg/max BPM trend. At the finest ('transactional') granularity the
- *  data is already one row per day, so min/max would just mirror day-to-day
- *  noise rather than show a real range — collapse to a single avg line there,
- *  and only draw the min/max band once bucketing (weekly/monthly) makes it
- *  represent an actual spread. */
-function HeartRateTrendCard({ data, aggregation, view, onViewChange }: {
+/** Daily min/avg/max BPM trend, for the daily/weekly/monthly granularities. */
+function HeartRateTrendCard({ data, view, onViewChange }: {
   data: (types.HeartRateDailyStat & { day: string })[]
-  aggregation: Granularity
   view: 'chart' | 'table'
   onViewChange: (v: 'chart' | 'table') => void
 }) {
-  const showRange = aggregation !== 'transactional'
   return (
     <DrillableTrendChart
       data={data}
@@ -120,16 +114,38 @@ function HeartRateTrendCard({ data, aggregation, view, onViewChange }: {
               labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
               formatter={(v: number, name: string) => [`${v} bpm`, name]}
             />
-            {showRange && (
-              <Line dataKey="min" name="Min" stroke={HR_MIN_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
-            )}
-            <Line dataKey="avg" name={showRange ? 'Avg' : 'Heart rate'} stroke={HR_AVG_COLOR} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
-            {showRange && (
-              <Line dataKey="max" name="Max" stroke={HR_MAX_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
-            )}
+            <Line dataKey="min" name="Min" stroke={HR_MIN_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
+            <Line dataKey="avg" name="Avg" stroke={HR_AVG_COLOR} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+            <Line dataKey="max" name="Max" stroke={HR_MAX_COLOR} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
             <Brush dataKey="day" height={18} stroke={HR_AVG_COLOR} travellerWidth={8} tickFormatter={fmtDay} onChange={onBrushChange} />
           </LineChart>
         </ResponsiveContainer>
+      )}
+    />
+  )
+}
+
+/** Individual heart-rate samples, for the 'transactional' granularity —
+ *  plots every reading rather than a daily rollup. */
+function HeartRateRawTrendCard({ data, view, onViewChange }: {
+  data: types.HeartRateSample[]
+  view: 'chart' | 'table'
+  onViewChange: (v: 'chart' | 'table') => void
+}) {
+  return (
+    <DrillableTrendChart
+      data={data}
+      xKey="recorded_at"
+      view={view}
+      onViewChange={onViewChange}
+      hideToggle
+      emptyMessage="Not enough heart rate data synced yet."
+      columns={[
+        { key: 'recorded_at', label: 'Time', format: r => { try { return format(parseISO(r.recorded_at), 'MMM d, h:mm a') } catch { return r.recorded_at } } },
+        { key: 'bpm', label: 'BPM' },
+      ]}
+      renderChart={() => (
+        <RawSeriesChart rows={data} xKey="recorded_at" yKey="bpm" color={HR_AVG_COLOR} unit="bpm" chartType="line" />
       )}
     />
   )
@@ -143,11 +159,14 @@ export default function HeartPanel() {
   const [restingHr, setRestingHr] = useState<types.HealthMetricDailyStat[]>([])
   const [sleepTrend, setSleepTrend] = useState<types.SleepTrendPoint[]>([])
   const [hrDaily, setHrDaily] = useState<types.HeartRateDailyStat[]>([])
+  const [hrRaw, setHrRaw] = useState<types.HeartRateSample[]>([])
   const [hrZones, setHrZones] = useState<types.HeartRateZoneMinutes[]>([])
   const [loading, setLoading] = useState(true)
   const [hrvView, setHrvView] = useState<'chart' | 'table'>('chart')
   const [restingView, setRestingView] = useState<'chart' | 'table'>('chart')
   const [hrView, setHrView] = useState<'chart' | 'table'>('chart')
+
+  const isTransactional = aggregation === 'transactional'
 
   useEffect(() => {
     setLoading(true)
@@ -155,16 +174,18 @@ export default function HeartPanel() {
       healthMetricsAPI.daily('hrv_rmssd', from, to, 'avg').catch(() => []),
       healthMetricsAPI.daily('resting_heart_rate', from, to, 'avg').catch(() => []),
       sleepAPI.trend(from, to, 'day').catch(() => []),
-      heartRateAPI.daily(from, to).catch(() => []),
+      isTransactional ? Promise.resolve([]) : heartRateAPI.daily(from, to).catch(() => []),
       heartRateAPI.zones(from, to).catch(() => []),
-    ]).then(([h, r, s, hr, z]) => {
+      isTransactional ? heartRateAPI.list(from, to).catch(() => []) : Promise.resolve([]),
+    ]).then(([h, r, s, hr, z, raw]) => {
       setHrv(h || [])
       setRestingHr(r || [])
       setSleepTrend(s || [])
       setHrDaily(hr || [])
       setHrZones(z || [])
+      setHrRaw(raw || [])
     }).finally(() => setLoading(false))
-  }, [from, to])
+  }, [from, to, isTransactional])
 
   const bucketAvg = (points: { day: string; value: number }[], granularity: Granularity) =>
     aggregateByPeriod(points, 'day', granularity, [{ key: 'value', agg: 'avg' }])
@@ -249,7 +270,11 @@ export default function HeartPanel() {
           <h2 className="section-title">Heart rate trend</h2>
           <ChartTableToggle view={hrView} onChange={setHrView} />
         </div>
-        <HeartRateTrendCard data={hrTrendData} aggregation={aggregation} view={hrView} onViewChange={setHrView} />
+        {isTransactional ? (
+          <HeartRateRawTrendCard data={hrRaw} view={hrView} onViewChange={setHrView} />
+        ) : (
+          <HeartRateTrendCard data={hrTrendData} view={hrView} onViewChange={setHrView} />
+        )}
       </div>
 
       <div className="card p-4">
