@@ -61,10 +61,10 @@ function MetricTrendCard({ data, color, unit, label, metricType, view, onViewCha
       )}
       renderChart={(chartData, onBrushChange) => (
         <ResponsiveContainer width="100%" height={160}>
-          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -4 }}>
             <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDay} />
-            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} domain={['auto', 'auto']} />
+            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} domain={['auto', 'auto']} />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
               labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
@@ -111,10 +111,10 @@ function HeartRateTrendCard({ data, aggregation, view, onViewChange }: {
       )}
       renderChart={(chartData, onBrushChange) => (
         <ResponsiveContainer width="100%" height={160}>
-          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -4 }}>
             <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDay} />
-            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} domain={['auto', 'auto']} />
+            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={40} domain={['auto', 'auto']} />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
               labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
@@ -259,10 +259,10 @@ export default function HeartPanel() {
           <p className="text-sm text-tx-muted py-6 text-center">Not enough heart rate data synced yet.</p>
         ) : (
           <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={hrZonesData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+            <BarChart data={hrZonesData} margin={{ top: 4, right: 4, bottom: 0, left: -4 }}>
               <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={fmtDay} />
-              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={32} tickFormatter={(v: number) => `${v}m`} />
+              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => `${v}m`} />
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
                 labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d, yyyy') } catch { return d } }}
@@ -292,13 +292,13 @@ export default function HeartPanel() {
           <p className="text-sm text-tx-muted py-6 text-center">Not enough nights synced yet.</p>
         ) : (
           <ResponsiveContainer width="100%" height={180}>
-            <ComposedChart data={contextData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
+            <ComposedChart data={contextData} margin={{ top: 4, right: 4, bottom: 0, left: -4 }}>
               <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="bucket" tick={AXIS_TICK} axisLine={false} tickLine={false}
                 tickFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }} />
-              <YAxis yAxisId="mins" tick={AXIS_TICK} axisLine={false} tickLine={false} width={36}
+              <YAxis yAxisId="mins" tick={AXIS_TICK} axisLine={false} tickLine={false} width={40}
                 tickFormatter={(v: number) => `${Math.round(v)}m`} />
-              <YAxis yAxisId="hr" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={32} domain={['auto', 'auto']} />
+              <YAxis yAxisId="hr" orientation="right" tick={AXIS_TICK} axisLine={false} tickLine={false} width={36} domain={['auto', 'auto']} />
               <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d: string) => { try { return format(parseISO(d), 'MMM d') } catch { return d } }} />
               <Bar yAxisId="mins" dataKey="deepMinutes" name="Deep sleep" fill={SLEEP_STAGE_COLORS.deep} radius={[4, 4, 0, 0]} isAnimationActive={false} />
               <Line yAxisId="hr" dataKey="restingHR" name="Resting HR" stroke={RESTING_HR_COLOR} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
