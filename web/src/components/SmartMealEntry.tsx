@@ -68,6 +68,22 @@ export default function SmartMealEntry({ onTextResult, onPhotoResult, onClose }:
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
 
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          handlePhotoPicked(item.getAsFile())
+          break
+        }
+      }
+    }
+    window.addEventListener('paste', handler)
+    return () => window.removeEventListener('paste', handler)
+  })
+
   // On mobile, `position: fixed` sizes against the layout viewport, not the
   // visual one — so when the keyboard opens, the browser doesn't shrink this
   // container and the footer button ends up hidden behind the keyboard.
@@ -204,13 +220,16 @@ export default function SmartMealEntry({ onTextResult, onPhotoResult, onClose }:
             </button>
           </div>
         ) : (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-shrink-0 flex items-center justify-center gap-2 rounded-xl border border-dashed border-surface-border text-tx-secondary hover:text-tx-primary hover:border-brand-500/40 py-3 text-sm font-medium transition-colors"
-          >
-            <Camera className="w-4 h-4" />
-            Add a photo of your meal
-          </button>
+          <div className="flex-shrink-0 flex flex-col items-center gap-1">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center justify-center gap-2 w-full rounded-xl border border-dashed border-surface-border text-tx-secondary hover:text-tx-primary hover:border-brand-500/40 py-3 text-sm font-medium transition-colors"
+            >
+              <Camera className="w-4 h-4" />
+              Add a photo of your meal
+            </button>
+            <p className="text-xs text-tx-muted">or paste an image (⌘V / Ctrl+V)</p>
+          </div>
         )}
 
         <div className="relative flex-1 min-h-[4.5rem]">
