@@ -2,6 +2,8 @@ package com.lyftr.phone.auth
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -199,28 +201,50 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
         }.getOrDefault(false)
     }
 
-    /** Rotates the token pair using the stored refresh token. See backend/utils/jwt.go. */
-    suspend fun refresh(): Boolean = withContext(Dispatchers.IO) {
-        val rt = tokenStore.refreshToken
-        if (rt == null) {
-            Log.w(TAG, "refresh: no refresh token stored")
-            return@withContext false
-        }
-        val body = json.encodeToString(RefreshRequest.serializer(), RefreshRequest(rt))
-            .toRequestBody(JSON_MEDIA_TYPE)
-        val req = Request.Builder().url(apiUrl("/auth/refresh")).post(body).build()
-        runCatching {
-            http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    Log.w(TAG, "refresh: HTTP ${resp.code} from ${req.url}: ${resp.body?.string()}")
-                    return@withContext false
-                }
-                val envelope = json.decodeFromString(AuthEnvelope.serializer(), resp.body!!.string())
-                tokenStore.saveTokens(envelope.data.token, envelope.data.refresh_token)
-                tokenStore.clearSessionExpired()
-                true
+    /**
+     * Rotates the token pair using the stored refresh token. See
+     * backend/utils/jwt.go — the backend treats a refresh token as single-use
+     * and revokes it the moment it's redeemed, so two callers racing to
+     * refresh the same stored token is not a harmless duplicate request: the
+     * loser presents a token the winner already spent, the backend correctly
+     * rejects it, and (pre-fix) that rejection was indistinguishable from a
+     * genuinely dead session — [LyftrApiClient.executeWithRefresh] would wipe
+     * the winner's freshly-saved, perfectly valid tokens via
+     * [TokenStore.expireSession] and bounce the user to a login prompt.
+     *
+     * This app has three independent ~24h periodic workers (CardioSyncWorker,
+     * HealthMetricsSyncWorker, TokenRefreshWorker) that can land in the same
+     * flex window and each hit an expired access token at once, so the race
+     * was routine rather than rare — this is the "logs out every day" bug.
+     * [refreshMutex] serializes redemption process-wide (it's a companion
+     * object, so every LyftrApiClient instance in the process shares it): a
+     * caller that loses the race blocks until the winner's write lands, then
+     * re-reads [TokenStore.refreshToken] and finds it already rotated, so it
+     * never presents a stale token at all.
+     */
+    suspend fun refresh(): Boolean = refreshMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val rt = tokenStore.refreshToken
+            if (rt == null) {
+                Log.w(TAG, "refresh: no refresh token stored")
+                return@withContext false
             }
-        }.onFailure { Log.e(TAG, "refresh: request to ${req.url} failed", it) }.getOrDefault(false)
+            val body = json.encodeToString(RefreshRequest.serializer(), RefreshRequest(rt))
+                .toRequestBody(JSON_MEDIA_TYPE)
+            val req = Request.Builder().url(apiUrl("/auth/refresh")).post(body).build()
+            runCatching {
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        Log.w(TAG, "refresh: HTTP ${resp.code} from ${req.url}: ${resp.body?.string()}")
+                        return@withContext false
+                    }
+                    val envelope = json.decodeFromString(AuthEnvelope.serializer(), resp.body!!.string())
+                    tokenStore.saveTokens(envelope.data.token, envelope.data.refresh_token)
+                    tokenStore.clearSessionExpired()
+                    true
+                }
+            }.onFailure { Log.e(TAG, "refresh: request to ${req.url} failed", it) }.getOrDefault(false)
+        }
     }
 
     /** Returns the raw session JSON string (or null if nothing is active). */
@@ -328,5 +352,10 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
+
+        // Process-wide: shared by every LyftrApiClient instance (each of the
+        // three periodic workers builds its own), so it serializes refresh()
+        // across them. See the kdoc on refresh() for why that matters.
+        val refreshMutex = Mutex()
     }
 }
