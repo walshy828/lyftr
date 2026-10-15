@@ -63,6 +63,13 @@ func (h *Handler) LogWeight(c *gin.Context) {
 		return
 	}
 	req.LoggedAt = normalizeLoggedAt(req.LoggedAt)
+	if !h.checkClothingProfile(c, uid, req.ClothingProfileID) {
+		return
+	}
+	// Seed starter profiles so a new entry can resolve the default.
+	if utils.DBError(c, h.s.Clothing.EnsureDefaults(uid)) {
+		return
+	}
 
 	log, err := h.s.Weight.UpsertForDay(uid, req)
 	if utils.DBError(c, err) {
@@ -106,6 +113,9 @@ func (h *Handler) UpdateWeightLog(c *gin.Context) {
 		return
 	}
 	req.LoggedAt = normalizeLoggedAt(req.LoggedAt)
+	if !h.checkClothingProfile(c, uid, req.ClothingProfileID) {
+		return
+	}
 
 	log, err := h.s.Weight.Update(uid, lid, req)
 	if err == sql.ErrNoRows {

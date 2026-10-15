@@ -86,6 +86,9 @@ private data class ImportCardioSessionsResult(val imported: Int, val updated: In
 @Serializable
 private data class ImportCardioSessionsEnvelope(val data: ImportCardioSessionsResult)
 
+/** Result of a login/refresh attempt; see [LyftrApiClient.refresh]. */
+enum class AuthOutcome { OK, REJECTED, TRANSIENT }
+
 /** Outcome of a cardio import batch: rows newly inserted vs existing rows overwritten. */
 data class CardioImportResult(val imported: Int, val updated: Int)
 
@@ -186,19 +189,27 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
      * TokenRefreshWorker's daily rotation ever runs, which is exactly what was
      * causing the app to silently log itself out and stop auto-syncing.
      */
-    suspend fun login(email: String, password: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun login(email: String, password: String): Boolean =
+        loginOutcome(email, password) == AuthOutcome.OK
+
+    /**
+     * Same as [login] but distinguishes "server said no" ([AuthOutcome.REJECTED])
+     * from "couldn't reach it / it hiccuped" ([AuthOutcome.TRANSIENT]) — callers
+     * running unattended must not treat the latter as a dead session.
+     */
+    private suspend fun loginOutcome(email: String, password: String): AuthOutcome = withContext(Dispatchers.IO) {
         val body = json.encodeToString(LoginRequest.serializer(), LoginRequest(email, password, remember = true))
             .toRequestBody(JSON_MEDIA_TYPE)
         val req = Request.Builder().url(apiUrl("/auth/login")).post(body).build()
         runCatching {
             http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext false
+                if (!resp.isSuccessful) return@withContext classify(resp.code)
                 val envelope = json.decodeFromString(AuthEnvelope.serializer(), resp.body!!.string())
                 tokenStore.saveTokens(envelope.data.token, envelope.data.refresh_token)
                 tokenStore.clearSessionExpired()
-                true
+                AuthOutcome.OK
             }
-        }.getOrDefault(false)
+        }.getOrDefault(AuthOutcome.TRANSIENT)
     }
 
     /**
@@ -222,28 +233,43 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
      * re-reads [TokenStore.refreshToken] and finds it already rotated, so it
      * never presents a stale token at all.
      */
-    suspend fun refresh(): Boolean = refreshMutex.withLock {
+    suspend fun refresh(): AuthOutcome = refreshMutex.withLock {
         withContext(Dispatchers.IO) {
             val rt = tokenStore.refreshToken
-            if (rt == null) {
+            val outcome = if (rt == null) {
                 Log.w(TAG, "refresh: no refresh token stored")
-                return@withContext false
-            }
-            val body = json.encodeToString(RefreshRequest.serializer(), RefreshRequest(rt))
-                .toRequestBody(JSON_MEDIA_TYPE)
-            val req = Request.Builder().url(apiUrl("/auth/refresh")).post(body).build()
-            runCatching {
-                http.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) {
-                        Log.w(TAG, "refresh: HTTP ${resp.code} from ${req.url}: ${resp.body?.string()}")
-                        return@withContext false
+                AuthOutcome.REJECTED
+            } else {
+                val body = json.encodeToString(RefreshRequest.serializer(), RefreshRequest(rt))
+                    .toRequestBody(JSON_MEDIA_TYPE)
+                val req = Request.Builder().url(apiUrl("/auth/refresh")).post(body).build()
+                runCatching {
+                    http.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) {
+                            Log.w(TAG, "refresh: HTTP ${resp.code} from ${req.url}: ${resp.body?.string()}")
+                            return@use classify(resp.code)
+                        }
+                        val envelope = json.decodeFromString(AuthEnvelope.serializer(), resp.body!!.string())
+                        tokenStore.saveTokens(envelope.data.token, envelope.data.refresh_token)
+                        tokenStore.clearSessionExpired()
+                        AuthOutcome.OK
                     }
-                    val envelope = json.decodeFromString(AuthEnvelope.serializer(), resp.body!!.string())
-                    tokenStore.saveTokens(envelope.data.token, envelope.data.refresh_token)
-                    tokenStore.clearSessionExpired()
-                    true
-                }
-            }.onFailure { Log.e(TAG, "refresh: request to ${req.url} failed", it) }.getOrDefault(false)
+                }.onFailure { Log.e(TAG, "refresh: request to ${req.url} failed", it) }
+                    .getOrDefault(AuthOutcome.TRANSIENT)
+            }
+            if (outcome != AuthOutcome.REJECTED) return@withContext outcome
+
+            // The refresh chain is genuinely dead (absolute session cap, a spent
+            // token whose rotated replacement never reached us, a revoked device
+            // session...). This app is an unattended companion, so before
+            // surfacing a login prompt, re-establish the session with the
+            // credentials LoginScreen saved. Still inside the mutex, so
+            // concurrent callers queue behind it and find the fresh tokens.
+            val email = tokenStore.savedEmail
+            val password = tokenStore.savedPassword
+            if (email.isNullOrBlank() || password.isNullOrBlank()) return@withContext AuthOutcome.REJECTED
+            Log.i(TAG, "refresh: rejected, re-logging in with saved credentials")
+            loginOutcome(email, password)
         }
     }
 
@@ -333,10 +359,20 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
         if (resp.code == 401) {
             resp.close()
             Log.d(TAG, "executeWithRefresh: 401, attempting token refresh")
-            if (!refresh()) {
-                Log.w(TAG, "executeWithRefresh: refresh failed, marking session expired")
-                tokenStore.expireSession()
-                return null
+            when (refresh()) {
+                AuthOutcome.OK -> Unit
+                AuthOutcome.TRANSIENT -> {
+                    // Network blip / server restart: keep the tokens, let the
+                    // next run retry. Wiping them here is what made a single
+                    // bad night on the network force a manual re-login.
+                    Log.w(TAG, "executeWithRefresh: refresh unreachable, will retry later")
+                    return null
+                }
+                AuthOutcome.REJECTED -> {
+                    Log.w(TAG, "executeWithRefresh: refresh rejected, marking session expired")
+                    tokenStore.expireSession()
+                    return null
+                }
             }
             resp = http.newCall(buildRequest()).execute()
         }
@@ -349,6 +385,10 @@ class LyftrApiClient(private val tokenStore: TokenStore) {
             }
         }
     }.onFailure { Log.e(TAG, "executeWithRefresh: request failed", it) }.getOrNull()
+
+    /** 4xx (other than timeout/rate-limit) is the server refusing the credential; anything else is retryable. */
+    private fun classify(code: Int) =
+        if (code in 400..499 && code != 408 && code != 429) AuthOutcome.REJECTED else AuthOutcome.TRANSIENT
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json".toMediaType()

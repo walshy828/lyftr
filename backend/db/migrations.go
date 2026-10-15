@@ -299,6 +299,28 @@ CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_
 		log.Fatalf("create revoked_tokens: %v", err)
 	}
 
+	// Clothing profiles. Winter layers add a few pounds to the scale, which
+	// reads as a trend break. A profile is a named lbs offset (Summer 0, Winter
+	// +4, ...); weight_logs keeps the raw scale reading and points at the
+	// profile worn, and the store subtracts the offset on read. That keeps
+	// history recomputable: editing an offset re-adjusts every entry using it.
+	// NULL clothing_profile_id means "no adjustment" until the user's defaults
+	// are seeded and back-filled (stores.ClothingStore.EnsureDefaults).
+	clothing := `
+CREATE TABLE IF NOT EXISTS clothing_profiles (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT    NOT NULL,
+  offset_lbs REAL    NOT NULL DEFAULT 0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_clothing_profiles_user ON clothing_profiles(user_id, sort_order);`
+	if _, err := DB.Exec(clothing); err != nil {
+		log.Fatalf("create clothing_profiles: %v", err)
+	}
+	ensureColumn("weight_logs", "clothing_profile_id", `ALTER TABLE weight_logs ADD COLUMN clothing_profile_id INTEGER REFERENCES clothing_profiles(id) ON DELETE SET NULL`)
+
 	// Per-user consent for sending health data to a third-party LLM. Defaults
 	// to 0: the export is opt-in, never inherited from the operator merely
 	// enabling a provider.

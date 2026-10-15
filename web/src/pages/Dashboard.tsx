@@ -181,7 +181,7 @@ export default function Dashboard() {
 
       <QuickWeighInSheet
         isOpen={sheetOpen}
-        lastValue={d.weightLogs[0] ? displayWeight(d.weightLogs[0].weight, d.settings.weight_unit) : null}
+        lastValue={d.weightLogs[0] ? displayWeight(d.weightLogs[0].raw_weight ?? d.weightLogs[0].weight, d.settings.weight_unit) : null}
         lastLog={d.weightLogs[0] ?? null}
         onClose={() => setSheetOpen(false)}
         onSuccess={log => { d.addWeightLog(log); setSheetOpen(false) }}

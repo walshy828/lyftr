@@ -26,20 +26,35 @@ type WeightStats struct {
 	Change7d, Change30d             float64
 }
 
-const weightCols = `id, user_id, weight, notes, logged_at, created_at`
+// Reads go through a LEFT JOIN so every consumer gets the clothing-adjusted
+// weight in the `weight` position (raw - profile offset). An entry with no
+// profile (NULL) has offset 0, i.e. is returned as logged.
+const (
+	weightFrom = ` FROM weight_logs w LEFT JOIN clothing_profiles c ON c.id = w.clothing_profile_id`
+	adjWeight  = `(w.weight - COALESCE(c.offset_lbs, 0))`
+	weightCols = `w.id, w.user_id, ` + adjWeight + `, w.weight, w.clothing_profile_id, COALESCE(c.offset_lbs, 0), w.notes, w.logged_at, w.created_at`
+)
+
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanWeight(r rowScanner) (models.WeightLog, error) {
+	var w models.WeightLog
+	err := r.Scan(&w.ID, &w.UserID, &w.Weight, &w.RawWeight, &w.ClothingProfileID, &w.ClothingOffset, &w.Notes, &w.LoggedAt, &w.CreatedAt)
+	return w, err
+}
 
 func (s *WeightStore) List(uid int64, f WeightFilter) ([]models.WeightLog, error) {
-	q := `SELECT ` + weightCols + ` FROM weight_logs WHERE user_id = ?`
+	q := `SELECT ` + weightCols + weightFrom + ` WHERE w.user_id = ?`
 	args := []any{uid}
 	if f.From != nil {
-		q += ` AND logged_at >= ?`
+		q += ` AND w.logged_at >= ?`
 		args = append(args, *f.From)
 	}
 	if f.To != nil {
-		q += ` AND logged_at < ?`
+		q += ` AND w.logged_at < ?`
 		args = append(args, *f.To)
 	}
-	q += ` ORDER BY logged_at DESC, id DESC LIMIT ? OFFSET ?`
+	q += ` ORDER BY w.logged_at DESC, w.id DESC LIMIT ? OFFSET ?`
 	args = append(args, f.Limit, f.Offset)
 
 	rows, err := s.db.Query(q, args...)
@@ -49,8 +64,8 @@ func (s *WeightStore) List(uid int64, f WeightFilter) ([]models.WeightLog, error
 	defer rows.Close()
 	logs := []models.WeightLog{}
 	for rows.Next() {
-		var w models.WeightLog
-		if err := rows.Scan(&w.ID, &w.UserID, &w.Weight, &w.Notes, &w.LoggedAt, &w.CreatedAt); err != nil {
+		w, err := scanWeight(rows)
+		if err != nil {
 			return nil, err
 		}
 		logs = append(logs, w)
@@ -60,18 +75,12 @@ func (s *WeightStore) List(uid int64, f WeightFilter) ([]models.WeightLog, error
 
 // get reads a single row by id (no user scope — used after a user-scoped write).
 func (s *WeightStore) get(id int64) (models.WeightLog, error) {
-	var w models.WeightLog
-	err := s.db.QueryRow(`SELECT `+weightCols+` FROM weight_logs WHERE id = ?`, id).
-		Scan(&w.ID, &w.UserID, &w.Weight, &w.Notes, &w.LoggedAt, &w.CreatedAt)
-	return w, err
+	return scanWeight(s.db.QueryRow(`SELECT `+weightCols+weightFrom+` WHERE w.id = ?`, id))
 }
 
 // Get returns one user-owned entry, or sql.ErrNoRows.
 func (s *WeightStore) Get(uid, id int64) (models.WeightLog, error) {
-	var w models.WeightLog
-	err := s.db.QueryRow(`SELECT `+weightCols+` FROM weight_logs WHERE id = ? AND user_id = ?`, id, uid).
-		Scan(&w.ID, &w.UserID, &w.Weight, &w.Notes, &w.LoggedAt, &w.CreatedAt)
-	return w, err
+	return scanWeight(s.db.QueryRow(`SELECT `+weightCols+weightFrom+` WHERE w.id = ? AND w.user_id = ?`, id, uid))
 }
 
 // dayBounds returns [00:00, next 00:00) for the given instant's calendar day.
@@ -98,15 +107,16 @@ func (s *WeightStore) UpsertForDay(uid int64, req models.LogWeightRequest) (mode
 		switch err {
 		case nil:
 			if _, e := tx.Exec(
-				`UPDATE weight_logs SET weight = ?, notes = ?, logged_at = ? WHERE id = ?`,
-				req.Weight, req.Notes, req.LoggedAt, id,
+				`UPDATE weight_logs SET weight = ?, notes = ?, logged_at = ?, clothing_profile_id = COALESCE(?, clothing_profile_id) WHERE id = ?`,
+				req.Weight, req.Notes, req.LoggedAt, req.ClothingProfileID, id,
 			); e != nil {
 				return 0, e
 			}
 		case sql.ErrNoRows:
 			res, e := tx.Exec(
-				`INSERT INTO weight_logs (user_id, weight, notes, logged_at) VALUES (?, ?, ?, ?)`,
-				uid, req.Weight, req.Notes, req.LoggedAt,
+				`INSERT INTO weight_logs (user_id, weight, notes, logged_at, clothing_profile_id)
+				 VALUES (?, ?, ?, ?, COALESCE(?, (SELECT id FROM clothing_profiles WHERE user_id = ? AND is_default = 1 LIMIT 1)))`,
+				uid, req.Weight, req.Notes, req.LoggedAt, req.ClothingProfileID, uid,
 			)
 			if e != nil {
 				return 0, e
@@ -129,8 +139,8 @@ func (s *WeightStore) Update(uid, id int64, req models.LogWeightRequest) (models
 	// Atomic: the row update + the same-day dedup delete must commit together.
 	if err := inTxDo(s.db, func(tx *sql.Tx) error {
 		res, err := tx.Exec(
-			`UPDATE weight_logs SET weight = ?, notes = ?, logged_at = ? WHERE id = ? AND user_id = ?`,
-			req.Weight, req.Notes, req.LoggedAt, id, uid,
+			`UPDATE weight_logs SET weight = ?, notes = ?, logged_at = ?, clothing_profile_id = COALESCE(?, clothing_profile_id) WHERE id = ? AND user_id = ?`,
+			req.Weight, req.Notes, req.LoggedAt, req.ClothingProfileID, id, uid,
 		)
 		if err != nil {
 			return err
@@ -164,10 +174,10 @@ func (s *WeightStore) Stats(uid int64) (WeightStats, error) {
 	var count int
 	err := s.db.QueryRow(
 		`SELECT
-		  (SELECT weight FROM weight_logs WHERE user_id = ? ORDER BY logged_at DESC, id DESC LIMIT 1),
-		  (SELECT weight FROM weight_logs WHERE user_id = ? ORDER BY logged_at ASC, id ASC LIMIT 1),
-		  MIN(weight), MAX(weight), AVG(weight), COUNT(*)
-		 FROM weight_logs WHERE user_id = ?`,
+		  (SELECT `+adjWeight+weightFrom+` WHERE w.user_id = ? ORDER BY w.logged_at DESC, w.id DESC LIMIT 1),
+		  (SELECT `+adjWeight+weightFrom+` WHERE w.user_id = ? ORDER BY w.logged_at ASC, w.id ASC LIMIT 1),
+		  MIN(`+adjWeight+`), MAX(`+adjWeight+`), AVG(`+adjWeight+`), COUNT(*)
+		 `+weightFrom+` WHERE w.user_id = ?`,
 		uid, uid, uid,
 	).Scan(&latest, &oldest, &minW, &maxW, &avgW, &count)
 	if err != nil {
@@ -194,8 +204,8 @@ func (s *WeightStore) changeOver(uid int64, days int) (float64, error) {
 	var latest, earliest sql.NullFloat64
 	if err := s.db.QueryRow(
 		`SELECT
-		  (SELECT weight FROM weight_logs WHERE user_id = ? AND logged_at >= ? ORDER BY logged_at DESC, id DESC LIMIT 1),
-		  (SELECT weight FROM weight_logs WHERE user_id = ? AND logged_at >= ? ORDER BY logged_at ASC, id ASC LIMIT 1)`,
+		  (SELECT `+adjWeight+weightFrom+` WHERE w.user_id = ? AND w.logged_at >= ? ORDER BY w.logged_at DESC, w.id DESC LIMIT 1),
+		  (SELECT `+adjWeight+weightFrom+` WHERE w.user_id = ? AND w.logged_at >= ? ORDER BY w.logged_at ASC, w.id ASC LIMIT 1)`,
 		uid, cutoff, uid, cutoff,
 	).Scan(&latest, &earliest); err != nil {
 		return 0, err

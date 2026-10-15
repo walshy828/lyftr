@@ -189,7 +189,10 @@ class TokenStore(context: Context) {
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, access)
             .putString(KEY_REFRESH_TOKEN, refresh)
-            .apply()
+            // commit(), not apply(): the backend has already spent the old
+            // refresh token by the time this runs, so if the process is killed
+            // before an async write lands, the only valid token is lost.
+            .commit()
     }
 
     /**

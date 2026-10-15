@@ -4,6 +4,8 @@ import { X, Scale, AlertCircle, Save } from 'lucide-react'
 import { weightAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayWeight, weightError, maxWeight, resolveWeightLbs } from '../stores/settings'
 import WeightInput from './WeightInput'
+import ClothingPicker from './ClothingPicker'
+import { useClothingProfiles } from '../hooks/useClothingProfiles'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { dayToIsoNoon, isoToDayInput, todayStr } from '../utils/dateUtils'
@@ -23,12 +25,15 @@ export default function EditWeightModal({ isOpen, onClose, onSuccess, log }: Pro
   const [weight, setWeight] = useState('')
   const [loggedAt, setLoggedAt] = useState('')
   const [notes, setNotes] = useState('')
+  const [clothingId, setClothingId] = useState<number | null>(null)
+  const { profiles } = useClothingProfiles()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!isOpen || !log) return
-    setWeight(String(displayWeight(log.weight, settings.weight_unit)))
+    setWeight(String(displayWeight(log.raw_weight ?? log.weight, settings.weight_unit)))
+    setClothingId(log.clothing_profile_id ?? null)
     setLoggedAt(isoToDayInput(log.logged_at))
     setNotes(log.notes ?? '')
     setError('')
@@ -52,9 +57,10 @@ export default function EditWeightModal({ isOpen, onClose, onSuccess, log }: Pro
     setError('')
     try {
       await weightAPI.update(log.id, {
-        weight: resolveWeightLbs(weight, log.weight, settings.weight_unit),
+        weight: resolveWeightLbs(weight, log.raw_weight ?? log.weight, settings.weight_unit),
         notes: notes.trim(),
         logged_at: dayToIsoNoon(loggedAt),
+        clothing_profile_id: clothingId,
       })
       onSuccess()
       onClose()
@@ -103,6 +109,8 @@ export default function EditWeightModal({ isOpen, onClose, onSuccess, log }: Pro
               <WeightInput value={weight} onChange={setWeight} unit={wUnit} max={maxWeight(settings.weight_unit)} autoFocus />
             </div>
           </div>
+
+          <ClothingPicker profiles={profiles} value={clothingId} onChange={setClothingId} rawDisplay={parseFloat(weight)} />
 
           <div>
             <label className="label">Date</label>

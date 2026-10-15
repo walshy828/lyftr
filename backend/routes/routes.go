@@ -101,6 +101,11 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.GET("weight", h.ListWeightLogs)
 		protected.POST("weight", h.LogWeight)
 		protected.GET("weight/stats", h.GetWeightStats)
+		// Clothing profiles — static sub-path, before weight/:id
+		protected.GET("weight/clothing", h.ListClothingProfiles)
+		protected.POST("weight/clothing", h.CreateClothingProfile)
+		protected.PATCH("weight/clothing/:id", h.UpdateClothingProfile)
+		protected.DELETE("weight/clothing/:id", h.DeleteClothingProfile)
 
 		// Weight-loss plan — static sub-paths must be registered before weight/:id
 		protected.POST("weight/plan/generate", h.GenerateWeightPlan)

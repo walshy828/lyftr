@@ -121,10 +121,25 @@ export interface Workout {
 export interface WeightLog {
   id: number
   user_id?: number
+  /** Clothing-adjusted weight (raw_weight - clothing_offset), canonical lbs. Charts and stats use this. */
   weight: number
+  /** What the scale read. Prefill edit forms with this, never `weight`. */
+  raw_weight?: number
+  clothing_profile_id?: number | null
+  /** lbs subtracted from raw_weight */
+  clothing_offset?: number
   notes?: string
   logged_at: string
   created_at?: string
+}
+
+/** A named weigh-in outfit and the lbs it adds to the scale. */
+export interface ClothingProfile {
+  id: number
+  name: string
+  offset_lbs: number
+  is_default: boolean
+  sort_order: number
 }
 
 // Cardio sessions imported from a companion device's health platform (e.g.

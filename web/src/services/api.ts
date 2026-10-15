@@ -356,12 +356,21 @@ export const weightAPI = {
   list:   (params?: { limit?: number; offset?: number; from?: string; to?: string }) =>
     api.get<{ data: types.WeightLog[] }>('/weight', { params }).then(res => unwrap(res)),
   get:    (id: number) => api.get<{ data: types.WeightLog }>(`/weight/${id}`).then(res => unwrap(res)),
-  log:    (data: { weight: number; notes?: string; logged_at?: string }) =>
+  log:    (data: { weight: number; notes?: string; logged_at?: string; clothing_profile_id?: number | null }) =>
     api.post<{ data: types.WeightLog }>('/weight', data).then(res => unwrap(res)),
-  update: (id: number, data: { weight: number; notes?: string; logged_at?: string }) =>
+  update: (id: number, data: { weight: number; notes?: string; logged_at?: string; clothing_profile_id?: number | null }) =>
     api.patch<{ data: types.WeightLog }>(`/weight/${id}`, data).then(res => unwrap(res)),
   delete: (id: number) => api.delete(`/weight/${id}`),
   stats:  () => api.get<{ data: types.WeightStats }>('/weight/stats').then(res => unwrap(res)),
+}
+
+export const clothingAPI = {
+  list:   () => api.get<{ data: types.ClothingProfile[] }>('/weight/clothing').then(res => unwrap(res)),
+  create: (data: { name: string; offset_lbs: number }) =>
+    api.post<{ data: types.ClothingProfile }>('/weight/clothing', data).then(res => unwrap(res)),
+  update: (id: number, data: { name: string; offset_lbs: number }) =>
+    api.patch<{ data: types.ClothingProfile }>(`/weight/clothing/${id}`, data).then(res => unwrap(res)),
+  delete: (id: number) => api.delete(`/weight/clothing/${id}`),
 }
 
 // Cardio sessions imported from a companion device (Health Connect via the

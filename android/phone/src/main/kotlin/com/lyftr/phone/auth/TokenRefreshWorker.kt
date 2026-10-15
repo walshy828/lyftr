@@ -22,8 +22,14 @@ class TokenRefreshWorker(context: Context, params: WorkerParameters) : Coroutine
     override suspend fun doWork(): Result {
         val tokenStore = TokenStore(applicationContext)
         if (!tokenStore.isLoggedIn) return Result.success()
-        val ok = LyftrApiClient(tokenStore).refresh()
-        return if (ok) Result.success() else Result.retry()
+        return when (LyftrApiClient(tokenStore).refresh()) {
+            AuthOutcome.OK -> Result.success()
+            AuthOutcome.TRANSIENT -> Result.retry()
+            AuthOutcome.REJECTED -> {
+                tokenStore.expireSession()
+                Result.success()
+            }
+        }
     }
 
     companion object {

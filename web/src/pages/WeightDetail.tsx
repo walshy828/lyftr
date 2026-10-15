@@ -9,6 +9,8 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { todayStr, dayToIsoNoon, isoToDayInput } from '../utils/dateUtils'
 import WeightInput from '../components/WeightInput'
+import ClothingPicker from '../components/ClothingPicker'
+import { useClothingProfiles } from '../hooks/useClothingProfiles'
 import * as types from '../types'
 
 export default function WeightDetail() {
@@ -26,6 +28,8 @@ export default function WeightDetail() {
   const [editWeight, setEditWeight] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editNotes, setEditNotes] = useState('')
+  const [editClothing, setEditClothing] = useState<number | null>(null)
+  const { profiles } = useClothingProfiles()
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -41,7 +45,8 @@ export default function WeightDetail() {
     weightAPI.get(Number(id))
       .then(data => {
         setLog(data)
-        setEditWeight(String(displayWeight(data.weight, settings.weight_unit)))
+        setEditWeight(String(displayWeight(data.raw_weight ?? data.weight, settings.weight_unit)))
+        setEditClothing(data.clothing_profile_id ?? null)
         setEditDate(isoToDayInput(data.logged_at))
         setEditNotes(data.notes ?? '')
       })
@@ -51,7 +56,8 @@ export default function WeightDetail() {
 
   const startEdit = () => {
     if (!log) return
-    setEditWeight(String(displayWeight(log.weight, settings.weight_unit)))
+    setEditWeight(String(displayWeight(log.raw_weight ?? log.weight, settings.weight_unit)))
+    setEditClothing(log.clothing_profile_id ?? null)
     setEditDate(isoToDayInput(log.logged_at))
     setEditNotes(log.notes ?? '')
     setEditError('')
@@ -71,9 +77,10 @@ export default function WeightDetail() {
     setEditError('')
     try {
       const updated = await weightAPI.update(log.id, {
-        weight: resolveWeightLbs(editWeight, log.weight, settings.weight_unit),
+        weight: resolveWeightLbs(editWeight, log.raw_weight ?? log.weight, settings.weight_unit),
         notes: editNotes.trim(),
         logged_at: dayToIsoNoon(editDate),
+        clothing_profile_id: editClothing,
       })
       setLog(updated)
       setEditing(false)
@@ -164,6 +171,13 @@ export default function WeightDetail() {
                 <p className="text-sm text-tx-muted mt-1">
                   {format(new Date(log.logged_at), 'EEEE, MMMM d, yyyy')}
                 </p>
+                {(log.clothing_offset ?? 0) > 0 && (
+                  <p className="text-xs text-tx-muted mt-1">
+                    Scale read {displayWeight(log.raw_weight ?? log.weight, settings.weight_unit)} {wUnit}
+                    {' · '}−{displayWeight(log.clothing_offset ?? 0, settings.weight_unit)} {wUnit} clothing
+                    {profiles.find(pr => pr.id === log.clothing_profile_id) && ` (${profiles.find(pr => pr.id === log.clothing_profile_id)!.name})`}
+                  </p>
+                )}
                 {log.notes && (
                   <p className="text-sm text-tx-secondary mt-2 italic">"{log.notes}"</p>
                 )}
@@ -197,6 +211,13 @@ export default function WeightDetail() {
                 />
               </div>
             </div>
+
+            <ClothingPicker
+              profiles={profiles}
+              value={editClothing}
+              onChange={setEditClothing}
+              rawDisplay={parseFloat(editWeight)}
+            />
 
             <div>
               <label className="label">Date</label>

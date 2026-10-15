@@ -154,12 +154,34 @@ type Set struct {
 }
 
 type WeightLog struct {
-	ID        int64     `json:"id" db:"id"`
-	UserID    int64     `json:"user_id" db:"user_id"`
-	Weight    float64   `json:"weight" db:"weight"` // raw value in user's preferred unit (lbs or kg)
-	Notes     string    `json:"notes,omitempty" db:"notes"`
-	LoggedAt  time.Time `json:"logged_at" db:"logged_at"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	ID     int64 `json:"id" db:"id"`
+	UserID int64 `json:"user_id" db:"user_id"`
+	// Weight is the clothing-adjusted value (RawWeight - ClothingOffset), so
+	// every consumer — charts, stats, plan, forecasts — sees a consistent
+	// series without knowing about clothing. Canonical lbs.
+	Weight    float64 `json:"weight" db:"weight"`
+	RawWeight float64 `json:"raw_weight" db:"-"` // what the scale read
+	// ClothingProfileID is nil only for entries not yet linked to a profile;
+	// those carry no adjustment.
+	ClothingProfileID *int64    `json:"clothing_profile_id" db:"-"`
+	ClothingOffset    float64   `json:"clothing_offset" db:"-"` // lbs subtracted from RawWeight
+	Notes             string    `json:"notes,omitempty" db:"notes"`
+	LoggedAt          time.Time `json:"logged_at" db:"logged_at"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+}
+
+// ClothingProfile is a named weigh-in outfit with the lbs it adds to the scale.
+type ClothingProfile struct {
+	ID        int64   `json:"id"`
+	Name      string  `json:"name"`
+	OffsetLbs float64 `json:"offset_lbs"`
+	IsDefault bool    `json:"is_default"`
+	SortOrder int     `json:"sort_order"`
+}
+
+type ClothingProfileRequest struct {
+	Name      string  `json:"name" validate:"required,min=1,max=40"`
+	OffsetLbs float64 `json:"offset_lbs" validate:"gte=0,lte=50"`
 }
 
 // CardioSession is one cardio activity (run/ride/walk) imported from a
@@ -872,9 +894,12 @@ type CreateSetReq struct {
 }
 
 type LogWeightRequest struct {
-	Weight   float64   `json:"weight" validate:"required,gt=0,lte=2000"`
+	Weight   float64   `json:"weight" validate:"required,gt=0,lte=2000"` // raw scale reading
 	Notes    string    `json:"notes"`
 	LoggedAt time.Time `json:"logged_at"`
+	// ClothingProfileID: nil keeps the entry's current profile on update, or
+	// uses the user's default profile on a new entry.
+	ClothingProfileID *int64 `json:"clothing_profile_id"`
 }
 
 // UserProfile carries the demographic facts (birth date/sex/height/activity

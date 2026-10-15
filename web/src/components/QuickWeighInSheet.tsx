@@ -7,6 +7,8 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { todayStr, dayToIsoNoon, isoToDayInput } from '../utils/dateUtils'
 import WeightInput from './WeightInput'
+import ClothingPicker from './ClothingPicker'
+import { useClothingProfiles, initialClothingId } from '../hooks/useClothingProfiles'
 import * as types from '../types'
 
 interface Props {
@@ -21,6 +23,8 @@ export default function QuickWeighInSheet({ isOpen, lastValue, lastLog, onClose,
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
 
+  const { profiles } = useClothingProfiles()
+  const [clothingId, setClothingId] = useState<number | null>(null)
   const [value, setValue] = useState('')
   const [date, setDate] = useState(todayStr())
   const [notes, setNotes] = useState('')
@@ -34,6 +38,7 @@ export default function QuickWeighInSheet({ isOpen, lastValue, lastLog, onClose,
   useEffect(() => {
     if (!isOpen) return
     setValue(lastValue && lastValue > 0 ? String(lastValue) : '')
+    setClothingId(null)
     setDate(todayStr())
     setNotes('')
     setShowExtras(false)
@@ -42,6 +47,13 @@ export default function QuickWeighInSheet({ isOpen, lastValue, lastLog, onClose,
     setShowDuplicateWarning(false)
     duplicateWarningDismissedRef.current = false
   }, [isOpen, lastValue])
+
+  // Preselect the outfit from the last entry once the profiles have loaded.
+  useEffect(() => {
+    if (isOpen && clothingId == null && profiles.length > 0) {
+      setClothingId(initialClothingId(profiles, lastLog))
+    }
+  }, [isOpen, clothingId, profiles, lastLog])
 
   const handleClose = () => { setError(''); onClose() }
 
@@ -73,6 +85,7 @@ export default function QuickWeighInSheet({ isOpen, lastValue, lastLog, onClose,
         weight: displayToLbs(w, settings.weight_unit),
         notes: notes.trim(),
         logged_at: dayToIsoNoon(date),
+        clothing_profile_id: clothingId,
       })
       onSuccess(log)
       onClose()
@@ -154,6 +167,13 @@ export default function QuickWeighInSheet({ isOpen, lastValue, lastLog, onClose,
             max={maxWeight(settings.weight_unit)}
             autoFocus
             size="lg"
+          />
+
+          <ClothingPicker
+            profiles={profiles}
+            value={clothingId}
+            onChange={setClothingId}
+            rawDisplay={parseFloat(value)}
           />
 
           {!showExtras ? (

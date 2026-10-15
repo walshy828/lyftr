@@ -15,6 +15,7 @@ import (
 type Stores struct {
 	ActiveSession     *ActiveSessionStore
 	Weight            *WeightStore
+	Clothing          *ClothingStore
 	BloodPressure     *BloodPressureStore
 	BPInsight         *BPInsightStore
 	Cardio            *CardioStore
@@ -42,6 +43,7 @@ func New(db *sql.DB) *Stores {
 	return &Stores{
 		ActiveSession:     NewActiveSessionStore(db),
 		Weight:            NewWeightStore(db),
+		Clothing:          NewClothingStore(db),
 		BloodPressure:     NewBloodPressureStore(db),
 		BPInsight:         NewBPInsightStore(db),
 		Cardio:            NewCardioStore(db),

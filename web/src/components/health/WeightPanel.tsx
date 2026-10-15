@@ -6,6 +6,8 @@ import { HelpTip } from '../Tooltip'
 import Loading from '../Loading'
 import DateInput from '../ui/DateInput'
 import WeightInput from '../WeightInput'
+import ClothingPicker from '../ClothingPicker'
+import { useClothingProfiles, initialClothingId } from '../../hooks/useClothingProfiles'
 import { ChartTableToggle } from '../charts/DrillableTrendChart'
 import { useServerInfiniteList } from '../../hooks/useServerInfiniteList'
 import { useStatsControlsContext } from '../../context/StatsControlsContext'
@@ -231,6 +233,8 @@ export default function WeightPanel() {
   }, [])
 
   // Log form
+  const { profiles } = useClothingProfiles()
+  const [clothingId, setClothingId] = useState<number | null>(null)
   const [newWeight, setNewWeight] = useState('')
   const [newDate, setNewDate] = useState(todayStr())
   const [newNotes, setNewNotes] = useState('')
@@ -243,10 +247,18 @@ export default function WeightPanel() {
   const prefillDoneRef = useRef(false)
   useEffect(() => {
     if (!prefillDoneRef.current && items.length > 0) {
-      setNewWeight(String(displayWeight(items[0].weight, settings.weight_unit)))
+      setNewWeight(String(displayWeight(items[0].raw_weight ?? items[0].weight, settings.weight_unit)))
       prefillDoneRef.current = true
     }
   }, [items])
+
+  // Keep the outfit on the last entry's profile (or the default) until the
+  // user picks one.
+  useEffect(() => {
+    if (clothingId == null && profiles.length > 0) {
+      setClothingId(initialClothingId(profiles, items[0]))
+    }
+  }, [clothingId, profiles, items])
 
   // Oldest → newest for the chart, bucketed per the global aggregation choice
   // (each bucket's weight is the average of its entries).
@@ -283,8 +295,9 @@ export default function WeightPanel() {
         weight: displayToLbs(w, settings.weight_unit),
         notes: newNotes.trim(),
         logged_at: dayToIsoNoon(newDate),
+        clothing_profile_id: clothingId,
       })
-      setNewWeight(String(displayWeight(real.weight, settings.weight_unit)))
+      setNewWeight(String(displayWeight(real.raw_weight ?? real.weight, settings.weight_unit)))
       setNewNotes('')
       setNewDate(todayStr())
       setShowNotes(false)
@@ -371,6 +384,13 @@ export default function WeightPanel() {
             unit={wUnit}
             max={maxWeight(settings.weight_unit)}
             size="lg"
+          />
+
+          <ClothingPicker
+            profiles={profiles}
+            value={clothingId}
+            onChange={setClothingId}
+            rawDisplay={parseFloat(newWeight)}
           />
 
           {showNotes ? (

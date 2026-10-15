@@ -14,6 +14,7 @@ import ServerSettings from '../components/ServerSettings'
 import ExerciseLibraryMigration from '../components/ExerciseLibraryMigration'
 import SignedInDevices from '../components/SignedInDevices'
 import PasskeyManager from '../components/PasskeyManager'
+import ClothingProfilesEditor from '../components/ClothingProfilesEditor'
 import { todayStr } from '../utils/dateUtils'
 import {
   User, Shield, Target, Moon, Sun, Server, LogOut, Trash2, ChevronRight, Check, AlertCircle, Loader,
@@ -603,6 +604,10 @@ export default function Settings() {
             </div>
           )
         })()}
+      </Section>
+
+      <Section title="Weigh-in Clothing">
+        <ClothingProfilesEditor />
       </Section>
 
       {/* Goals & Units */}
