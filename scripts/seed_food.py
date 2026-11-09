@@ -7,7 +7,7 @@ import urllib.error
 from datetime import date, timedelta
 
 BASE = "http://localhost:3000/api/v1"
-EMAIL = "demo@lyftr.local"
+EMAIL = "demo@baseline.local"
 PASSWORD = "password123"
 
 MEAL_ROTATION = [

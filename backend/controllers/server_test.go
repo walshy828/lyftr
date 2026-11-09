@@ -21,8 +21,8 @@ func TestServerInfo(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing data envelope: %v", body)
 	}
-	if data["name"] != "lyftr" {
-		t.Errorf("name = %v, want lyftr", data["name"])
+	if data["name"] != "baseline" {
+		t.Errorf("name = %v, want baseline", data["name"])
 	}
 	if data["version"] != "9.9.9" {
 		t.Errorf("version = %v, want 9.9.9", data["version"])

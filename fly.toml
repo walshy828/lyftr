@@ -1,9 +1,9 @@
-# fly.toml — Lyftr demo instance
+# fly.toml — Baseline demo instance
 # Set app name below, then: fly secrets set JWT_SECRET=<random-32-chars>
 # First deploy: fly deploy
 # See fly/SETUP.md for full instructions.
 
-app = "lyftr-demo"
+app = "baseline-demo"
 primary_region = "fra"
 
 [build]
@@ -12,8 +12,8 @@ primary_region = "fra"
 [env]
   ENV        = "production"
   PORT       = "3000"
-  DB_PATH    = "/app/data/lyftr.db"
-  CORS_ORIGIN = "https://lyftr-demo.fly.dev"
+  DB_PATH    = "/app/data/baseline.db"
+  CORS_ORIGIN = "https://baseline-demo.fly.dev"
   # This is the public demo, so it deliberately opts into both of the things a
   # real deployment must never enable: the well-known demo account, and open
   # signup. The volume is wiped hourly by fly/reset.sh and holds no real data.
@@ -39,7 +39,7 @@ primary_region = "fra"
     soft_limit = 80
 
 [[mounts]]
-  source      = "lyftr_data"
+  source      = "baseline_data"
   destination = "/app/data"
 
 [[vm]]

@@ -107,7 +107,7 @@ describe('workoutSession rest timer (ephemeral)', () => {
   it('rest state is never written to localStorage (ephemeral)', () => {
     store().startSession('T', [])
     store().startRest(90, 0, 0)
-    const raw = localStorage.getItem('lyftr_active_session')!
+    const raw = localStorage.getItem('baseline_active_session')!
     expect(raw).not.toContain('restEndsAt')
     expect(raw).not.toContain('restDurationSec')
   })

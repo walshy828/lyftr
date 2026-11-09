@@ -6,14 +6,14 @@ plugins {
 }
 
 android {
-    namespace = "com.lyftr.wear"
+    namespace = "com.baseline.wear"
     compileSdk = 35
 
     defaultConfig {
         // Must be identical to :phone's applicationId — the Wearable Data
         // Layer API only routes DataItems/Messages between apps that share
         // the same package name (namespaces may differ, this may not).
-        applicationId = "com.lyftr"
+        applicationId = "com.baseline"
         minSdk = 30 // Wear OS 3+
         targetSdk = 35
         versionCode = 1

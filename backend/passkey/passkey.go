@@ -59,7 +59,7 @@ type pending struct {
 
 // In-memory rather than in SQLite on purpose: these live for seconds, are
 // worthless after use, and a restart mid-ceremony should invalidate them
-// anyway. Lyftr runs as a single process, so there is no instance to share
+// anyway. Baseline runs as a single process, so there is no instance to share
 // them with — if that ever changes, this is the thing that has to move.
 var (
 	mu       sync.Mutex

@@ -1,10 +1,10 @@
-# Lyftr redesign: Train · Fuel · Trend
+# Baseline redesign: Train · Fuel · Trend
 
 Status: Phases 1–5 are built on `feature/redesign-today-first`. A few small items remain, listed under each phase.
 
 ## Why
 
-Lyftr started as a lifting log. Most daily use is now something else:
+Baseline started as a lifting log. Most daily use is now something else:
 
 1. **Morning check-in**: what's going on, what am I doing well, what should I focus on today, am I on plan?
 2. **Food logging, several times a day**, almost always one of two ways:
@@ -40,7 +40,7 @@ The old IA was built around lifting (Home / Plan / Food / Stats). The home page 
 - Type: Inter for everything. Display weight 700–800 with tight tracking. Numbers use tabular figures.
 - Shape: 16px card radius, 12px controls, hairline borders, almost no shadows. The floating bar and sheets use glass blur.
 - Domain colors are `--c-*` RGB-channel variables, so Tailwind opacity modifiers work (`bg-move/10`).
-- Mark: a gradient tile with a rising trace whose end points are barbell plates, meaning "lifting" and "trending the right way". The wordmark is lowercase `lyftr`.
+- Mark: a gradient tile with a rising trace whose end points are barbell plates, meaning "lifting" and "trending the right way". The wordmark is lowercase `baseline`.
 
 ## Information architecture
 

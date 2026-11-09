@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.lyftr.shared"
+    namespace = "com.baseline.shared"
     compileSdk = 35
 
     defaultConfig {

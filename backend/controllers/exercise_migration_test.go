@@ -130,7 +130,7 @@ func TestExerciseMigration_previewThenConfirm_repointsAndPrunes(t *testing.T) {
 
 	// The old referenced exercise row should be gone (pruned); the unused one
 	// (never referenced, but also never mapped) should also be gone since it
-	// was unreferenced and not lyftr-native — pruneUnreferenced semantics.
+	// was unreferenced and not baseline-native — pruneUnreferenced semantics.
 	var oldCount int
 	db.DB.QueryRow(`SELECT COUNT(*) FROM exercises WHERE id = ?`, usedID).Scan(&oldCount)
 	if oldCount != 0 {

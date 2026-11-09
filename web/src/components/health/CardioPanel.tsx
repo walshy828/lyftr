@@ -63,7 +63,7 @@ export default function CardioPanel() {
 
   useEffect(() => {
     if (syncStatus !== 'unavailable') return
-    setError('Lyftr Companion app not found — install it on this phone to sync cardio data')
+    setError('Baseline Companion app not found — install it on this phone to sync cardio data')
     const timeout = setTimeout(() => setError(null), 5000)
     return () => clearTimeout(timeout)
   }, [syncStatus])
@@ -88,7 +88,7 @@ export default function CardioPanel() {
         <p className="text-sm text-tx-secondary font-medium">No cardio sessions yet</p>
         <p className="text-xs text-tx-muted mt-1">
           Runs, rides, and other cardio recorded on your watch sync here automatically once the
-          Lyftr companion app is connected to Health Connect.
+          Baseline companion app is connected to Health Connect.
         </p>
       </div>
     )

@@ -13,7 +13,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "lyftr-android"
+rootProject.name = "baseline-android"
 
 include(":shared")
 include(":phone")

@@ -153,7 +153,7 @@ func (s *ExerciseMigrationStore) GetMigration(id int64) (ExerciseMigration, erro
 // than leaving history half-migrated.
 //
 // The prune is scoped to fromSource so it can never touch the newly-seeded
-// target library's rows or the "lyftr" cardio carve-out, mirroring
+// target library's rows or the "baseline" cardio carve-out, mirroring
 // seed.WipeAndReseed's own guard.
 func (s *ExerciseMigrationStore) RepointAndPrune(mapping map[int64]int64, fromSource string) error {
 	return inTxDo(s.db, func(tx *sql.Tx) error {

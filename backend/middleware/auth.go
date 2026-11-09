@@ -19,7 +19,11 @@ const AuthMethodKey = "auth_method"
 // Empty for PAT callers and for JWTs minted before device sessions existed.
 const SessionIDKey = "session_id"
 
-const patTokenPrefix = "lyftr_pat_"
+const patTokenPrefix = "baseline_pat_"
+
+// legacyPatTokenPrefix is the prefix tokens carried before the Lyftr -> Baseline
+// rename. Issued tokens are stored hashed, so they keep working unchanged.
+const legacyPatTokenPrefix = "lyftr_pat_"
 
 // Auth accepts either a JWT access token (the SPA's login flow) or a personal
 // access token (for non-interactive clients like the MCP server), dispatched
@@ -36,7 +40,7 @@ func Auth(s *stores.Stores) gin.HandlerFunc {
 		}
 		token := strings.TrimPrefix(header, "Bearer ")
 
-		if strings.HasPrefix(token, patTokenPrefix) {
+		if strings.HasPrefix(token, patTokenPrefix) || strings.HasPrefix(token, legacyPatTokenPrefix) {
 			authenticatePAT(c, s, token)
 			return
 		}

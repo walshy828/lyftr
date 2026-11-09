@@ -2,14 +2,14 @@ version: '3.8'
 
 services:
   backend:
-    image: cwlumm/lyftr-backend:latest
+    image: cwlumm/baseline-backend:latest
     build: ./backend
     restart: unless-stopped
     volumes:
       - ./data:/app/data
     # The API itself runs unprivileged (see backend/entrypoint.sh). Drop every
     # capability, then add back only the four the entrypoint needs to chown a
-    # freshly created bind mount and step down to the lyftr user. Notably absent:
+    # freshly created bind mount and step down to the baseline user. Notably absent:
     # NET_RAW, NET_BIND_SERVICE, SYS_ADMIN, MKNOD.
     #
     # no-new-privileges still applies: it blocks *gaining* privileges through a
@@ -31,7 +31,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
       - DB_TYPE=sqlite
-      - DB_PATH=/app/data/lyftr.db
+      - DB_PATH=/app/data/baseline.db
       # The frontend's nginx is the only hop in front of the backend, and it
       # sits on the Docker bridge network. Trusting exactly that range lets the
       # rate limiter see real client IPs without letting a client forge one.
@@ -48,11 +48,11 @@ services:
       - MAX_SESSION_DAYS=${MAX_SESSION_DAYS:-90}
       - SESSION_ABSOLUTE_DAYS=${SESSION_ABSOLUTE_DAYS:-180}
       # Passkey sign-in. Off unless WEBAUTHN_RP_ID is set to the HTTPS hostname
-      # you reach Lyftr at; a bare LAN IP is not a valid RP ID.
+      # you reach Baseline at; a bare LAN IP is not a valid RP ID.
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-}
       - WEBAUTHN_RP_ORIGINS=${WEBAUTHN_RP_ORIGINS:-}
-      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Lyftr}
-      # Seeds the demo account (demo@lyftr.local, publicly documented password).
+      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Baseline}
+      # Seeds the demo account (demo@baseline.local, publicly documented password).
       # Never enable this on an instance holding real data.
       - SEED_DEMO=${SEED_DEMO:-false}
       # Which upstream dataset seeds the exercise library: "free" (default) or
@@ -87,14 +87,14 @@ services:
       retries: 3
 
   mcp:
-    image: cwlumm/lyftr-mcp:latest
+    image: cwlumm/baseline-mcp:latest
     build:
       context: https://github.com/walshy828/lyftr.git#main:mcp
     restart: unless-stopped
     # Optional: only needed if you want an MCP client on another machine (e.g.
     # a laptop with Claude Desktop) to connect over the network via the
     # mcp-remote bridge — see mcp/README.md. Skip this service entirely if you
-    # only ever run lyftr-mcp as a local stdio subprocess on the same machine
+    # only ever run baseline-mcp as a local stdio subprocess on the same machine
     # as your MCP client.
     environment:
       - MCP_TRANSPORT=http
@@ -102,10 +102,10 @@ services:
       # backend:3000 is reachable on the internal Docker network directly —
       # unlike an external client, this container doesn't need to go through
       # the frontend's nginx proxy.
-      - LYFTR_API_URL=http://backend:3000/api/v1
+      - BASELINE_API_URL=http://backend:3000/api/v1
       # Create this in the web app under Settings > Personal access tokens,
       # then set it in your .env file.
-      - LYFTR_TOKEN=${LYFTR_MCP_TOKEN}
+      - BASELINE_TOKEN=${BASELINE_MCP_TOKEN}
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -122,7 +122,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: cwlumm/lyftr-frontend:latest
+    image: cwlumm/baseline-frontend:latest
     build: ./web
     restart: unless-stopped
     security_opt:

@@ -50,7 +50,7 @@ export default function PasskeyManager() {
     return (
       <p className="text-sm text-tx-muted py-4">
         Passkeys aren't enabled on this server. Set <code className="font-mono text-xs">WEBAUTHN_RP_ID</code> to
-        the hostname you reach Lyftr at (it must be a real hostname over HTTPS —
+        the hostname you reach Baseline at (it must be a real hostname over HTTPS —
         a bare IP address can't be used) and restart the backend.
       </p>
     )

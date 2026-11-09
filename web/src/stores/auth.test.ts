@@ -70,17 +70,17 @@ describe('auth store initialization', () => {
   it('logout clears this device`s active-session state', async () => {
     localStorage.setItem('access_token', 'tok')
     localStorage.setItem('user', JSON.stringify({ id: 1, email: 'a@b.c' }))
-    localStorage.setItem('lyftr_active_session', '{"name":"Push Day"}')
-    localStorage.setItem('lyftr_active_session_updated_at', '123')
-    localStorage.setItem('lyftr_gym_ui', '{}')
+    localStorage.setItem('baseline_active_session', '{"name":"Push Day"}')
+    localStorage.setItem('baseline_active_session_updated_at', '123')
+    localStorage.setItem('baseline_gym_ui', '{}')
 
     const { useAuthStore } = await import('./auth')
     const { useWorkoutSession } = await import('./workoutSession')
     useAuthStore.getState().logout()
 
-    expect(localStorage.getItem('lyftr_active_session')).toBeNull()
-    expect(localStorage.getItem('lyftr_active_session_updated_at')).toBeNull()
-    expect(localStorage.getItem('lyftr_gym_ui')).toBeNull()
+    expect(localStorage.getItem('baseline_active_session')).toBeNull()
+    expect(localStorage.getItem('baseline_active_session_updated_at')).toBeNull()
+    expect(localStorage.getItem('baseline_gym_ui')).toBeNull()
     expect(useWorkoutSession.getState().session).toBeNull()
   })
 })

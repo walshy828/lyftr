@@ -1,4 +1,4 @@
-// Package client is a thin HTTP client for the Lyftr REST API, authenticating
+// Package client is a thin HTTP client for the Baseline REST API, authenticating
 // with a personal access token. Kept decoupled from the backend module
 // (small duplicated request/response shapes instead of importing
 // backend/models) since this is an independently built and distributed binary.
@@ -36,7 +36,7 @@ type apiError struct {
 	msg    string
 }
 
-func (e *apiError) Error() string { return fmt.Sprintf("lyftr api: %s (status %d)", e.msg, e.status) }
+func (e *apiError) Error() string { return fmt.Sprintf("baseline api: %s (status %d)", e.msg, e.status) }
 
 func (c *Client) Get(ctx context.Context, path string, query url.Values) (json.RawMessage, error) {
 	u := c.baseURL + path
@@ -74,7 +74,7 @@ func (c *Client) do(ctx context.Context, method, url string, body io.Reader) (js
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("lyftr api: request failed: %w", err)
+		return nil, fmt.Errorf("baseline api: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -88,7 +88,7 @@ func (c *Client) do(ctx context.Context, method, url string, body io.Reader) (js
 		Error string          `json:"error"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return nil, fmt.Errorf("lyftr api: unexpected response (status %d): %s", resp.StatusCode, raw)
+		return nil, fmt.Errorf("baseline api: unexpected response (status %d): %s", resp.StatusCode, raw)
 	}
 	if resp.StatusCode >= 400 {
 		msg := envelope.Error

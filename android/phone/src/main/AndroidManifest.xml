@@ -37,10 +37,10 @@
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 
     <application
-        android:label="Lyftr Companion"
+        android:label="Baseline Companion"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@style/Theme.Lyftr"
+        android:theme="@style/Theme.Baseline"
         android:allowBackup="false"
         android:networkSecurityConfig="@xml/network_security_config">
 
@@ -54,7 +54,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.Lyftr">
+            android:theme="@style/Theme.Baseline">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -65,7 +65,7 @@
              all: without a declared rationale target, PermissionsActivity logs
              "App should support rationale intent, finishing!" and closes
              itself instead of prompting. Points at MainActivity/StatusScreen,
-             which already explains what cardio data Lyftr reads and why —
+             which already explains what cardio data Baseline reads and why —
              no separate screen needed. -->
         <activity-alias
             android:name=".PermissionsRationaleActivity"
@@ -79,7 +79,7 @@
         </activity-alias>
 
         <!-- Invisible entry point the web PWA's "Refresh" button navigates to via
-             lyftr://sync — runs an expedited cardio sync and bounces straight back
+             baseline://sync — runs an expedited cardio sync and bounces straight back
              to the browser tab named in ?returnTo=. See CardioSyncWorker.syncNow
              and SyncTriggerActivity. -->
         <activity
@@ -93,7 +93,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="lyftr" android:host="sync" />
+                <data android:scheme="baseline" android:host="sync" />
             </intent-filter>
         </activity>
 
@@ -112,11 +112,11 @@
                 <data
                     android:scheme="wear"
                     android:host="*"
-                    android:pathPrefix="/lyftr/action" />
+                    android:pathPrefix="/baseline/action" />
                 <data
                     android:scheme="wear"
                     android:host="*"
-                    android:path="/lyftr/request-session" />
+                    android:path="/baseline/request-session" />
             </intent-filter>
         </service>
 

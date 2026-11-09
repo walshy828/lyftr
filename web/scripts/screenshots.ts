@@ -11,14 +11,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const OUT = path.resolve(__dirname, '../../docs/screenshots')
 const BASE = (process.env.BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '')
 const API = process.env.API_URL ?? `${BASE}/api/v1`
-const EMAIL = process.env.TEST_EMAIL ?? 'demo@lyftr.local'
+const EMAIL = process.env.TEST_EMAIL ?? 'demo@baseline.local'
 const PASSWORD = process.env.TEST_PASSWORD ?? 'password123'
 
 const MOBILE = { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true }
 const DESKTOP = { width: 1280, height: 800, deviceScaleFactor: 1 }
 
-const SESSION_KEY = 'lyftr_active_session'
-const LAYOUT_KEY = 'lyftr_workout_layout'
+const SESSION_KEY = 'baseline_active_session'
+const LAYOUT_KEY = 'baseline_workout_layout'
 
 async function main() {
   const browser = await chromium.launch()
@@ -90,7 +90,7 @@ async function main() {
       {
         sk: SESSION_KEY,
         lk: LAYOUT_KEY,
-        uk: 'lyftr_gym_ui',
+        uk: 'baseline_gym_ui',
         session: {
           name: 'Push Day',
           started_at: new Date().toISOString(),

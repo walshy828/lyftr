@@ -29,19 +29,19 @@ describe('Tokens', () => {
 
   it('renders token metadata only, never a plaintext value, in the list', async () => {
     ;(tokenAPI.list as any).mockResolvedValue([
-      { id: 1, name: 'MCP server', token_prefix: 'lyftr_pat_AbCd12', created_at: '2026-01-01T00:00:00Z', last_used_at: null, expires_at: null },
+      { id: 1, name: 'MCP server', token_prefix: 'baseline_pat_AbCd12', created_at: '2026-01-01T00:00:00Z', last_used_at: null, expires_at: null },
     ])
     renderTokens()
     await waitFor(() => expect(screen.getByText('MCP server')).toBeTruthy())
-    expect(screen.getByText(/lyftr_pat_AbCd12/)).toBeTruthy()
-    expect(screen.queryByText(/^lyftr_pat_(?!AbCd12)/)).toBeNull()
+    expect(screen.getByText(/baseline_pat_AbCd12/)).toBeTruthy()
+    expect(screen.queryByText(/^baseline_pat_(?!AbCd12)/)).toBeNull()
   })
 
   it('create flow reveals the plaintext token once, then lists it on close', async () => {
     ;(tokenAPI.list as any).mockResolvedValue([])
     ;(tokenAPI.create as any).mockResolvedValue({
-      token: { id: 2, name: 'New token', token_prefix: 'lyftr_pat_Xyz123', created_at: '2026-01-02T00:00:00Z', last_used_at: null, expires_at: null },
-      value: 'lyftr_pat_Xyz123FullSecretValue',
+      token: { id: 2, name: 'New token', token_prefix: 'baseline_pat_Xyz123', created_at: '2026-01-02T00:00:00Z', last_used_at: null, expires_at: null },
+      value: 'baseline_pat_Xyz123FullSecretValue',
     })
     renderTokens()
     await waitFor(() => expect(screen.getByText(/no tokens yet/i)).toBeTruthy())
@@ -50,16 +50,16 @@ describe('Tokens', () => {
     fireEvent.change(screen.getByPlaceholderText(/claude mcp server/i), { target: { value: 'New token' } })
     fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
 
-    await waitFor(() => expect(screen.getByText('lyftr_pat_Xyz123FullSecretValue')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('baseline_pat_Xyz123FullSecretValue')).toBeTruthy())
     expect(tokenAPI.create).toHaveBeenCalledWith('New token', null)
 
     fireEvent.click(screen.getByRole('button', { name: /^done$/i }))
-    await waitFor(() => expect(screen.getByText('lyftr_pat_Xyz123…')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('baseline_pat_Xyz123…')).toBeTruthy())
   })
 
   it('revoking a token removes it from the list', async () => {
     ;(tokenAPI.list as any).mockResolvedValue([
-      { id: 1, name: 'MCP server', token_prefix: 'lyftr_pat_AbCd12', created_at: '2026-01-01T00:00:00Z', last_used_at: null, expires_at: null },
+      { id: 1, name: 'MCP server', token_prefix: 'baseline_pat_AbCd12', created_at: '2026-01-01T00:00:00Z', last_used_at: null, expires_at: null },
     ])
     ;(tokenAPI.revoke as any).mockResolvedValue({})
     renderTokens()

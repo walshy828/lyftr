@@ -1,4 +1,4 @@
-# Lyftr Android (phone + Wear OS companion)
+# Baseline Android (phone + Wear OS companion)
 
 Three Gradle modules:
 - `shared/` — wire contract (`WearPaths`, `WearSession`/`WearAction` DTOs) used by both apps.
@@ -10,7 +10,7 @@ Three Gradle modules:
 ## Prerequisites
 - Android Studio (Koala or newer) with the Wear OS emulator/SDK components installed, or a real Pixel Watch paired to a real Android phone via the Wear OS app.
 - This directory has no Gradle wrapper checked in yet — open it in Android Studio once and let it generate one (or run `gradle wrapper` if you have a local Gradle install), then commit `gradlew`/`gradlew.bat`/`gradle/wrapper/*`.
-- A running Lyftr backend reachable from your phone (LAN IP or public self-hosted URL — same one you'd use in the web app).
+- A running Baseline backend reachable from your phone (LAN IP or public self-hosted URL — same one you'd use in the web app).
 
 ## Building
 ```bash

@@ -2,10 +2,10 @@ import { create } from 'zustand'
 import * as types from '../types'
 import { userAPI } from '../services/api'
 
-const LAYOUT_KEY = 'lyftr_workout_layout'
-const REST_ON_KEY = 'lyftr_rest_enabled'
-const REST_SEC_KEY = 'lyftr_rest_seconds'
-const FOOD_SOURCES_KEY = 'lyftr_food_search_sources'
+const LAYOUT_KEY = 'baseline_workout_layout'
+const REST_ON_KEY = 'baseline_rest_enabled'
+const REST_SEC_KEY = 'baseline_rest_seconds'
+const FOOD_SOURCES_KEY = 'baseline_food_search_sources'
 
 const ALL_FOOD_SOURCES: types.FoodSource[] = ['off', 'fdc']
 

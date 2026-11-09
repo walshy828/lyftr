@@ -9,7 +9,7 @@ import (
 
 func DemoUser(db *sql.DB) {
 	var count int
-	db.QueryRow(`SELECT COUNT(*) FROM users WHERE email = ?`, "demo@lyftr.local").Scan(&count)
+	db.QueryRow(`SELECT COUNT(*) FROM users WHERE email = ?`, "demo@baseline.local").Scan(&count)
 	if count > 0 {
 		return
 	}
@@ -20,7 +20,7 @@ func DemoUser(db *sql.DB) {
 		return
 	}
 
-	res, err := db.Exec(`INSERT INTO users (email, password_hash) VALUES (?, ?)`, "demo@lyftr.local", hash)
+	res, err := db.Exec(`INSERT INTO users (email, password_hash) VALUES (?, ?)`, "demo@baseline.local", hash)
 	if err != nil {
 		log.Printf("seed: failed to create demo user: %v", err)
 		return
@@ -31,5 +31,5 @@ func DemoUser(db *sql.DB) {
 	// The password is deliberately not logged: server logs are routinely
 	// shipped to aggregators and read by people who shouldn't get credentials.
 	// It's documented in the README for anyone who needs it.
-	log.Println("seed: demo user created (demo@lyftr.local)")
+	log.Println("seed: demo user created (demo@baseline.local)")
 }

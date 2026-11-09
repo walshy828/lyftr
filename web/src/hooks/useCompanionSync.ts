@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
 
-const COMPANION_SYNC_SCHEME = 'lyftr://sync'
+const COMPANION_SYNC_SCHEME = 'baseline://sync'
 
 /**
- * Triggers a same-device sync in the Android companion app via lyftr://sync
+ * Triggers a same-device sync in the Android companion app via baseline://sync
  * (see android/phone/.../sync/SyncTriggerActivity.kt) instead of waiting on
  * its periodic background job — lets "Refresh" get fresh cardio data exactly
  * when the user is looking at this panel.

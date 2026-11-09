@@ -4,7 +4,7 @@ vi.mock('../services/api', () => ({
   userAPI: { getSettings: vi.fn(), updateSettings: vi.fn() },
 }))
 
-const KEY = 'lyftr_food_search_sources'
+const KEY = 'baseline_food_search_sources'
 
 // The store reads localStorage at module load via clientPrefs(), so each case
 // seeds storage and then re-imports it fresh.

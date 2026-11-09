@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -79,11 +80,11 @@ type Config struct {
 	// enrolled passkeys permanently unusable.
 	//
 	// WebAuthnRPID must be the registrable domain the app is served from
-	// ("lyftr.example.com"). An IP address is not a valid RP ID, so an instance
+	// ("baseline.example.com"). An IP address is not a valid RP ID, so an instance
 	// reached by bare LAN IP cannot use passkeys at all.
 	WebAuthnRPID string
 	// WebAuthnRPOrigins are the full origins allowed to complete a ceremony
-	// ("https://lyftr.example.com"). Defaults to https:// + the RP ID.
+	// ("https://baseline.example.com"). Defaults to https:// + the RP ID.
 	// Browsers require a secure context, so plain HTTP will not work off
 	// localhost however this is set.
 	WebAuthnRPOrigins []string
@@ -173,13 +174,14 @@ func Version() string { return buildVersion }
 func Load() {
 	_ = godotenv.Load()
 
+	dbPath := getEnv("DB_PATH", "./data/baseline.db")
 	C = &Config{
 		Port:       getEnv("PORT", "3000"),
 		DBType:     getEnv("DB_TYPE", "sqlite"),
-		DBPath:     getEnv("DB_PATH", "./data/lyftr.db"),
+		DBPath:     legacyDBPath(dbPath),
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
-		DBName:     getEnv("DB_NAME", "lyftr"),
+		DBName:     getEnv("DB_NAME", "baseline"),
 		DBUser:     getEnv("DB_USER", "postgres"),
 		DBPassword: getEnv("DB_PASSWORD", ""),
 		JWTSecret:  getEnv("JWT_SECRET", ""),
@@ -222,7 +224,7 @@ func Load() {
 	C.AIHealthInsightsEnabled = getEnv("AI_HEALTH_INSIGHTS_ENABLED", "") == "true"
 
 	C.WebAuthnRPID = strings.TrimSpace(getEnv("WEBAUTHN_RP_ID", ""))
-	C.WebAuthnRPName = getEnv("WEBAUTHN_RP_NAME", "Lyftr")
+	C.WebAuthnRPName = getEnv("WEBAUTHN_RP_NAME", "Baseline")
 	C.WebAuthnRPOrigins = splitList(getEnv("WEBAUTHN_RP_ORIGINS", ""))
 	if len(C.WebAuthnRPOrigins) == 0 && C.WebAuthnRPID != "" {
 		// The overwhelmingly common case is one origin that is simply the RP ID
@@ -291,7 +293,7 @@ func splitList(raw string) []string {
 	return out
 }
 
-// Session-length defaults. Lyftr's self-host path is a LAN/VPN instance used
+// Session-length defaults. Baseline's self-host path is a LAN/VPN instance used
 // several times a day, so a remembered device defaults to a month: the threat
 // a short refresh TTL defends against (a stolen localStorage token) is not
 // meaningfully mitigated by re-prompting a user who will just re-enter the same
@@ -358,4 +360,20 @@ func getSecret(key, fallback string) string {
 		}
 	}
 	return v
+}
+
+// legacyDBPath keeps pre-rename installs working: if the configured baseline.db
+// doesn't exist but a sibling lyftr.db does, keep using the old file.
+func legacyDBPath(path string) string {
+	if filepath.Base(path) != "baseline.db" {
+		return path
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	old := filepath.Join(filepath.Dir(path), "lyftr.db")
+	if _, err := os.Stat(old); err == nil {
+		return old
+	}
+	return path
 }

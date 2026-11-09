@@ -12,7 +12,7 @@ export default function Logo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
     <div className="flex items-center gap-2">
       <LogoMark size={s.mark} />
       <span className="font-display font-extrabold text-tx-primary" style={{ fontSize: s.fontSize, letterSpacing: '-0.04em' }}>
-        lyftr
+        baseline
       </span>
     </div>
   )

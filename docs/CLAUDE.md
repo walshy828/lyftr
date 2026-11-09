@@ -39,7 +39,7 @@ Deployment:
 ## Project Structure
 
 ```
-lyftr/
+baseline/
 ├── backend/               # Go/Gin API service
 │   ├── main.go           # Entry point
 │   ├── routes/

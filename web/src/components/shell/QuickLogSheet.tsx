@@ -23,7 +23,7 @@ const MEAL_LABEL: Record<Meal, string> = { breakfast: 'Breakfast', lunch: 'Lunch
 const MEAL_ORDER: Meal[] = ['breakfast', 'lunch', 'dinner', 'snacks']
 
 /** Tell any mounted food view that the day's entries changed underneath it. */
-export const FOOD_CHANGED_EVENT = 'lyftr:food-changed'
+export const FOOD_CHANGED_EVENT = 'baseline:food-changed'
 const announceFoodChanged = () => window.dispatchEvent(new Event(FOOD_CHANGED_EVENT))
 
 interface PastMeal {

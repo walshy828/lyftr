@@ -1,12 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" width="160" height="48">
-  <g transform="translate(4, 4)">
-    <path d="M4 16 Q20 25 36 16" fill="none" stroke="#64748b" stroke-width="2.6" stroke-linecap="round"></path>
-    <rect x="3" y="10" width="3" height="18" rx="0.8" fill="#0891b2"></rect>
-    <rect x="6" y="8" width="4" height="22" rx="1" fill="#00b8d9"></rect>
-    <rect x="7.2" y="10.5" width="1.2" height="17" rx="0.5" fill="#7eeeff" opacity="0.55"></rect>
-    <rect x="34" y="10" width="3" height="18" rx="0.8" fill="#0891b2"></rect>
-    <rect x="30" y="8" width="4" height="22" rx="1" fill="#00b8d9"></rect>
-    <rect x="31.6" y="10.5" width="1.2" height="17" rx="0.5" fill="#7eeeff" opacity="0.55"></rect>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 48" width="176" height="48">
+  <defs><linearGradient id="g" x1="5" y1="3" x2="27" y2="29" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#13c2ec"/><stop offset="1" stop-color="#4fe3a1"/></linearGradient></defs>
+  <g transform="translate(2 4) scale(1.25)">
+    <path d="M16 3 L27 6.8 V15 C27 21.5 22.5 26 16 29 C9.5 26 5 21.5 5 15 V6.8 Z" fill="url(#g)"/>
+    <path d="M9 15.5 H13 L15 11 L17.5 20 L19.5 15.5 H23" fill="none" stroke="#0a0b0f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <text x="52" y="34" font-family="Outfit, 'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="28" letter-spacing="-1" fill="#0f172a">lyftr</text>
+  <text x="46" y="34" font-family="Outfit, 'Plus Jakarta Sans', sans-serif" font-weight="800" font-size="28" letter-spacing="-1" fill="#0f172a">baseline</text>
 </svg>

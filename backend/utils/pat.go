@@ -7,12 +7,12 @@ import (
 	"encoding/hex"
 )
 
-const patPrefix = "lyftr_pat_"
+const patPrefix = "baseline_pat_"
 
 // GeneratePAT creates a new personal access token: plaintext is shown to the
 // caller exactly once, hash is what gets stored (and compared against on every
 // request), and prefix is a short cleartext fragment safe to display in a
-// token list ("lyftr_pat_AbCd12...") so a user can tell tokens apart later.
+// token list ("baseline_pat_AbCd12...") so a user can tell tokens apart later.
 func GeneratePAT() (plaintext, hash, prefix string, err error) {
 	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {

@@ -10,7 +10,7 @@ import (
 // though it comes from our own table rather than from a request — a poisoned
 // upstream sync must not be able to write outside the cache directory.
 func TestExerciseImagePath_rejectsUnsafeSourceIDs(t *testing.T) {
-	base := "/var/lib/lyftr/exercise-images"
+	base := "/var/lib/baseline/exercise-images"
 
 	bad := []struct{ name, id string }{
 		{"empty", ""},
@@ -35,7 +35,7 @@ func TestExerciseImagePath_rejectsUnsafeSourceIDs(t *testing.T) {
 }
 
 func TestExerciseImagePath_acceptsRealSlugs(t *testing.T) {
-	base := "/var/lib/lyftr/exercise-images"
+	base := "/var/lib/baseline/exercise-images"
 
 	// Real slugs from the upstream dataset.
 	for _, id := range []string{

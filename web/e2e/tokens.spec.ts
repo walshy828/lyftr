@@ -16,7 +16,7 @@ test('creates, uses, and revokes a personal access token', async ({ page, reques
   const tokenField = page.locator('code')
   await expect(tokenField).toBeVisible()
   const plaintext = (await tokenField.textContent())?.trim()
-  expect(plaintext).toMatch(/^lyftr_pat_/)
+  expect(plaintext).toMatch(/^baseline_pat_/)
 
   // The backend PAT auth path genuinely works end-to-end, not just the UI.
   const meRes = await request.get('/api/v1/me', { headers: { Authorization: `Bearer ${plaintext}` } })

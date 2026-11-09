@@ -67,7 +67,7 @@ A privacy-first, self-hosted workout tracking application similar to MacroFactor
 ## Project Structure
 
 ```
-lyftr/
+baseline/
 ├── backend/          # REST API service
 ├── web/              # React web app
 ├── mobile/           # React Native/Flutter app

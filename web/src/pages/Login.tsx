@@ -49,7 +49,7 @@ export default function Login() {
   const handleDemoLogin = async () => {
     setLoading(true)
     try {
-      await login('demo@lyftr.local', 'password123')
+      await login('demo@baseline.local', 'password123')
       navigate('/')
     } catch (err: any) {
       setError(apiErrorMessage(err, 'Demo login failed'))
@@ -110,7 +110,7 @@ export default function Login() {
 
         {/* Footer */}
         <div className="relative text-tx-muted text-xs">
-          © lyftr{serverInfo?.version ? ` · ${formatVersion(serverInfo.version)}` : ''}
+          © baseline{serverInfo?.version ? ` · ${formatVersion(serverInfo.version)}` : ''}
         </div>
       </div>
 

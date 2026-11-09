@@ -16,8 +16,8 @@ const KINDS: { kind: Kind; label: string; icon: typeof Footprints; keywords: str
 ]
 
 // Resolve a walk/run/bike/swim kind to the best cardio exercise in the
-// library. Lyftr seeds a fixed, always-present "lyftr" row per kind (see
-// backend/seed/exercises.go's lyftrCardioItems) specifically so this never
+// library. Baseline seeds a fixed, always-present "baseline" row per kind (see
+// backend/seed/exercises.go's baselineCardioItems) specifically so this never
 // depends on whichever third-party library (free-exercise-db vs the
 // Gymvisual-sourced dataset) happens to be active — Gymvisual in particular
 // has no outdoor walk/bike and no swim entry at all, so the old
@@ -26,7 +26,7 @@ const KINDS: { kind: Kind; label: string; icon: typeof Footprints; keywords: str
 // below only runs as a fallback, e.g. for an install that hasn't synced the
 // carve-out yet.
 function pickExercise(list: types.Exercise[], kind: Kind): types.Exercise | undefined {
-  const native = list.find(e => e.source === 'lyftr' && e.source_id === `lyftr-${kind}`)
+  const native = list.find(e => e.source === 'baseline' && e.source_id === `baseline-${kind}`)
   if (native) return native
 
   const kw = KINDS.find(k => k.kind === kind)!.keywords

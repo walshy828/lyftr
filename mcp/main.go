@@ -1,5 +1,5 @@
-// Command lyftr-mcp is an MCP server that lets an MCP client (e.g. Claude
-// Desktop or Claude Code) read and write a Lyftr user's workouts, weight,
+// Command baseline-mcp is an MCP server that lets an MCP client (e.g. Claude
+// Desktop or Claude Code) read and write a Baseline user's workouts, weight,
 // food, exercises, and programs through the existing REST API,
 // authenticating with a personal access token instead of an interactive
 // login.
@@ -26,17 +26,17 @@ import (
 )
 
 func main() {
-	baseURL := os.Getenv("LYFTR_API_URL")
+	baseURL := envWithLegacy("BASELINE_API_URL", "LYFTR_API_URL")
 	if baseURL == "" {
-		log.Fatal("LYFTR_API_URL is required, e.g. http://localhost:3000/api/v1")
+		log.Fatal("BASELINE_API_URL is required, e.g. http://localhost:3000/api/v1")
 	}
-	token := os.Getenv("LYFTR_TOKEN")
+	token := envWithLegacy("BASELINE_TOKEN", "LYFTR_TOKEN")
 	if token == "" {
-		log.Fatal("LYFTR_TOKEN is required — create one in the Lyftr web app under Settings > Personal access tokens")
+		log.Fatal("BASELINE_TOKEN is required — create one in the Baseline web app under Settings > Personal access tokens")
 	}
 
 	c := client.New(baseURL, token)
-	server := mcp.NewServer(&mcp.Implementation{Name: "lyftr", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "baseline", Version: "0.1.0"}, nil)
 	tools.Register(server, c)
 
 	switch os.Getenv("MCP_TRANSPORT") {
@@ -44,7 +44,7 @@ func main() {
 		runHTTP(server, token)
 	default:
 		if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-			log.Fatalf("lyftr-mcp: %v", err)
+			log.Fatalf("baseline-mcp: %v", err)
 		}
 	}
 }
@@ -64,9 +64,9 @@ func runHTTP(server *mcp.Server, token string) {
 		&mcp.StreamableHTTPOptions{Stateless: true},
 	)
 
-	log.Printf("lyftr-mcp: serving MCP over HTTP on %s", addr)
+	log.Printf("baseline-mcp: serving MCP over HTTP on %s", addr)
 	if err := http.ListenAndServe(addr, requireBearerToken(token, handler)); err != nil {
-		log.Fatalf("lyftr-mcp: %v", err)
+		log.Fatalf("baseline-mcp: %v", err)
 	}
 }
 
@@ -88,4 +88,13 @@ func requireBearerToken(token string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// envWithLegacy reads name, falling back to the pre-rename variable so existing
+// MCP client configs keep working.
+func envWithLegacy(name, legacy string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return os.Getenv(legacy)
 }

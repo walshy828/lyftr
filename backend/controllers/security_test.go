@@ -111,7 +111,7 @@ func TestSeedDemoConfigGating(t *testing.T) {
 
 	// Seeding is opt-in in every environment. It used to default to on outside
 	// production, so any deployment that forgot to set ENV silently grew a
-	// demo@lyftr.local account with a publicly documented password.
+	// demo@baseline.local account with a publicly documented password.
 	if load("development", "") {
 		t.Error("development default: want SeedDemo=false")
 	}

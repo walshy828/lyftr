@@ -2267,7 +2267,7 @@ func TestRecommendMeals_overBudgetClampsToZero(t *testing.T) {
 
 // TestDeleteFoodLog_rejectsPhotoPathTraversal covers the arbitrary-file-delete
 // hole: image_url is client-supplied and was passed to os.Remove after nothing
-// more than a prefix trim, so "…/photos/../../lyftr.db" unlinked the database.
+// more than a prefix trim, so "…/photos/../../baseline.db" unlinked the database.
 func TestDeleteFoodLog_rejectsPhotoPathTraversal(t *testing.T) {
 	setupTestDB(t)
 	uid := createTestUser(t)
@@ -2276,15 +2276,15 @@ func TestDeleteFoodLog_rejectsPhotoPathTraversal(t *testing.T) {
 
 	// A file outside the photo dir that must survive. One level up mirrors the
 	// real layout: MEAL_PHOTO_DIR defaults to data/meal-photos, DB_PATH to
-	// data/lyftr.db, so "../lyftr.db" is exactly the live database.
-	victim := filepath.Join(dir, "..", "lyftr.db")
+	// data/baseline.db, so "../baseline.db" is exactly the live database.
+	victim := filepath.Join(dir, "..", "baseline.db")
 	if err := os.WriteFile(victim, []byte("precious"), 0o600); err != nil {
 		t.Fatalf("seed victim file: %v", err)
 	}
 
 	body := map[string]any{
 		"name": "Traversal", "meal": "lunch", "calories": 1,
-		"source": "photo", "image_url": "/api/v1/food/photos/../lyftr.db",
+		"source": "photo", "image_url": "/api/v1/food/photos/../baseline.db",
 	}
 	c, w := newContext(uid, http.MethodPost, "/api/v1/food", body)
 	h.LogFood(c)

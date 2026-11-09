@@ -152,7 +152,7 @@ func (s *ExerciseStore) Facets() (map[string][]FacetValue, error) {
 }
 
 // Create inserts a user-defined exercise, tagged source=custom so it survives
-// WipeAndReseed/Sync like the lyftr cardio carve-out does (see seed.SourceCustom).
+// WipeAndReseed/Sync like the baseline cardio carve-out does (see seed.SourceCustom).
 func (s *ExerciseStore) Create(name, muscleGroup, equipment, category, description, imageURL string, secondaryMuscles []string, isTimed bool, defaultDurationSeconds int) (models.Exercise, error) {
 	if category == "" {
 		category = "strength"

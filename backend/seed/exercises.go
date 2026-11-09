@@ -27,15 +27,15 @@ const (
 	gymvisualDatasetURL   = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/data/exercises.json"
 	gymvisualMediaBaseURL = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/"
 
-	// SourceFree, SourceGymvisual, SourceLyftr are the values of
-	// exercises.source / models.Exercise.Source. SourceLyftr rows are the
-	// always-present cardio carve-out (see seedLyftrCardio) — never fetched,
+	// SourceFree, SourceGymvisual, SourceBaseline are the values of
+	// exercises.source / models.Exercise.Source. SourceBaseline rows are the
+	// always-present cardio carve-out (see seedBaselineCardio) — never fetched,
 	// never pruned by a library switch.
 	SourceFree      = "free"
 	SourceGymvisual = "gymvisual"
-	SourceLyftr     = "lyftr"
+	SourceBaseline     = "baseline"
 	// SourceCustom marks a user-created exercise (see ExerciseStore.Create).
-	// Like SourceLyftr, it must survive pruneUnreferenced even when unused by
+	// Like SourceBaseline, it must survive pruneUnreferenced even when unused by
 	// any workout/program yet.
 	SourceCustom = "custom"
 )
@@ -158,8 +158,8 @@ func Exercises(db *sql.DB) {
 		return
 	}
 
-	if err := seedLyftrCardio(db); err != nil {
-		log.Printf("seed: lyftr cardio carve-out failed: %v", err)
+	if err := seedBaselineCardio(db); err != nil {
+		log.Printf("seed: baseline cardio carve-out failed: %v", err)
 	}
 	log.Printf("seed: %d exercises already in database, skipping sync", count)
 }
@@ -198,18 +198,18 @@ func WipeAndReseed(db *sql.DB) error {
 }
 
 // pruneUnreferenced deletes exercises that no saved workout/program
-// references and that aren't part of the lyftr-native carve-out. With
+// references and that aren't part of the baseline-native carve-out. With
 // foreign_keys enforced, deleting a referenced row is (correctly) rejected —
 // referenced rows are refreshed in place by the ON CONFLICT(name) upsert
-// instead. source NOT IN ('lyftr', 'custom') is belt-and-suspenders alongside
-// "unreferenced": the cardio carve-out (seedLyftrCardio) and user-created
+// instead. source NOT IN ('baseline', 'custom') is belt-and-suspenders alongside
+// "unreferenced": the cardio carve-out (seedBaselineCardio) and user-created
 // exercises must survive a reset even if briefly unused. Shared by
 // WipeAndReseed and RepointAndPrune-adjacent callers that need the exact
 // same guard (see stores.ExerciseMigrationStore.RepointAndPrune, which
 // scopes it further to one source).
 func pruneUnreferenced(db *sql.DB) error {
 	_, err := db.Exec(`DELETE FROM exercises
-		WHERE source NOT IN ('lyftr', 'custom')
+		WHERE source NOT IN ('baseline', 'custom')
 		  AND id NOT IN (SELECT exercise_id FROM workout_exercises)
 		  AND id NOT IN (SELECT exercise_id FROM program_exercises)`)
 	return err
@@ -247,8 +247,8 @@ func fetchAndStoreLocked(db *sql.DB) error {
 
 	log.Printf("seed: synced %d exercises", len(items))
 
-	if err := seedLyftrCardio(db); err != nil {
-		log.Printf("seed: lyftr cardio carve-out failed: %v", err)
+	if err := seedBaselineCardio(db); err != nil {
+		log.Printf("seed: baseline cardio carve-out failed: %v", err)
 	}
 	return nil
 }
@@ -275,7 +275,7 @@ const upsertSQL = `
 
 // upsertItems runs the shared insert-or-refresh against an open transaction.
 // Used both by fetchAndStoreLocked (the ~870-1300 row upstream sync) and
-// seedLyftrCardio (the fixed 6-row native carve-out) so the two never drift
+// seedBaselineCardio (the fixed 6-row native carve-out) so the two never drift
 // on column list or conflict handling.
 func upsertItems(tx *sql.Tx, items []SeedItem) error {
 	stmt, err := tx.Prepare(upsertSQL)
@@ -313,33 +313,33 @@ func upsertItems(tx *sql.Tx, items []SeedItem) error {
 	return nil
 }
 
-// lyftrCardioItems is the fixed, hardcoded set of always-present cardio
-// exercises (see SourceLyftr). Unlike the upstream datasets, these are never
+// baselineCardioItems is the fixed, hardcoded set of always-present cardio
+// exercises (see SourceBaseline). Unlike the upstream datasets, these are never
 // fetched over the network and never pruned by WipeAndReseed — quick-cardio
 // logging (QuickCardioModal) needs walk/run/bike/swim to resolve reliably
 // regardless of which third-party library is active, and neither upstream
 // dataset covers all four (Gymvisual in particular has no outdoor walk/bike
 // and no swim at all — see the exercise-migration design notes). No
 // image/gif: QuickCardioModal doesn't render exercise media today.
-var lyftrCardioItems = []SeedItem{
-	{Name: "Walk", MuscleGroup: "legs", Category: "cardio", Equipment: "none", SourceID: "lyftr-walk", Source: SourceLyftr, Description: "Walking at a steady pace, outdoors or on a treadmill."},
-	{Name: "Run", MuscleGroup: "legs", Category: "cardio", Equipment: "none", SourceID: "lyftr-run", Source: SourceLyftr, Description: "Running or jogging at any pace, outdoors or on a treadmill."},
-	{Name: "Bike", MuscleGroup: "legs", Category: "cardio", Equipment: "bicycle", SourceID: "lyftr-bike", Source: SourceLyftr, Description: "Cycling, outdoors or stationary."},
-	{Name: "Swim", MuscleGroup: "full body", Category: "cardio", Equipment: "none", SourceID: "lyftr-swim", Source: SourceLyftr, Description: "Swimming laps, any stroke."},
-	{Name: "Row", MuscleGroup: "back", Category: "cardio", Equipment: "rowing machine", SourceID: "lyftr-row", Source: SourceLyftr, Description: "Rowing machine cardio."},
-	{Name: "Elliptical", MuscleGroup: "legs", Category: "cardio", Equipment: "elliptical machine", SourceID: "lyftr-elliptical", Source: SourceLyftr, Description: "Elliptical trainer cardio."},
+var baselineCardioItems = []SeedItem{
+	{Name: "Walk", MuscleGroup: "legs", Category: "cardio", Equipment: "none", SourceID: "baseline-walk", Source: SourceBaseline, Description: "Walking at a steady pace, outdoors or on a treadmill."},
+	{Name: "Run", MuscleGroup: "legs", Category: "cardio", Equipment: "none", SourceID: "baseline-run", Source: SourceBaseline, Description: "Running or jogging at any pace, outdoors or on a treadmill."},
+	{Name: "Bike", MuscleGroup: "legs", Category: "cardio", Equipment: "bicycle", SourceID: "baseline-bike", Source: SourceBaseline, Description: "Cycling, outdoors or stationary."},
+	{Name: "Swim", MuscleGroup: "full body", Category: "cardio", Equipment: "none", SourceID: "baseline-swim", Source: SourceBaseline, Description: "Swimming laps, any stroke."},
+	{Name: "Row", MuscleGroup: "back", Category: "cardio", Equipment: "rowing machine", SourceID: "baseline-row", Source: SourceBaseline, Description: "Rowing machine cardio."},
+	{Name: "Elliptical", MuscleGroup: "legs", Category: "cardio", Equipment: "elliptical machine", SourceID: "baseline-elliptical", Source: SourceBaseline, Description: "Elliptical trainer cardio."},
 }
 
-// seedLyftrCardio upserts the native cardio carve-out. Cheap (6 rows, no
+// seedBaselineCardio upserts the native cardio carve-out. Cheap (6 rows, no
 // network), so it's safe to call synchronously from every path that touches
 // the exercise table, making it self-healing if the carve-out was ever
 // missing (e.g. a DB created before this feature existed).
-func seedLyftrCardio(db *sql.DB) error {
+func seedBaselineCardio(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
-	if err := upsertItems(tx, lyftrCardioItems); err != nil {
+	if err := upsertItems(tx, baselineCardioItems); err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -405,7 +405,7 @@ func SyncInto(db *sql.DB, source string) error {
 		return err
 	}
 	log.Printf("seed: synced %d exercises into %q", len(items), source)
-	return seedLyftrCardio(db)
+	return seedBaselineCardio(db)
 }
 
 func fetchFreeExerciseDB() ([]SeedItem, error) {
@@ -490,7 +490,7 @@ func fetchGymvisual() ([]SeedItem, error) {
 	items := make([]SeedItem, 0, len(raw))
 	for _, e := range raw {
 		// target is the dataset's "primary target muscle"; muscle_group is the
-		// synergist the schema pairs it with. Lyftr's MuscleGroup column means
+		// synergist the schema pairs it with. Baseline's MuscleGroup column means
 		// "primary", so target maps there and muscle_group folds into
 		// secondary_muscles alongside the dataset's own secondary list.
 		secondary := e.SecondaryMuscles

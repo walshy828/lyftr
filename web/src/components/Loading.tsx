@@ -85,7 +85,7 @@ export default function Loading() {
         {/* Label */}
         <div className="text-center">
           <div className="font-display font-extrabold text-xl text-tx-primary tracking-tight">
-            lyftr
+            baseline
           </div>
           <div className="text-xs font-semibold text-tx-muted uppercase tracking-widest mt-2">
             Loading

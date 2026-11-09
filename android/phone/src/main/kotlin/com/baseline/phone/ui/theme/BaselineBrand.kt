@@ -11,49 +11,54 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 
 /**
- * Bent-barbell mark, geometry/colors ported from web/src/components/BarbellSVG.tsx
- * (viewBox 0..40). Drawn on a Canvas rather than as a vector asset so it can
- * pick up MaterialTheme colors if ever needed, and to keep it inline with a
- * single source of truth alongside [BaselineWordmark].
+ * Baseline shield mark (private, self-hosted) carrying a vitals trace; geometry and
+ * colors match web/src/components/LogoMark.tsx (viewBox 0..32).
  */
 @Composable
 fun BaselineMark(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 32.dp) {
     Canvas(modifier = modifier.size(size)) {
-        val scale = this.size.width / 40f
+        val k = this.size.width / 32f
 
-        // Bent bar (under load)
-        val barPath = androidx.compose.ui.graphics.Path().apply {
-            moveTo(4f * scale, 16f * scale)
-            quadraticTo(20f * scale, 25f * scale, 36f * scale, 16f * scale)
+        val shield = Path().apply {
+            moveTo(16f * k, 3f * k)
+            lineTo(27f * k, 6.8f * k)
+            lineTo(27f * k, 15f * k)
+            cubicTo(27f * k, 21.5f * k, 22.5f * k, 26f * k, 16f * k, 29f * k)
+            cubicTo(9.5f * k, 26f * k, 5f * k, 21.5f * k, 5f * k, 15f * k)
+            lineTo(5f * k, 6.8f * k)
+            close()
         }
         drawPath(
-            path = barPath,
-            color = Color(0xFF64748B),
-            style = Stroke(width = 2.6f * scale, cap = StrokeCap.Round),
+            path = shield,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF13C2EC), Color(0xFF4FE3A1)),
+                start = Offset(5f * k, 3f * k),
+                end = Offset(27f * k, 29f * k),
+            ),
         )
 
-        // Collar dots
-        drawCircle(color = BaselineColors.Collar, radius = 1f * scale, center = Offset(10.2f * scale, 18.8f * scale))
-        drawCircle(color = BaselineColors.Collar, radius = 1f * scale, center = Offset(29.8f * scale, 18.8f * scale))
-
-        // Left plates
-        drawRoundRect(color = BaselineColors.PlateOuter, topLeft = Offset(3f * scale, 10f * scale), size = Size(3f * scale, 18f * scale), cornerRadius = androidx.compose.ui.geometry.CornerRadius(0.8f * scale))
-        drawRoundRect(color = BaselineColors.PlateInner, topLeft = Offset(6f * scale, 8f * scale), size = Size(4f * scale, 22f * scale), cornerRadius = androidx.compose.ui.geometry.CornerRadius(1f * scale))
-
-        // Right plates
-        drawRoundRect(color = BaselineColors.PlateOuter, topLeft = Offset(34f * scale, 10f * scale), size = Size(3f * scale, 18f * scale), cornerRadius = androidx.compose.ui.geometry.CornerRadius(0.8f * scale))
-        drawRoundRect(color = BaselineColors.PlateInner, topLeft = Offset(30f * scale, 8f * scale), size = Size(4f * scale, 22f * scale), cornerRadius = androidx.compose.ui.geometry.CornerRadius(1f * scale))
-
-        // Highlights
-        drawRoundRect(color = BaselineColors.PlateHighlight.copy(alpha = 0.55f), topLeft = Offset(7.2f * scale, 10.5f * scale), size = Size(1.2f * scale, 17f * scale), cornerRadius = androidx.compose.ui.geometry.CornerRadius(0.5f * scale))
-        drawRoundRect(color = BaselineColors.PlateHighlight.copy(alpha = 0.55f), topLeft = Offset(31.6f * scale, 10.5f * scale), size = Size(1.2f * scale, 17f * scale), cornerRadius = androidx.compose.ui.geometry.CornerRadius(0.5f * scale))
+        val trace = Path().apply {
+            moveTo(9f * k, 15.5f * k)
+            lineTo(13f * k, 15.5f * k)
+            lineTo(15f * k, 11f * k)
+            lineTo(17.5f * k, 20f * k)
+            lineTo(19.5f * k, 15.5f * k)
+            lineTo(23f * k, 15.5f * k)
+        }
+        drawPath(
+            path = trace,
+            color = Color(0xFF0A0B0F),
+            style = Stroke(width = 2f * k, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
     }
 }
 

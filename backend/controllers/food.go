@@ -35,7 +35,7 @@ const maxLabelImageBytes = 5_600_000
 
 var offClient = &http.Client{Timeout: 5 * time.Second}
 
-const offUserAgent = "Lyftr/1.0 (https://lyftr.app; nutrition-tracker)"
+const offUserAgent = "Baseline/1.0 (https://baseline.app; nutrition-tracker)"
 
 func (h *Handler) ListFoodLogs(c *gin.Context) {
 	uid := middleware.UserID(c)

@@ -17,7 +17,7 @@ export type WorkerAuth = { token: string; email: string }
 export const test = base.extend<object, { workerAuth: WorkerAuth }>({
   workerAuth: [async ({ browser }, use, workerInfo) => {
     const idx = workerInfo.parallelIndex
-    const email = `e2e-w${idx}-${Date.now()}@lyftr.local`
+    const email = `e2e-w${idx}-${Date.now()}@baseline.local`
     const password = 'password123'
     const storageStatePath = path.join(__dirname, `.auth/worker-${idx}.json`)
 

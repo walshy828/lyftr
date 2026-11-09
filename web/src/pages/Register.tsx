@@ -88,7 +88,7 @@ export default function Register() {
 
         {/* Footer */}
         <div className="relative text-tx-muted text-xs">
-          © lyftr{serverInfo?.version ? ` · ${formatVersion(serverInfo.version)}` : ''}
+          © baseline{serverInfo?.version ? ` · ${formatVersion(serverInfo.version)}` : ''}
         </div>
       </div>
 

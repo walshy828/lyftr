@@ -33,7 +33,7 @@ describe('base64url round-trip', () => {
 describe('decodeCreationOptions', () => {
   const options = {
     challenge: 'AQID',
-    rp: { id: 'lyftr.example.com', name: 'Lyftr' },
+    rp: { id: 'baseline.example.com', name: 'Baseline' },
     user: { id: 'BAUG', name: 'a@b.c', displayName: 'A' },
     excludeCredentials: [{ type: 'public-key', id: 'BwgJ' }],
   }
@@ -47,7 +47,7 @@ describe('decodeCreationOptions', () => {
 
   it('preserves the fields it does not touch', () => {
     const decoded = decodeCreationOptions(options)
-    expect(decoded.rp).toEqual({ id: 'lyftr.example.com', name: 'Lyftr' })
+    expect(decoded.rp).toEqual({ id: 'baseline.example.com', name: 'Baseline' })
     expect(decoded.user.name).toBe('a@b.c')
   })
 

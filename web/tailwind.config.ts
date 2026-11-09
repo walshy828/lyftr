@@ -26,7 +26,7 @@ export default {
           faint:     'var(--tx-faint)',
           inverse:   'var(--tx-inverse)',
         },
-        // Brand — "signal" cyan. Lyftr's heritage hue, freshened toward the
+        // Brand — "signal" cyan. Baseline's heritage hue, freshened toward the
         // TraceApps family (mint/cyan on near-black).
         brand: {
           50:  '#e6fbff',

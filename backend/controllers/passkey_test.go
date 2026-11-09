@@ -16,9 +16,9 @@ import (
 // storage scoping that decides whose credentials are whose.
 func enablePasskeys(t *testing.T) {
 	t.Helper()
-	config.C.WebAuthnRPID = "lyftr.example.com"
-	config.C.WebAuthnRPName = "Lyftr"
-	config.C.WebAuthnRPOrigins = []string{"https://lyftr.example.com"}
+	config.C.WebAuthnRPID = "baseline.example.com"
+	config.C.WebAuthnRPName = "Baseline"
+	config.C.WebAuthnRPOrigins = []string{"https://baseline.example.com"}
 }
 
 func TestPasskeyEndpoints_serviceUnavailableWhenNotConfigured(t *testing.T) {

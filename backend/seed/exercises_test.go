@@ -60,15 +60,15 @@ CREATE TABLE program_exercises (
 	return db
 }
 
-func TestSeedLyftrCardio_insertsSixExercises(t *testing.T) {
+func TestSeedBaselineCardio_insertsSixExercises(t *testing.T) {
 	db := testDB(t)
-	if err := seedLyftrCardio(db); err != nil {
-		t.Fatalf("seedLyftrCardio: %v", err)
+	if err := seedBaselineCardio(db); err != nil {
+		t.Fatalf("seedBaselineCardio: %v", err)
 	}
 	var count int
-	db.QueryRow(`SELECT COUNT(*) FROM exercises WHERE source = 'lyftr'`).Scan(&count)
-	if count != len(lyftrCardioItems) {
-		t.Fatalf("expected %d lyftr exercises, got %d", len(lyftrCardioItems), count)
+	db.QueryRow(`SELECT COUNT(*) FROM exercises WHERE source = 'baseline'`).Scan(&count)
+	if count != len(baselineCardioItems) {
+		t.Fatalf("expected %d baseline exercises, got %d", len(baselineCardioItems), count)
 	}
 	for _, want := range []string{"Walk", "Run", "Bike", "Swim"} {
 		var got string
@@ -81,18 +81,18 @@ func TestSeedLyftrCardio_insertsSixExercises(t *testing.T) {
 	}
 }
 
-// TestPruneUnreferenced_survivesLyftrCardio is the regression test for the
+// TestPruneUnreferenced_survivesBaselineCardio is the regression test for the
 // fix this migration feature depends on: a library-switch reset must never
 // delete the native cardio carve-out, referenced or not, since
 // QuickCardioModal needs it to resolve walk/run/bike/swim regardless of
 // which third-party library is active.
-func TestPruneUnreferenced_survivesLyftrCardio(t *testing.T) {
+func TestPruneUnreferenced_survivesBaselineCardio(t *testing.T) {
 	db := testDB(t)
-	if err := seedLyftrCardio(db); err != nil {
-		t.Fatalf("seedLyftrCardio: %v", err)
+	if err := seedBaselineCardio(db); err != nil {
+		t.Fatalf("seedBaselineCardio: %v", err)
 	}
 
-	// An unreferenced, non-lyftr exercise should be pruned...
+	// An unreferenced, non-baseline exercise should be pruned...
 	db.Exec(`INSERT INTO exercises (name, source) VALUES ('Stale Free Exercise', 'free')`)
 	// ...but a referenced one should survive regardless of source.
 	res, _ := db.Exec(`INSERT INTO exercises (name, source) VALUES ('Referenced Free Exercise', 'free')`)
@@ -104,10 +104,10 @@ func TestPruneUnreferenced_survivesLyftrCardio(t *testing.T) {
 		t.Fatalf("pruneUnreferenced: %v", err)
 	}
 
-	var lyftrCount int
-	db.QueryRow(`SELECT COUNT(*) FROM exercises WHERE source = 'lyftr'`).Scan(&lyftrCount)
-	if lyftrCount != len(lyftrCardioItems) {
-		t.Errorf("expected all %d lyftr exercises to survive prune, got %d", len(lyftrCardioItems), lyftrCount)
+	var baselineCount int
+	db.QueryRow(`SELECT COUNT(*) FROM exercises WHERE source = 'baseline'`).Scan(&baselineCount)
+	if baselineCount != len(baselineCardioItems) {
+		t.Errorf("expected all %d baseline exercises to survive prune, got %d", len(baselineCardioItems), baselineCount)
 	}
 
 	var staleCount int

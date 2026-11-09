@@ -6,7 +6,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 )
 
-// waUser adapts a Lyftr account to the interface the WebAuthn library expects.
+// waUser adapts a Baseline account to the interface the WebAuthn library expects.
 //
 // Credentials are loaded eagerly rather than fetched lazily because the library
 // calls WebAuthnCredentials() during a ceremony, where there is nowhere sane to

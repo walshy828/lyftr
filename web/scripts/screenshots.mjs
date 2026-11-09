@@ -8,7 +8,7 @@ const OUT = join(__dirname, '../../docs/screenshots')
 mkdirSync(OUT, { recursive: true })
 
 const BASE = 'http://localhost:5173'
-const EMAIL = 'demo@lyftr.local'
+const EMAIL = 'demo@baseline.local'
 const PASS = 'password123'
 
 const MOBILE = { width: 390, height: 844, deviceScaleFactor: 2 }

@@ -898,7 +898,7 @@ export default function Settings() {
         <SettingRow label="Database" description="Storage backend">
           <span className="badge-dim">SQLite</span>
         </SettingRow>
-        <SettingRow label="Version" description="lyftr backend version">
+        <SettingRow label="Version" description="baseline backend version">
           <span className="text-xs text-tx-muted font-mono">{serverInfo?.version || '—'}</span>
         </SettingRow>
       </Section>

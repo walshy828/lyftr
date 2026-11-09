@@ -2,9 +2,9 @@ import { create } from 'zustand'
 import * as types from '../types'
 import { programAPI, activeSessionAPI } from '../services/api'
 
-const SESSION_KEY = 'lyftr_active_session'
-const SESSION_UPDATED_KEY = 'lyftr_active_session_updated_at'
-const GYM_UI_KEY = 'lyftr_gym_ui'
+const SESSION_KEY = 'baseline_active_session'
+const SESSION_UPDATED_KEY = 'baseline_active_session_updated_at'
+const GYM_UI_KEY = 'baseline_gym_ui'
 
 function saveLocal(session: types.ActiveSession | null) {
   if (session) {

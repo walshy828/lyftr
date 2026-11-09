@@ -1,4 +1,4 @@
-# Contributing to Lyftr
+# Contributing to Baseline
 
 Bug reports, feature requests, and pull requests are welcome. Open an issue before submitting large changes.
 
@@ -23,7 +23,7 @@ On first run the backend seeds a demo account and exercise database automaticall
 
 **Demo credentials**
 ```
-Email:    demo@lyftr.local
+Email:    demo@baseline.local
 Password: password123
 ```
 

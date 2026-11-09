@@ -11,7 +11,7 @@ import (
 func withConfig(t *testing.T, rpID string) {
 	t.Helper()
 	orig := config.C
-	config.C = &config.Config{WebAuthnRPID: rpID, WebAuthnRPName: "Lyftr"}
+	config.C = &config.Config{WebAuthnRPID: rpID, WebAuthnRPName: "Baseline"}
 	if rpID != "" {
 		config.C.WebAuthnRPOrigins = []string{"https://" + rpID}
 	}
@@ -30,7 +30,7 @@ func TestEnabled_requiresAnExplicitRPID(t *testing.T) {
 		t.Fatalf("expected ErrDisabled, got %v", err)
 	}
 
-	withConfig(t, "lyftr.example.com")
+	withConfig(t, "baseline.example.com")
 	if !Enabled() {
 		t.Fatal("passkeys should be on once an RP ID is set")
 	}
@@ -85,7 +85,7 @@ func TestChallengeStore_expires(t *testing.T) {
 // The RP ID is the one value that must not be guessed; confirm it and the
 // derived origin reach the library as configured.
 func TestInstance_usesTheConfiguredRelyingParty(t *testing.T) {
-	withConfig(t, "lyftr.example.com")
+	withConfig(t, "baseline.example.com")
 
 	// Instance() memoises for the process, so build directly to assert on the
 	// config this package produces.
@@ -97,10 +97,10 @@ func TestInstance_usesTheConfiguredRelyingParty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build relying party: %v", err)
 	}
-	if wa.Config.RPID != "lyftr.example.com" {
+	if wa.Config.RPID != "baseline.example.com" {
 		t.Fatalf("RP ID = %q", wa.Config.RPID)
 	}
-	if len(wa.Config.RPOrigins) != 1 || wa.Config.RPOrigins[0] != "https://lyftr.example.com" {
+	if len(wa.Config.RPOrigins) != 1 || wa.Config.RPOrigins[0] != "https://baseline.example.com" {
 		t.Fatalf("RP origins = %v; the origin should default to https + the RP ID", wa.Config.RPOrigins)
 	}
 }

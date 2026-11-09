@@ -42,7 +42,7 @@ func SavePhoto(baseDir string, userID int64, jpegBytes []byte) (string, error) {
 // produced by SavePhoto, but only if it really belongs to userID. relPath comes
 // from a FoodLog.ImageURL, which is a client-supplied string, so it is resolved
 // through AbsPath rather than joined directly — an unvalidated join here would
-// let "../../lyftr.db" unlink an arbitrary file, and a mismatched leading
+// let "../../baseline.db" unlink an arbitrary file, and a mismatched leading
 // segment would let one user delete another's photo. It is a no-op, not an
 // error, if the file is already missing.
 func DeleteUserPhoto(baseDir string, userID int64, relPath string) error {

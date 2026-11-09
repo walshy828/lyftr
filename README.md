@@ -8,14 +8,14 @@
 </p>
 
 <p align="center">
-  <img src="docs/banner.png" alt="Lyftr — Self-hosted workout tracking" width="100%" />
+  <img src="docs/banner.png" alt="Baseline — Self-hosted workout tracking" width="100%" />
 </p>
 
 > 🎉 **First beta release is live — [`v0.1.0-beta.1`](https://github.com/Cawlumm/lyftr/releases/tag/v0.1.0-beta.1).** Workouts, programs, gym mode, dashboard, weight, and the new nutrition tracker are all in. Pin this tag for a stable self-host target instead of tracking `main`.
 
 > **Beta** — actively being built. Expect rough edges and frequent updates. Issues and feedback are welcome. The software equivalent of going to the gym for the first time.
 
-> 🌐 **[Live demo → lyftr-demo.fly.dev](https://lyftr-demo.fly.dev)** — log in with `demo@lyftr.local` / `password123`. Shared instance, resets every hour.
+> 🌐 **[Live demo → baseline-demo.fly.dev](https://baseline-demo.fly.dev)** — log in with `demo@baseline.local` / `password123`. Shared instance, resets every hour.
 
 ---
 
@@ -33,11 +33,11 @@ Single SQLite file, minimal RAM, no external services required.
 
 ---
 
-## Why Lyftr?
+## Why Baseline?
 
-**Hevy and Strong** are polished apps but cloud-only, increasingly paywalled, and your data lives on someone else's server. **Wger** is a solid self-hosted option with a lot of features — Lyftr's focus is a more modern, mobile-first UI and a simpler deployment story. **FitNotes** is local-only with no sync or server deployment story.
+**Hevy and Strong** are polished apps but cloud-only, increasingly paywalled, and your data lives on someone else's server. **Wger** is a solid self-hosted option with a lot of features — Baseline's focus is a more modern, mobile-first UI and a simpler deployment story. **FitNotes** is local-only with no sync or server deployment story.
 
-Lyftr is for people who want a modern, mobile-first workout tracker that they fully own and can run on a $5 VPS or a Raspberry Pi in the corner. No subscription. No vendor lock-in. No "your export is a Pro feature."
+Baseline is for people who want a modern, mobile-first workout tracker that they fully own and can run on a $5 VPS or a Raspberry Pi in the corner. No subscription. No vendor lock-in. No "your export is a Pro feature."
 
 ---
 
@@ -63,11 +63,11 @@ Lyftr is for people who want a modern, mobile-first workout tracker that they fu
 
 ## Live Demo
 
-**[lyftr-demo.fly.dev](https://lyftr-demo.fly.dev)**
+**[baseline-demo.fly.dev](https://baseline-demo.fly.dev)**
 
 | Field | Value |
 |-------|-------|
-| Email | `demo@lyftr.local` |
+| Email | `demo@baseline.local` |
 | Password | `password123` |
 
 Pre-loaded with 8 weeks of PPL workouts, 90 days of weight logs, and food logs so every page has data to explore. Shared instance — resets automatically every hour so any changes are wiped clean.
@@ -128,9 +128,9 @@ All variables live in `.env` at the project root.
 | `AI_HEALTH_INSIGHTS_ENABLED` | `false` | Allows blood-pressure history and body metrics to be sent to your configured AI provider for written insights. Separate from `VISION_PROVIDER` on purpose, so enabling meal-photo scanning doesn't also export health records. Each user must additionally opt in under **Settings → Privacy** |
 | `REFRESH_EXPIRY` | `12` | Refresh-token lifetime in hours for a session the user did **not** tick "Keep me signed in" for — a shared or borrowed browser |
 | `MAX_SESSION_DAYS` | `90` | Ceiling on the per-user "stay signed in for" preference (**Settings → Sessions**). The preference is user-editable, so this is the bound they can't raise |
-| `WEBAUTHN_RP_ID` | *(none)* | Enables passkey (Face ID / Touch ID / security key) sign-in. Must be the hostname you reach Lyftr at, served over **HTTPS** — a bare LAN IP is not a valid RP ID and passkeys can't be used at all in that case. Every credential is bound to this value, so changing it later makes enrolled passkeys permanently unusable |
+| `WEBAUTHN_RP_ID` | *(none)* | Enables passkey (Face ID / Touch ID / security key) sign-in. Must be the hostname you reach Baseline at, served over **HTTPS** — a bare LAN IP is not a valid RP ID and passkeys can't be used at all in that case. Every credential is bound to this value, so changing it later makes enrolled passkeys permanently unusable |
 | `WEBAUTHN_RP_ORIGINS` | `https://` + RP ID | Comma-separated origins allowed to complete a passkey ceremony. Only needed if you serve one instance on several hostnames |
-| `WEBAUTHN_RP_NAME` | `Lyftr` | What the passkey is labelled as in the user's keychain |
+| `WEBAUTHN_RP_NAME` | `Baseline` | What the passkey is labelled as in the user's keychain |
 | `SESSION_ABSOLUTE_DAYS` | `180` | Hard cap on a single session's total life, however actively it's used. Each use slides the refresh window forward, so without this a device opened daily would never sign out. Raised to `MAX_SESSION_DAYS` if set lower |
 | `SEED_DEMO` | `false` | Seeds the demo account. Opt-in everywhere; never enable it on an instance holding real data |
 | `CORS_ORIGIN` | `http://localhost` | Comma-separated allow-list of client origins. Use `*` to allow any (the API is Bearer-token based, no cookies) |
@@ -143,7 +143,7 @@ All variables live in `.env` at the project root.
 
 ## Exercise Library
 
-On first startup, Lyftr automatically seeds 800+ exercises from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) in the background. No API key. No setup required. It just works.
+On first startup, Baseline automatically seeds 800+ exercises from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) in the background. No API key. No setup required. It just works.
 
 ```
 [startup] exercises table empty — fetching from free-exercise-db...
@@ -176,32 +176,32 @@ Registration is closed by default; existing accounts are unaffected.
 
 ## Data & Backups
 
-All your data lives in `./data/lyftr.db` (SQLite). Back it up regularly. It's one file. You have no excuse.
+All your data lives in `./data/baseline.db` (SQLite). Back it up regularly. It's one file. You have no excuse.
 
 ```bash
 # Backup. Use .backup, not cp: it takes a consistent snapshot of a database
 # that may be mid-write, and it captures the WAL. A plain cp of a live SQLite
 # file can produce a torn copy that only fails when you try to restore it.
-sqlite3 ./data/lyftr.db ".backup './data/lyftr-$(date +%F).db'"
+sqlite3 ./data/baseline.db ".backup './data/baseline-$(date +%F).db'"
 
 # Update to latest
 docker compose pull && docker compose up -d
 ```
 
-**Encrypt the volume.** Lyftr stores blood-pressure readings, weight history,
+**Encrypt the volume.** Baseline stores blood-pressure readings, weight history,
 body composition and food logs. SQLite does not encrypt anything at rest, and
 neither would PostgreSQL — the file is only as private as the disk it sits on.
 Put `./data` on an encrypted filesystem (LUKS on Linux, FileVault on macOS, an
 encrypted ZFS dataset on a NAS). That single step covers the database, its
 `-wal`/`-shm` sidecars, your meal photos, and every backup you take from it.
 
-Lyftr sets `0700` on the data directory and `0600` on the database so other
+Baseline sets `0700` on the data directory and `0600` on the database so other
 accounts on the host can't read it, and the containers run as a non-root user.
 Neither of those helps if someone gets the disk — encryption is what does.
 
 ## Privacy: what leaves your server
 
-Self-hosted doesn't mean nothing goes out. Everything Lyftr sends externally:
+Self-hosted doesn't mean nothing goes out. Everything Baseline sends externally:
 
 | Feature | Goes to | What is sent |
 |---------|---------|--------------|
@@ -229,7 +229,7 @@ leaves the machine at all.
   secret. Generate one with `openssl rand -hex 32`.
 - **Set `TRUSTED_PROXIES`** if you run behind a reverse proxy, or the login rate
   limiter can't see real client IPs. Never list a range you don't control.
-- **Put TLS in front of it.** Lyftr speaks plain HTTP; a reverse proxy
+- **Put TLS in front of it.** Baseline speaks plain HTTP; a reverse proxy
   (Caddy, nginx, Cloudflare Tunnel) terminates TLS. Don't expose it to the
   internet without one.
 
@@ -242,7 +242,7 @@ leaves the machine at all.
 ```bash
 sudo apt update && sudo apt install -y docker.io docker-compose-plugin
 
-mkdir lyftr && cd lyftr
+mkdir baseline && cd baseline
 curl -o docker-compose.yml https://raw.githubusercontent.com/Cawlumm/lyftr/main/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/Cawlumm/lyftr/main/.env.example
 nano .env   # set JWT_SECRET and CORS_ORIGIN
@@ -250,7 +250,7 @@ nano .env   # set JWT_SECRET and CORS_ORIGIN
 docker compose up -d
 ```
 
-For HTTPS, put Lyftr behind Caddy or nginx with a Let's Encrypt certificate.
+For HTTPS, put Baseline behind Caddy or nginx with a Let's Encrypt certificate.
 
 ---
 

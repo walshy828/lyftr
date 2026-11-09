@@ -8,9 +8,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:label="Lyftr"
+        android:label="Baseline"
         android:icon="@drawable/ic_launcher"
-        android:theme="@style/Theme.Lyftr"
+        android:theme="@style/Theme.Baseline"
         android:allowBackup="false">
 
         <!-- Standalone=false: this app is only useful paired with the phone
@@ -26,7 +26,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.Lyftr">
+            android:theme="@style/Theme.Baseline">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -56,7 +56,7 @@
                 <data
                     android:scheme="wear"
                     android:host="*"
-                    android:pathPrefix="/lyftr/session" />
+                    android:pathPrefix="/baseline/session" />
             </intent-filter>
         </service>
 

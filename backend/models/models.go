@@ -94,8 +94,8 @@ type Exercise struct {
 	// animate via the ImageURL/ImageEndURL crossfade instead.
 	GifURL string `json:"gif_url,omitempty" db:"gif_url"`
 	// Source is which library this row belongs to: "free", "gymvisual", or
-	// "lyftr" (the app's own always-present cardio carve-out — see
-	// seed.seedLyftrCardio). Distinct from SourceID (the upstream slug/id
+	// "baseline" (the app's own always-present cardio carve-out — see
+	// seed.seedBaselineCardio). Distinct from SourceID (the upstream slug/id
 	// within that library): Source is what the exercise-migration flow and
 	// WipeAndReseed's prune both key off of to know which rows a library
 	// switch may touch.

@@ -6,7 +6,7 @@ test.use({ storageState: { cookies: [], origins: [] } })
 
 // @mobile: critical smoke that auth + the app shell work at phone viewport.
 test('registers a new user and lands on the dashboard', { tag: '@mobile' }, async ({ page }) => {
-  const email = `e2e+${Date.now()}@lyftr.local`
+  const email = `e2e+${Date.now()}@baseline.local`
   await page.goto('/register')
   await page.getByPlaceholder('you@example.com').fill(email)
   await page.locator('#password').fill('password123')
@@ -25,7 +25,7 @@ test('wrong password shows an error and stays on the login page (no reload)', as
   // password", not trigger a token-refresh redirect that reloads the page and
   // wipes the message.
   await page.goto('/login')
-  await page.getByPlaceholder('you@example.com').fill('demo@lyftr.local')
+  await page.getByPlaceholder('you@example.com').fill('demo@baseline.local')
   await page.locator('#password').fill('definitely-the-wrong-password')
   await page.getByRole('button', { name: /sign in/i }).click()
   await expect(page.locator('.alert-error')).toBeVisible()
@@ -45,7 +45,7 @@ test('server settings tests and connects to the default (reverse proxy)', async 
   await page.goto('/login')
   await page.getByRole('button', { name: /server settings/i }).click()
   await page.getByRole('button', { name: /test & save/i }).click()
-  await expect(page.getByText(/connected · lyftr/i)).toBeVisible()
+  await expect(page.getByText(/connected · baseline/i)).toBeVisible()
 })
 
 test('server settings Save stays enabled when the field equals the current server (regression #18)', async ({ page }) => {

@@ -1,6 +1,6 @@
 # Testing Strategy
 
-How Lyftr tests are organized, where a new test belongs, and how to run them. The
+How Baseline tests are organized, where a new test belongs, and how to run them. The
 goal is a **test pyramid**: many fast unit tests, a solid layer of integration
 tests, and a thin layer of end-to-end tests. Fast layers carry most of the
 coverage so the suite stays quick and reliable as the app grows.

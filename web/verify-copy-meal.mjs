@@ -1,6 +1,6 @@
 import { chromium } from '@playwright/test'
 
-const OUT = '/private/tmp/claude-502/-Users-dpw-Documents-Development-lyftr/976ef634-0d45-4952-ba0b-def51e5f853d/scratchpad/verify'
+const OUT = '/private/tmp/claude-502/-Users-dpw-Documents-Development-baseline/976ef634-0d45-4952-ba0b-def51e5f853d/scratchpad/verify'
 const BASE = 'https://localhost:5174'
 
 const browser = await chromium.launch()
@@ -9,7 +9,7 @@ page.on('console', m => { if (m.type() === 'error') console.log('CONSOLE ERR:', 
 page.on('pageerror', e => console.log('PAGE ERROR:', e.message))
 
 await page.goto(`${BASE}/login`)
-await page.fill('input[type="email"]', 'demo@lyftr.local')
+await page.fill('input[type="email"]', 'demo@baseline.local')
 await page.fill('input[type="password"]', 'password123')
 await page.click('button[type="submit"]')
 await page.waitForURL(/dashboard|\/$/, { timeout: 10000 }).catch(() => {})

@@ -21,13 +21,13 @@ func main() {
 	showVersion := flag.Bool("version", false, "print the build version and exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Printf("lyftr %s\n", config.Version())
+		fmt.Printf("baseline %s\n", config.Version())
 		os.Exit(0)
 	}
 
 	config.Load()
 	db.Connect()
-	// Demo user/data carry a well-known password (demo@lyftr.local /
+	// Demo user/data carry a well-known password (demo@baseline.local /
 	// password123) and must never end up on a production deployment.
 	if config.C.SeedDemo {
 		seed.DemoUser(db.DB)
@@ -91,7 +91,7 @@ func main() {
 	}()
 
 	addr := ":" + config.C.Port
-	log.Printf("lyftr API listening on %s (env=%s)", addr, config.C.Env)
+	log.Printf("baseline API listening on %s (env=%s)", addr, config.C.Env)
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

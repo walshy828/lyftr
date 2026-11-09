@@ -61,7 +61,7 @@ export interface ServerInfo {
 }
 
 // Probes a server's public /info endpoint to confirm it's reachable and is a
-// Lyftr backend. Pass '' to test the same-origin reverse-proxy path. Runs under
+// Baseline backend. Pass '' to test the same-origin reverse-proxy path. Runs under
 // the backend's CORS policy, so success predicts that real requests will work.
 export const testServerConnection = async (
   base: string,
@@ -70,7 +70,7 @@ export const testServerConnection = async (
     const res = await axios.get<{ data: ServerInfo }>(`${apiUrl(base)}/info`, { timeout: 8000 })
     const info = res.data?.data
     if (!info?.name) {
-      return { ok: false, message: "That responded, but it doesn't look like a Lyftr server." }
+      return { ok: false, message: "That responded, but it doesn't look like a Baseline server." }
     }
     return { ok: true, info }
   } catch (err) {

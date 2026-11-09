@@ -62,7 +62,7 @@ export default function SleepPanel() {
 
   useEffect(() => {
     if (syncStatus !== 'unavailable') return
-    setError('Lyftr Companion app not found — install it on this phone to sync sleep data')
+    setError('Baseline Companion app not found — install it on this phone to sync sleep data')
     const timeout = setTimeout(() => setError(null), 5000)
     return () => clearTimeout(timeout)
   }, [syncStatus])
@@ -257,7 +257,7 @@ export default function SleepPanel() {
         <div className="card p-6 text-center">
           <p className="text-sm text-tx-secondary font-medium">No sleep sessions yet</p>
           <p className="text-xs text-tx-muted mt-1">
-            Nights recorded by your watch sync here automatically once the Lyftr companion app is
+            Nights recorded by your watch sync here automatically once the Baseline companion app is
             connected to Health Connect.
           </p>
         </div>

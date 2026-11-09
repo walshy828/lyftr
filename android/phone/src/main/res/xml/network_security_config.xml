@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Lyftr is self-hosted; a LAN deployment is commonly plain HTTP
+<!-- Baseline is self-hosted; a LAN deployment is commonly plain HTTP
      (http://192.168.x.x:3000) with no reverse-proxy TLS in front of it
      during local testing. Android blocks cleartext traffic by default from
      API 28+, so without this the phone app can't reach such a server at

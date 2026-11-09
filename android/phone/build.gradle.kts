@@ -6,14 +6,14 @@ plugins {
 }
 
 android {
-    namespace = "com.lyftr.phone"
+    namespace = "com.baseline.phone"
     compileSdk = 35
 
     defaultConfig {
         // Must be identical to :wear's applicationId — the Wearable Data
         // Layer API only routes DataItems/Messages between apps that share
         // the same package name (namespaces may differ, this may not).
-        applicationId = "com.lyftr"
+        applicationId = "com.baseline"
         minSdk = 28
         targetSdk = 35
         versionCode = 1
@@ -52,7 +52,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
-    // REST client for the existing Lyftr Go/Gin API.
+    // REST client for the existing Baseline Go/Gin API.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 

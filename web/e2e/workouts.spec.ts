@@ -4,8 +4,8 @@ import { cleanupSeed } from './seedHelpers'
 const E2E_WORKOUT_NAME = 'Test Workout E2E'
 const SEED_WORKOUT_NAME = 'Seeded Test Workout'
 const SEED_SEARCH_WORKOUT_NAME = 'ZZZ E2E SearchTarget Workout'
-const LAYOUT_KEY = 'lyftr_workout_layout'
-const SESSION_KEY = 'lyftr_active_session'
+const LAYOUT_KEY = 'baseline_workout_layout'
+const SESSION_KEY = 'baseline_active_session'
 
 let workoutId: number
 let searchWorkoutId: number

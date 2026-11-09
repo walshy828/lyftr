@@ -58,7 +58,7 @@ export interface Exercise {
   force?: string
   level?: string
   mechanic?: string
-  /** Which library this row belongs to: "free", "gymvisual", or "lyftr" (the
+  /** Which library this row belongs to: "free", "gymvisual", or "baseline" (the
    *  app's own always-present cardio carve-out — see QuickCardioModal). */
   source?: string
   /** Upstream dataset slug; the media cache keys on it. */

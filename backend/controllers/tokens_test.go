@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Cawlumm/lyftr-backend/db"
@@ -32,8 +33,8 @@ func TestCreateToken_returnsPlaintextOnce(t *testing.T) {
 	resp := decodeResponse(t, w)
 	data := resp["data"].(map[string]any)
 	value, _ := data["value"].(string)
-	if value == "" || value[:10] != "lyftr_pat_" {
-		t.Fatalf("expected plaintext value with lyftr_pat_ prefix, got %q", value)
+	if !strings.HasPrefix(value, "baseline_pat_") {
+		t.Fatalf("expected plaintext value with baseline_pat_ prefix, got %q", value)
 	}
 	token := data["token"].(map[string]any)
 	if token["name"] != "MCP server" {

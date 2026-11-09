@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Lyftr" parent="android:Theme.DeviceDefault" />
+    <style name="Theme.Baseline" parent="android:Theme.DeviceDefault" />
 </resources>

@@ -124,7 +124,7 @@ func alterMigrations() {
 	// Personal access tokens (#mcpTokens): long-lived bearer tokens for
 	// non-interactive clients (MCP server, scripts) that can't do an
 	// interactive JWT login. token_prefix is stored in cleartext purely for
-	// display ("lyftr_pat_AbCd12...") in the token list.
+	// display ("baseline_pat_AbCd12...") in the token list.
 	if _, err := DB.Exec(`
 CREATE TABLE IF NOT EXISTS personal_access_tokens (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,7 +376,7 @@ CREATE INDEX IF NOT EXISTS idx_device_sessions_expires ON device_sessions(expire
 	// Passkeys (WebAuthn). The credential itself is stored as the library's own
 	// JSON rather than exploded into columns: it is an opaque record we only
 	// ever hand back to that library, the shape gains fields between releases,
-	// and nothing in Lyftr has any business querying its internals.
+	// and nothing in Baseline has any business querying its internals.
 	//
 	// credential_id is lifted out because it's the lookup key, and user_handle
 	// because a usernameless ("discoverable") login arrives with nothing else
@@ -437,7 +437,7 @@ CREATE INDEX IF NOT EXISTS idx_program_sets_program_exercise ON program_sets(pro
 	// gymvisual) — see config.ExerciseLibrarySource and seed/exercises.go.
 	ensureColumn("exercises", "gif_url", `ALTER TABLE exercises ADD COLUMN gif_url TEXT NOT NULL DEFAULT ''`)
 
-	// source is which library a row belongs to ("free", "gymvisual", "lyftr" —
+	// source is which library a row belongs to ("free", "gymvisual", "baseline" —
 	// see models.Exercise.Source). Empty until the next sync backfills it, same
 	// as the other columns above; the exercise-migration flow and
 	// WipeAndReseed's prune both need it to tell libraries apart.

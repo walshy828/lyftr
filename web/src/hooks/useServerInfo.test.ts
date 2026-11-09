@@ -18,11 +18,11 @@ describe('useServerInfo', () => {
 
   it('starts null and resolves to the server info on success', async () => {
     useServerStore.setState({ serverUrl: 'http://success-server' })
-    mockTest.mockResolvedValue({ ok: true, info: { name: 'lyftr', version: '1.2.3' } })
+    mockTest.mockResolvedValue({ ok: true, info: { name: 'baseline', version: '1.2.3' } })
 
     const { result } = renderHook(() => useServerInfo())
     expect(result.current).toBeNull()
-    await waitFor(() => expect(result.current).toEqual({ name: 'lyftr', version: '1.2.3' }))
+    await waitFor(() => expect(result.current).toEqual({ name: 'baseline', version: '1.2.3' }))
   })
 
   it('stays null when the server is unreachable', async () => {
@@ -36,14 +36,14 @@ describe('useServerInfo', () => {
 
   it('caches per server URL and does not refetch on remount', async () => {
     useServerStore.setState({ serverUrl: 'http://cached-server' })
-    mockTest.mockResolvedValue({ ok: true, info: { name: 'lyftr', version: '9.9.9' } })
+    mockTest.mockResolvedValue({ ok: true, info: { name: 'baseline', version: '9.9.9' } })
 
     const first = renderHook(() => useServerInfo())
-    await waitFor(() => expect(first.result.current).toEqual({ name: 'lyftr', version: '9.9.9' }))
+    await waitFor(() => expect(first.result.current).toEqual({ name: 'baseline', version: '9.9.9' }))
     expect(mockTest).toHaveBeenCalledTimes(1)
 
     const second = renderHook(() => useServerInfo())
-    expect(second.result.current).toEqual({ name: 'lyftr', version: '9.9.9' }) // served from cache
+    expect(second.result.current).toEqual({ name: 'baseline', version: '9.9.9' }) // served from cache
     expect(mockTest).toHaveBeenCalledTimes(1) // no second call
   })
 })

@@ -13,8 +13,8 @@ export default defineConfig(({ command }) => ({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       manifest: {
-        name: 'Lyftr - Workout Tracking',
-        short_name: 'Lyftr',
+        name: 'Baseline - Workout Tracking',
+        short_name: 'Baseline',
         description: 'Self-hosted workout tracker',
         start_url: '/',
         scope: '/',

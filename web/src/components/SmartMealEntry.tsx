@@ -237,7 +237,7 @@ export default function SmartMealEntry({ onTextResult, onPhotoResult, onClose }:
               ? 'Listening… speak your meal, then tap the mic again.'
               : photoBase64
                 ? 'Optionally add details the photo might miss, like dressing or extra sides.'
-                : 'Describe everything you ate and roughly how much, or add a photo — Lyftr will split it into items you can review before logging.'}
+                : 'Describe everything you ate and roughly how much, or add a photo — Baseline will split it into items you can review before logging.'}
           </p>
         )}
 
