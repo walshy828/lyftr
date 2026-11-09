@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
+import RoutineDaysPicker from '../components/RoutineDaysPicker'
 import { format } from 'date-fns'
 import {
   ArrowLeft, BookOpen, Dumbbell, Edit2, Trash2, Play, AlertCircle, Loader, ChevronRight, Pause, TimerOff, Share2, Copy,
@@ -15,6 +16,8 @@ import { isTimed, fmtClock } from '../utils/workoutSets'
 
 export default function ProgramDetail() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const justCreated = searchParams.get('new') === '1'
   const navigate = useNavigate()
   const { session, startSession } = useWorkoutSession()
   const { user } = useAuthStore()
@@ -130,8 +133,8 @@ export default function ProgramDetail() {
     <div className="space-y-5 animate-slide-up max-w-2xl">
       {/* Back nav */}
       <div className="flex items-center justify-between">
-        <Link to="/plan" className="flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Plan
+        <Link to="/plan/schedule" className="flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Routines
         </Link>
         <div className="flex items-center gap-1">
           <button
@@ -243,6 +246,8 @@ export default function ProgramDetail() {
           <p className="text-sm text-tx-muted mt-3 pt-3 border-t border-surface-border">{program.notes}</p>
         )}
       </div>
+
+      {isOwner && <RoutineDaysPicker programId={program.id} highlight={justCreated} />}
 
       {/* Exercises */}
       {!restOn && (

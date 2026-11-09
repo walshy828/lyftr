@@ -17,6 +17,7 @@ const Workouts = lazy(() => import('./pages/Workouts'))
 const ExerciseDetail = lazy(() => import('./pages/ExerciseDetail'))
 const Exercises = lazy(() => import('./pages/Exercises'))
 const Plan = lazy(() => import('./pages/Plan'))
+const Train = lazy(() => import('./pages/Train'))
 const Stats = lazy(() => import('./pages/Stats'))
 const WeeklySummary = lazy(() => import('./pages/WeeklySummary'))
 const AddProgram = lazy(() => import('./pages/AddProgram'))
@@ -79,7 +80,9 @@ function App() {
             {/* Before the :exerciseId route is irrelevant here (react-router ranks
                 static segments higher), but keep them adjacent so the pair is obvious. */}
             <Route path="/exercises" element={<Exercises />} />
-            <Route path="/plan" element={<Plan />} />
+            <Route path="/plan" element={<Train />} />
+            {/* Weekly pattern + routines + month calendar: the "build" side of Train. */}
+            <Route path="/plan/schedule" element={<Plan />} />
             {/* Schedule renamed to Plan; keep old links working. */}
             <Route path="/schedule" element={<Navigate to="/plan" replace />} />
             <Route path="/stats" element={<Stats />} />

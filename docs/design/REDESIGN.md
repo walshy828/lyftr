@@ -1,6 +1,6 @@
 # Lyftr redesign: Train · Fuel · Trend
 
-Status: Phases 1–3 are built on `feature/redesign-today-first` (two small Phase 2 items remain). Phases 4–5 are proposed.
+Status: Phases 1–4 are built on `feature/redesign-today-first` (a few small items remain, listed per phase). Phase 5 is proposed.
 
 ## Why
 
@@ -117,11 +117,23 @@ Known follow-ups:
 - The server's adherence card counts *completed* weeks ("Week 6") while Plan Pulse counts the week in progress ("Week 7"). The server also judges on/off plan from the latest single weigh-in, not the trend, so the two cards can disagree for a day or two after a noisy weigh-in. Move the server's verdict onto trend weight.
 - Make "Re-check on <date>" a reminder through the Android companion app.
 
-## Phase 4: Train
+## Phase 4: Train (built)
 
-- The Train hub's first screen: this week's schedule strip, the next session card with Start, recent PRs.
-- A builder wizard for routines (lifts + cardio blocks), a schedule drag-to-day, and a "Create with AI" entry. Rare tasks, so a deliberate multi-step flow is fine.
-- Cardio from Health Connect merged into the same training calendar, so a synced run counts toward the day's Training ring.
+- **Train hub** at `/plan` (`pages/Train.tsx`, `utils/trainWeek.ts`), the gym-day screen:
+  - Start / Log / Cardio up top.
+  - A Mon–Sun strip marking each day done, partly done, missed, planned, rest, or "extra" (trained on an unplanned day), with synced cardio minutes under the day.
+  - Week stats: planned sessions done, lift sessions, cardio minutes.
+  - **Up next**: today's pending routine, or the next planned day. It previews the first exercises with sets × reps @ weight and has Start.
+  - Recent PRs, and recent activity that mixes lifts and Health Connect cardio.
+  - A **Build** section one tap down: Schedule, New routine, Create with AI, Exercise library, Workout history, Training trends.
+- The old Plan page (weekly pattern, routines, month calendar) moved to `/plan/schedule` as "Schedule & routines", with a back link to Train. Routine pages link back to it.
+- **Days on your week** picker on every routine you own. Toggling a day saves the weekly pattern and only changes this routine's membership on that day. Creating a routine lands on it (`?new=1`) with the picker highlighted, so a new routine is one step from showing up as Up next.
+- **Synced cardio counts as training**: on Today, a Health Connect session fills the Training ring (half, on a day with a planned lift session not done yet) and shows "+30m cardio" in its label. It counts on the Train strip too.
+- e2e: `programs.spec.ts` now visits `/plan/schedule` and accepts the `?new=1` redirect after creating a routine.
+
+Still open:
+- Drag-to-day schedule editing, and a guided routine wizard (today's editor is a single long form).
+- Completing a planned session server-side still only recognises a lifting workout linked to the program, so a planned "Run" routine isn't marked done by a synced run.
 
 ## Phase 5: Polish
 

@@ -11,6 +11,8 @@ interface Props {
   steps: number | null
   todaysPlan: types.ScheduledDay | null
   workedOutToday: boolean
+  /** Synced cardio minutes today (Health Connect). */
+  cardioMinutes?: number
 }
 
 const k = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`)
@@ -19,15 +21,22 @@ const k = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ?
  * Today at a glance: four rings, one per daily lever — energy, protein,
  * movement, training. Each ring is a link to where you'd act on it.
  */
-export default function TodayRings({ food, settings, steps, todaysPlan, workedOutToday }: Props) {
+export default function TodayRings({ food, settings, steps, todaysPlan, workedOutToday, cardioMinutes = 0 }: Props) {
   const kcal = food.total_calories
   const left = settings.calorie_target - kcal
   const planned = todaysPlan?.programs ?? []
   const doneCount = planned.filter(p => p.completed_workout_id).length
-  const trainValue = planned.length ? doneCount / planned.length : workedOutToday ? 1 : 0
+  // Activity outside the plan still counts: a synced run on a lifting day
+  // fills half the ring until the planned session is done too.
+  const trainValue = planned.length
+    ? Math.max(doneCount / planned.length, workedOutToday && doneCount < planned.length ? 0.5 : 0)
+    : workedOutToday ? 1 : 0
   const trainLabel = planned.length
     ? `${doneCount}/${planned.length}`
-    : workedOutToday ? 'Done' : todaysPlan?.source === 'rest' ? 'Rest' : '—'
+    : cardioMinutes > 0 ? `${cardioMinutes}m` : workedOutToday ? 'Done' : todaysPlan?.source === 'rest' ? 'Rest' : '—'
+  const trainFoot = planned.length
+    ? (cardioMinutes > 0 && doneCount < planned.length ? `+${cardioMinutes}m cardio · ${planned[0].name}` : planned[0].name)
+    : cardioMinutes > 0 ? 'Cardio' : todaysPlan?.source === 'rest' ? 'Recovery day' : 'Nothing planned'
 
   const tiles = [
     {
@@ -51,8 +60,8 @@ export default function TodayRings({ food, settings, steps, todaysPlan, workedOu
     },
     {
       to: '/plan', name: 'Training', color: 'rgb(var(--c-train))', over: 'rgb(var(--c-train))',
-      value: trainValue, big: trainLabel, small: planned.length ? 'sessions' : '',
-      foot: planned[0]?.name ?? (todaysPlan?.source === 'rest' ? 'Recovery day' : 'Nothing planned'),
+      value: trainValue, big: trainLabel, small: planned.length ? 'sessions' : cardioMinutes > 0 ? 'cardio' : '',
+      foot: trainFoot,
     },
   ]
 

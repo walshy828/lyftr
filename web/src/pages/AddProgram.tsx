@@ -11,7 +11,8 @@ export default function AddProgram() {
       initialData={{ name: '', notes: '', exercises: [] }}
       onSave={async (payload: ProgramFormData) => {
         const created = await programAPI.create(payload)
-        navigate(`/programs/${created.id}`)
+        // Straight into "which days?" — a routine that isn't on the week never shows up as Up next.
+        navigate(`/programs/${created.id}?new=1`)
       }}
       onCancel={() => navigate(-1)}
     />

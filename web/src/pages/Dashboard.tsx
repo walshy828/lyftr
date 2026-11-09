@@ -67,7 +67,12 @@ export default function Dashboard() {
   const unit = weightShort(d.settings.weight_unit)
   const lastWeight = d.weightLogs[0] ?? null
   const lastWeightLabel = lastWeight ? `${displayWeight(lastWeight.weight, d.settings.weight_unit)} ${unit}` : undefined
-  const workedOutToday = d.workouts.some(w => format(new Date(w.started_at), 'yyyy-MM-dd') === todayStr())
+  // Synced cardio (Health Connect) counts as training too — a logged run is a
+  // session even with no lifting workout behind it.
+  const isToday = (iso: string) => format(new Date(iso), 'yyyy-MM-dd') === todayStr()
+  const cardioToday = d.cardioSessions.filter(c => isToday(c.started_at))
+  const cardioMinutes = Math.round(cardioToday.reduce((s, c) => s + c.duration_seconds, 0) / 60)
+  const workedOutToday = d.workouts.some(w => isToday(w.started_at)) || cardioToday.length > 0
 
   const focus = buildTodayFocus({
     now, food: d.food, settings: d.settings, lastWeight, lastWeightLabel, todaysPlan: d.todaysPlan,
@@ -117,7 +122,7 @@ export default function Dashboard() {
 
       <TodayRings
         food={d.food} settings={d.settings} steps={steps}
-        todaysPlan={d.todaysPlan} workedOutToday={workedOutToday}
+        todaysPlan={d.todaysPlan} workedOutToday={workedOutToday} cardioMinutes={cardioMinutes}
       />
 
       <FocusToday items={focus} weekly={weekly} onAction={onAction} />

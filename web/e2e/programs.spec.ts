@@ -52,11 +52,11 @@ test.describe('Programs', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/plan')
+    await page.goto('/plan/schedule')
   })
 
   test('page loads and shows routines or empty state', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /^plan$/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /schedule & routines/i })).toBeVisible()
     await expect(page.getByText('Routines')).toBeVisible()
     const hasPrograms = await page.getByText(SEED_PROGRAM_NAME).isVisible().catch(() => false)
     const hasEmpty = await page.getByText(/no routines/i).isVisible().catch(() => false)
@@ -86,7 +86,7 @@ test.describe('Programs', () => {
     await page.locator('input[placeholder="135"]').first().fill('225')
 
     await page.getByRole('button', { name: /save program/i }).click()
-    await page.waitForURL(/\/programs\/\d+$/)
+    await page.waitForURL(/\/programs\/\d+(\?new=1)?$/)
     await expect(page.getByText(E2E_PROGRAM_NAME).first()).toBeVisible()
   })
 
@@ -110,7 +110,7 @@ test.describe('Programs', () => {
   })
 
   test('search input stays focused while typing', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /^plan$/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /schedule & routines/i })).toBeVisible()
     const searchInput = page.getByPlaceholder(/search programs/i)
     await searchInput.click()
     await searchInput.type('S')

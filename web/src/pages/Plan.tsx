@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Check, Play, RotateCcw, X, Plus, Dumbbell, Sparkles, Search, Footprints,
 } from 'lucide-react'
@@ -124,9 +124,12 @@ export default function Plan() {
 
   return (
     <div className="space-y-4 animate-slide-up">
+      <Link to="/plan" className="inline-flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary">
+        <ChevronLeft className="w-4 h-4" /> Train
+      </Link>
       <PageHeader
-        title="Plan"
-        subtitle="Your weekly routine"
+        title="Schedule & routines"
+        subtitle="Your weekly pattern and the routines on it"
         action={
           <div className="flex gap-2 w-full sm:w-auto">
             <button onClick={() => navigate('/exercises')} className="btn-ghost btn-sm flex-1 sm:flex-none">
