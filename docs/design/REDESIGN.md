@@ -1,6 +1,6 @@
 # Lyftr redesign: Train · Fuel · Trend
 
-Status: Phase 1 is built on `feature/redesign-today-first`. Phases 2–5 are proposed.
+Status: Phase 1 and most of Phase 2 are built on `feature/redesign-today-first`. Phases 3–5 are proposed.
 
 ## Why
 
@@ -76,14 +76,23 @@ Desktop:            left rail with the same four + a primary "Log" button
 - **Trends → Overview** (`components/trends/OverviewPanel.tsx`): the heatmap, training mix, muscle map, nutrition trend, scorecard, and last workout moved here from home.
 - **Food diary**: a week strip with per-day calorie rings and live refresh when the sheet logs something.
 
-## Phase 2: Food, deeper (next)
+## Phase 2: Food, deeper (mostly built)
 
-- Per-meal **"Same as yesterday"** chip inline in each empty meal on the diary, so a whole meal is one tap without opening the sheet.
-- **Favorites you curate**: pin and order saved foods and "meal templates" (a named group of foods) alongside the automatic "usuals".
-- **Photo for any food**: tap an avatar to add a photo (camera or library), stored on the saved food. The backend already has `image_url` on saved foods.
-- A redesigned Log Food screen: tabs become a single list grouped as Recent / My foods / Database, with avatars, and a sticky amount stepper with unit chips.
-- Swipe actions on diary rows: swipe left to delete, swipe right to save to My Foods or duplicate.
-- A grid view of the diary: a photo wall of the day, useful for "what did I eat Tuesday?"
+Built:
+- **"Same as yesterday"** in every empty diary meal: a one-tap chip showing the previous day's foods and calories for that meal.
+- **Saved meals** (`meal_templates`, `/api/v1/food/templates`):
+  - Save any diary meal from its ⋯ menu ("Save as a meal").
+  - It appears under **Your meals** at the top of the Log sheet: one tap logs it to the chosen meal, with Undo. Rename or delete from the card's menu.
+  - Items are a JSON snapshot, so editing or deleting the original entries never changes the saved meal.
+- **Photo for any food:** tap a food's picture in the diary to take or choose a photo (`POST /food/photos`, `PUT /food/:id/photo`). It's applied to that entry and to every other entry and saved food with the same name and brand that had no photo yet, or that showed the photo being replaced. Photograph your usual yogurt once and it's pictured everywhere, including the usuals grid.
+- **Swipe actions** on diary rows (touch only): swipe right to save to My Foods, swipe left to delete. Mouse users keep the row buttons, which are now hidden on phone widths.
+- **Photo view** of the diary: a List / Photos toggle with a picture-wall grid per meal. The choice is remembered per device.
+- Per-meal actions (suggest ideas, copy from another day, save as meal) moved behind one ⋯ menu so the meal header fits on a phone.
+- **Bug fix:** copies of an entry share one photo file, and deleting any copy used to delete the file for all of them. This became easy to hit once Undo and one-tap repeat landed. Files are now removed only when no food log, saved food or saved meal still references them.
+
+Still open:
+- Redesigned Log Food screen: tabs become one list grouped as Recent / My foods / Database, with a sticky amount stepper and unit chips.
+- Curated ordering for "Your usuals": pin and reorder, instead of only by how often you log something.
 
 ## Phase 3: Plan & insight loop
 

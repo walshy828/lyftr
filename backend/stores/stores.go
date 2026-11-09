@@ -20,6 +20,7 @@ type Stores struct {
 	BPInsight         *BPInsightStore
 	Cardio            *CardioStore
 	Food              *FoodStore
+	MealTemplate      *MealTemplateStore
 	FoodProduct       *FoodProductStore
 	User              *UserStore
 	Exercise          *ExerciseStore
@@ -48,6 +49,7 @@ func New(db *sql.DB) *Stores {
 		BPInsight:         NewBPInsightStore(db),
 		Cardio:            NewCardioStore(db),
 		Food:              NewFoodStore(db),
+		MealTemplate:      NewMealTemplateStore(db),
 		FoodProduct:       NewFoodProductStore(db),
 		User:              NewUserStore(db),
 		Exercise:          NewExerciseStore(db),

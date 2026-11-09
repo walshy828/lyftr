@@ -4,13 +4,18 @@ import { format, subDays, addDays } from 'date-fns'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Flame, Plus, Trash2,
   AlertCircle, Coffee, Sun, Moon, Cookie, CalendarDays, Sparkles,
-  Bookmark, BookmarkCheck, Copy,
+  Bookmark, BookmarkCheck, Copy, BookmarkPlus, LayoutGrid, List as ListIcon,
 } from 'lucide-react'
 import IconButton from '../components/ui/IconButton'
 import SectionHeader from '../components/ui/SectionHeader'
 import PageHeader from '../components/ui/PageHeader'
 import MacroBar from '../components/ui/MacroBar'
-import FoodAvatar from '../components/ui/FoodAvatar'
+import FoodPhotoButton from '../components/food/FoodPhotoButton'
+import SwipeRow from '../components/food/SwipeRow'
+import RepeatMealChip from '../components/food/RepeatMealChip'
+import SaveMealSheet from '../components/food/SaveMealSheet'
+import PhotoWall from '../components/food/PhotoWall'
+import MealMenu from '../components/food/MealMenu'
 import Ring from '../components/ui/Ring'
 import { FOOD_CHANGED_EVENT } from '../components/shell/QuickLogSheet'
 import {
@@ -66,6 +71,17 @@ export default function Food() {
   // whole-day copy. `open` distinguishes "closed" from "open, whole day" so
   // the latter isn't confused with a falsy meal.
   const [copyModal, setCopyModal] = useState<{ open: boolean; meal?: types.FoodLog['meal'] }>({ open: false })
+  // The previous day's entries, for the one-tap "Same as yesterday" in empty meals.
+  const [prevDayLogs, setPrevDayLogs] = useState<types.FoodLog[]>([])
+  const [repeatingMeal, setRepeatingMeal] = useState<string | null>(null)
+  const [saveMeal, setSaveMeal] = useState<{ entries: types.FoodLog[]; name: string } | null>(null)
+  const [view, setView] = useState<'list' | 'photos'>(() => {
+    try { return localStorage.getItem('food_view') === 'photos' ? 'photos' : 'list' } catch { return 'list' }
+  })
+  const changeView = (v: 'list' | 'photos') => {
+    setView(v)
+    try { localStorage.setItem('food_view', v) } catch { /* private mode */ }
+  }
 
   // Saving a past entry into My Foods. `savedIds` only marks entries saved in
   // this session — the day's logs don't carry a "is it in My Foods?" flag, so
@@ -101,6 +117,8 @@ export default function Food() {
       ])
       setLogs(logData || [])
       setStats(statsData)
+      const prev = format(subDays(new Date(date + 'T12:00:00'), 1), 'yyyy-MM-dd')
+      foodAPI.list(prev).then(l => setPrevDayLogs(l || [])).catch(() => setPrevDayLogs([]))
       if (!settings) setSettings(settingsData as types.UserSettings)
     } catch (err: any) {
       setError(err.message || 'Failed to load food data')
@@ -133,6 +151,25 @@ export default function Food() {
 
   const openLog = (meal: types.FoodLog['meal']) => {
     navigate(`/food/log?meal=${meal}&date=${selectedDate}`)
+  }
+
+  // Quiet refresh of the day's entries + totals (no loading state), used after
+  // in-place edits like a photo change that can touch several rows.
+  const refreshDay = () => {
+    foodAPI.list(selectedDate).then(l => setLogs(l || [])).catch(() => {})
+    foodAPI.stats(selectedDate).then(setStats).catch(() => {})
+  }
+
+  const repeatMeal = async (meal: types.FoodLog['meal'], entries: types.FoodLog[]) => {
+    setRepeatingMeal(meal)
+    try {
+      await foodAPI.copy(entries.map(e => e.id), selectedDate, meal)
+      refreshDay()
+    } catch {
+      setError('Could not repeat that meal')
+    } finally {
+      setRepeatingMeal(null)
+    }
   }
 
   const handleDelete = async (id: number) => {
@@ -416,17 +453,37 @@ export default function Food() {
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <span className="text-xs font-semibold text-tx-secondary uppercase tracking-wide">Meals</span>
-          <button
-            onClick={() => setCopyModal({ open: true })}
-            className="flex items-center gap-1.5 text-xs font-medium text-tx-muted hover:text-tx-primary transition-colors"
-          >
-            <Copy className="w-3.5 h-3.5" /> Copy day
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCopyModal({ open: true })}
+              className="flex items-center gap-1.5 text-xs font-medium text-tx-muted hover:text-tx-primary transition-colors"
+            >
+              <Copy className="w-3.5 h-3.5" /> Copy day
+            </button>
+            <div className="flex p-0.5 rounded-lg bg-surface-overlay" role="radiogroup" aria-label="Diary view">
+              {([['list', ListIcon], ['photos', LayoutGrid]] as const).map(([v, Icon]) => (
+                <button
+                  key={v}
+                  role="radio"
+                  aria-checked={view === v}
+                  aria-label={v === 'list' ? 'List view' : 'Photo view'}
+                  onClick={() => changeView(v)}
+                  className={`p-1.5 rounded-md ${view === v ? 'bg-surface-raised text-tx-primary shadow-sm' : 'text-tx-muted'}`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        {MEALS.map(meal => {
+        {view === 'photos' && (
+          <PhotoWall logs={logs} onOpen={e => navigate(`/food/log?edit=${e.id}&date=${selectedDate}`)} />
+        )}
+        {view === 'list' && MEALS.map(meal => {
             const MealIcon = MEAL_ICONS[meal]
             const iconColor = MEAL_COLORS[meal]
             const entries = logs.filter(l => l.meal === meal)
+            const prevEntries = prevDayLogs.filter(l => l.meal === meal)
             const mealCals = entries.reduce((sum, e) => sum + e.calories, 0)
 
             return (
@@ -442,17 +499,16 @@ export default function Food() {
                       <span className="ml-2 text-xs text-tx-muted tabular-nums">{Math.round(mealCals)} kcal</span>
                     )}
                   </div>
-                  <IconButton
-                    icon={Sparkles}
-                    variant="brand"
-                    label={`Suggest ${MEAL_LABELS[meal]} ideas`}
-                    onClick={() => setRecommendMeal(meal)}
-                  />
-                  <IconButton
-                    icon={Copy}
-                    variant="ghost"
-                    label={`Copy from a previous day into ${MEAL_LABELS[meal]}`}
-                    onClick={() => setCopyModal({ open: true, meal })}
+                  <MealMenu
+                    label={`More ${MEAL_LABELS[meal]} actions`}
+                    items={[
+                      { label: 'Suggest ideas', icon: Sparkles, onClick: () => setRecommendMeal(meal) },
+                      { label: 'Copy from another day', icon: Copy, onClick: () => setCopyModal({ open: true, meal }) },
+                      {
+                        label: 'Save as a meal', icon: BookmarkPlus, hidden: entries.length === 0,
+                        onClick: () => setSaveMeal({ entries, name: `${MEAL_LABELS[meal]}${entries.length ? ` · ${entries[0].name}` : ''}`.slice(0, 80) }),
+                      },
+                    ]}
                   />
                   <IconButton
                     icon={Plus}
@@ -462,7 +518,14 @@ export default function Food() {
                   />
                 </div>
 
-                {entries.length === 0 ? (
+                {entries.length === 0 && prevEntries.length > 0 ? (
+                  <RepeatMealChip
+                    entries={prevEntries}
+                    label={isToday ? 'yesterday' : 'the day before'}
+                    busy={repeatingMeal === meal}
+                    onRepeat={() => repeatMeal(meal, prevEntries)}
+                  />
+                ) : entries.length === 0 ? (
                   <button
                     onClick={() => openLog(meal)}
                     className="w-full px-4 py-4 text-center border-t border-surface-border hover:bg-surface-muted/50 transition-colors group"
@@ -509,12 +572,20 @@ export default function Food() {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 px-4 py-3">
+                          <SwipeRow
+                            left={{ label: savedIds.includes(entry.id) ? 'Saved' : 'Save', icon: BookmarkCheck, className: 'bg-brand-600', onTrigger: () => handleSaveToMyFoods(entry) }}
+                            right={{ label: 'Delete', icon: Trash2, className: 'bg-error-600', onTrigger: () => setDeleteConfirmId(entry.id) }}
+                          >
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <FoodPhotoButton
+                              entry={entry}
+                              onChanged={refreshDay}
+                              onError={msg => setError(msg)}
+                            />
                             <button
                               onClick={() => navigate(`/food/log?edit=${entry.id}&date=${selectedDate}`)}
                               className="flex items-center gap-3 flex-1 min-w-0 text-left"
                             >
-                              <FoodAvatar food={entry} size="md" />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   <p className="text-sm font-medium text-tx-primary truncate">{entry.name}</p>
@@ -544,6 +615,7 @@ export default function Food() {
                               </div>
                               <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
                             </button>
+                            <span className="hidden sm:flex items-center gap-1">
                             <IconButton
                               icon={savedIds.includes(entry.id) ? BookmarkCheck : Bookmark}
                               variant={savedIds.includes(entry.id) ? 'brand' : 'ghost'}
@@ -552,7 +624,9 @@ export default function Food() {
                               onClick={() => handleSaveToMyFoods(entry)}
                             />
                             <IconButton icon={Trash2} variant="danger" label="Delete" onClick={() => setDeleteConfirmId(entry.id)} />
+                            </span>
                           </div>
+                          </SwipeRow>
                         )}
                       </div>
                     ))}
@@ -742,6 +816,13 @@ export default function Food() {
           }}
         />
       )}
+
+      <SaveMealSheet
+        entries={saveMeal?.entries ?? null}
+        defaultName={saveMeal?.name ?? ''}
+        onClose={() => setSaveMeal(null)}
+        onSaved={t => { setSaveMeal(null); setSaveNotice(`Saved “${t.name}” — log it from the + button`) }}
+      />
 
       {copyModal.open && (
         <CopyMealModal

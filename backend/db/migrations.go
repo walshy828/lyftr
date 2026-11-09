@@ -666,6 +666,22 @@ CREATE INDEX IF NOT EXISTS idx_sleep_stages_session ON sleep_stages(sleep_sessio
 	if _, err := DB.Exec(sleep); err != nil {
 		log.Fatalf("create sleep_sessions: %v", err)
 	}
+
+	// Saved meals: items are a JSON snapshot rather than rows, because a
+	// template is only ever read and written whole, and must not change when
+	// the entries it was built from are later edited or deleted.
+	if _, err := DB.Exec(`
+CREATE TABLE IF NOT EXISTS meal_templates (
+  id         INTEGER  PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT     NOT NULL,
+  items      TEXT     NOT NULL DEFAULT '[]',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_meal_templates_user ON meal_templates(user_id);`); err != nil {
+		log.Fatalf("create meal_templates: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

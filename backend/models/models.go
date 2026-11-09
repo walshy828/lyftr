@@ -1551,3 +1551,69 @@ type SetScheduleOverrideRequest struct {
 	Date       string  `json:"date" validate:"required"`
 	ProgramIDs []int64 `json:"program_ids"`
 }
+
+// UploadFoodPhotoRequest stores a photo the user took of a food so it can be
+// attached to entries (PUT /food/:id/photo) — the "picture for every food"
+// half of the visual diary, for foods the databases have no image for.
+type UploadFoodPhotoRequest struct {
+	ImageBase64 string `json:"image_base64" validate:"required"`
+	MediaType   string `json:"media_type" validate:"required,eq=image/jpeg"`
+}
+
+// SetFoodPhotoRequest points a logged entry (and every other entry and saved
+// food for the same food) at ImageURL. Empty clears it on that entry only.
+type SetFoodPhotoRequest struct {
+	ImageURL string `json:"image_url" validate:"max=500"`
+}
+
+// MealTemplateItem is one food inside a saved meal — a snapshot of the logged
+// entry it was built from, with the amount that was eaten.
+type MealTemplateItem struct {
+	Name             string  `json:"name"`
+	Brand            string  `json:"brand,omitempty"`
+	Calories         float64 `json:"calories"`
+	Protein          float64 `json:"protein"`
+	Carbs            float64 `json:"carbs"`
+	Fat              float64 `json:"fat"`
+	Fiber            float64 `json:"fiber"`
+	Sugar            float64 `json:"sugar"`
+	Sodium           float64 `json:"sodium"`
+	Cholesterol      float64 `json:"cholesterol"`
+	Servings         float64 `json:"servings"`
+	ServingSize      string  `json:"serving_size"`
+	ServingSizeGrams float64 `json:"serving_size_grams"`
+	ServingSizeML    float64 `json:"serving_size_ml"`
+	Barcode          string  `json:"barcode,omitempty"`
+	ImageURL         string  `json:"image_url,omitempty"`
+	Source           string  `json:"source,omitempty"`
+}
+
+// MealTemplate is a named group of foods eaten together ("Weekday breakfast")
+// that can be logged in one tap.
+type MealTemplate struct {
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"user_id"`
+	Name      string             `json:"name"`
+	Items     []MealTemplateItem `json:"items"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// CreateMealTemplateRequest builds a template from already-logged entries —
+// you save a meal you just ate rather than re-entering it.
+type CreateMealTemplateRequest struct {
+	Name     string  `json:"name" validate:"required,max=80"`
+	EntryIDs []int64 `json:"entry_ids" validate:"required,min=1,max=50"`
+}
+
+type RenameMealTemplateRequest struct {
+	Name string `json:"name" validate:"required,max=80"`
+}
+
+// LogMealTemplateRequest takes a full timestamp rather than a bare date: the
+// client stamps day-only entries at its own local noon, and only it knows its
+// timezone.
+type LogMealTemplateRequest struct {
+	LoggedAt time.Time `json:"logged_at" validate:"required"`
+	Meal     string    `json:"meal" validate:"required,oneof=breakfast lunch dinner snacks"`
+}

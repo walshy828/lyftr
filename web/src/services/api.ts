@@ -535,9 +535,30 @@ export const foodAPI = {
   // Duplicates `entryIds` (any owned log entries) onto targetDate. Omitting
   // targetMeal preserves each source entry's own meal — used for whole-day
   // copies; passing it reassigns every copy to that meal.
+  /** Store a JPEG the user took of a food; returns the url to attach with setPhoto. */
+  uploadPhoto: (imageBase64: string) =>
+    api.post<{ data: { image_url: string } }>('/food/photos', { image_base64: imageBase64, media_type: 'image/jpeg' })
+      .then(res => unwrap(res)),
+  /** Picture this entry — and every other entry/saved food that is the same food. */
+  setPhoto: (id: number, imageUrl: string) =>
+    api.put<{ data: types.FoodLog }>(`/food/${id}/photo`, { image_url: imageUrl }).then(res => unwrap(res)),
   copy: (entryIds: number[], targetDate: string, targetMeal?: types.FoodLog['meal']) =>
     api.post<{ data: types.FoodLog[] }>('/food/copy', { entry_ids: entryIds, target_date: targetDate, target_meal: targetMeal })
       .then(res => unwrap(res)),
+}
+
+/** Saved meals: a named group of foods, built from diary entries. */
+export const mealTemplatesAPI = {
+  list:   () => api.get<{ data: types.MealTemplate[] }>('/food/templates').then(res => unwrap(res)),
+  create: (name: string, entryIds: number[]) =>
+    api.post<{ data: types.MealTemplate }>('/food/templates', { name, entry_ids: entryIds }).then(res => unwrap(res)),
+  rename: (id: number, name: string) =>
+    api.put<{ data: types.MealTemplate }>(`/food/templates/${id}`, { name }).then(res => unwrap(res)),
+  delete: (id: number) => api.delete(`/food/templates/${id}`),
+  // loggedAt is a full ISO timestamp (the client's local noon for a day-only
+  // entry) — the server can't know the user's timezone.
+  log: (id: number, loggedAt: string, meal: types.FoodLog['meal']) =>
+    api.post<{ data: types.FoodLog[] }>(`/food/templates/${id}/log`, { logged_at: loggedAt, meal }).then(res => unwrap(res)),
 }
 
 export const savedFoodsAPI = {

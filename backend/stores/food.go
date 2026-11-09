@@ -401,3 +401,47 @@ func (s *FoodStore) DeleteSaved(uid, id int64) (int64, error) {
 	n, _ := res.RowsAffected()
 	return n, nil
 }
+
+// ImageRefCount reports how many of the user's rows still point at url —
+// food logs, saved foods, and meal-template snapshots. Copies share one photo
+// file, so a file may only be deleted from disk once this reaches zero.
+func (s *FoodStore) ImageRefCount(uid int64, url string) (int, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT (SELECT COUNT(*) FROM food_logs   WHERE user_id = ? AND image_url = ?)
+		      + (SELECT COUNT(*) FROM saved_foods WHERE user_id = ? AND image_url = ?)
+		      + (SELECT COUNT(*) FROM meal_templates WHERE user_id = ? AND instr(items, ?) > 0)`,
+		uid, url, uid, url, uid, `"image_url":"`+url+`"`,
+	).Scan(&n)
+	return n, err
+}
+
+// SetPhoto attaches url to entry lid and to every other row that is the same
+// food: entries and saved foods with the same name+brand that have no picture
+// yet, or that still show the picture being replaced. One photo then pictures
+// that food everywhere — past days, My Foods, and the "usuals" grid. Returns
+// the entry's previous image_url so the caller can clean up an orphaned file.
+func (s *FoodStore) SetPhoto(uid, lid int64, url string) (string, error) {
+	return inTx(s.db, func(tx *sql.Tx) (string, error) {
+		var name, brand, old string
+		if err := tx.QueryRow(`SELECT name, brand, image_url FROM food_logs WHERE id = ? AND user_id = ?`, lid, uid).
+			Scan(&name, &brand, &old); err != nil {
+			return "", err
+		}
+		if _, err := tx.Exec(`UPDATE food_logs SET image_url = ? WHERE id = ? AND user_id = ?`, url, lid, uid); err != nil {
+			return "", err
+		}
+		// Clearing a photo is deliberately local to the one entry.
+		if url == "" {
+			return old, nil
+		}
+		match := `user_id = ? AND lower(name) = lower(?) AND lower(brand) = lower(?) AND (image_url = '' OR image_url = ?)`
+		if _, err := tx.Exec(`UPDATE food_logs SET image_url = ? WHERE `+match, url, uid, name, brand, old); err != nil {
+			return "", err
+		}
+		if _, err := tx.Exec(`UPDATE saved_foods SET image_url = ? WHERE `+match, url, uid, name, brand, old); err != nil {
+			return "", err
+		}
+		return old, nil
+	})
+}

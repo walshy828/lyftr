@@ -239,14 +239,109 @@ func (h *Handler) DeleteFoodLog(c *gin.Context) {
 		return
 	}
 
-	if strings.HasPrefix(f.ImageURL, mealPhotoURLPrefix) {
-		relPath := strings.TrimPrefix(f.ImageURL, mealPhotoURLPrefix) // "{userID}/{filename}"
-		if err := storage.DeleteUserPhoto(config.C.MealPhotoDir, uid, relPath); err != nil {
-			log.Printf("[food/:id delete] photo cleanup error: %v", err)
-		}
-	}
+	h.removePhotoIfUnused(uid, f.ImageURL, "food/:id delete")
 
 	utils.OK(c, gin.H{"deleted": true})
+}
+
+// removePhotoIfUnused deletes a locally stored photo once nothing of the
+// user's references it. Copies (repeat a meal, one-tap usuals, templates)
+// share a single file, so deleting one copy must not take the picture away
+// from the others. Best-effort: a self-hosted app shouldn't fail a request
+// over an orphaned file.
+func (h *Handler) removePhotoIfUnused(uid int64, imageURL, logTag string) {
+	if !strings.HasPrefix(imageURL, mealPhotoURLPrefix) {
+		return
+	}
+	refs, err := h.s.Food.ImageRefCount(uid, imageURL)
+	if err != nil {
+		log.Printf("[%s] photo ref count error: %v", logTag, err)
+		return
+	}
+	if refs > 0 {
+		return
+	}
+	relPath := strings.TrimPrefix(imageURL, mealPhotoURLPrefix) // "{userID}/{filename}"
+	if err := storage.DeleteUserPhoto(config.C.MealPhotoDir, uid, relPath); err != nil {
+		log.Printf("[%s] photo cleanup error: %v", logTag, err)
+	}
+}
+
+// UploadFoodPhoto stores a user-taken photo of a food and returns the
+// image_url to attach with SetFoodPhoto. Only JPEG is accepted — the web
+// client always re-encodes through a canvas — and the bytes are checked, not
+// just the declared media type, since SavePhoto names every file .jpg.
+func (h *Handler) UploadFoodPhoto(c *gin.Context) {
+	uid := middleware.UserID(c)
+	var req models.UploadFoodPhotoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	if len(req.ImageBase64) > maxLabelImageBytes {
+		utils.BadRequest(c, "image too large — please retake at a lower resolution")
+		return
+	}
+	img, err := base64.StdEncoding.DecodeString(req.ImageBase64)
+	if err != nil || len(img) < 3 || img[0] != 0xFF || img[1] != 0xD8 || img[2] != 0xFF {
+		utils.BadRequest(c, "image must be a JPEG")
+		return
+	}
+	relPath, err := storage.SavePhoto(config.C.MealPhotoDir, uid, img)
+	if err != nil {
+		log.Printf("[food/photos] save error: %v", err)
+		utils.ServiceUnavailable(c, "could not save that photo — try again")
+		return
+	}
+	utils.Created(c, gin.H{"image_url": mealPhotoURLPrefix + relPath})
+}
+
+// SetFoodPhoto attaches a picture to a logged entry and, through the store,
+// to every other entry and saved food that is the same food — so one photo
+// pictures it everywhere. Only the caller's own uploaded photos or external
+// https images may be attached.
+func (h *Handler) SetFoodPhoto(c *gin.Context) {
+	uid := middleware.UserID(c)
+	lid, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid id")
+		return
+	}
+	var req models.SetFoodPhotoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+	if err := validate.Struct(req); err != nil {
+		utils.ValidationError(c, err)
+		return
+	}
+	own := fmt.Sprintf("%s%d/", mealPhotoURLPrefix, uid)
+	if req.ImageURL != "" && !strings.HasPrefix(req.ImageURL, own) && !strings.HasPrefix(req.ImageURL, "https://") {
+		utils.BadRequest(c, "image_url must be one of your uploaded photos or an https URL")
+		return
+	}
+
+	old, err := h.s.Food.SetPhoto(uid, lid, req.ImageURL)
+	if err == sql.ErrNoRows {
+		utils.NotFound(c, "log entry not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	if old != req.ImageURL {
+		h.removePhotoIfUnused(uid, old, "food/:id/photo")
+	}
+	f, err := h.s.Food.Get(uid, lid)
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, f)
 }
 
 func (h *Handler) GetDailyStats(c *gin.Context) {

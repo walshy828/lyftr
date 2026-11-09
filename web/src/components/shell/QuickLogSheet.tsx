@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { format, subDays } from 'date-fns'
 import {
   Sparkles, Camera, Search, ScanBarcode, ScanText, Scale, Dumbbell, Footprints,
-  HeartPulse, Check, Undo2, ListChecks, Plus,
+  HeartPulse, Check, Undo2, ListChecks, Plus, MoreHorizontal, Pencil, Trash2, X,
 } from 'lucide-react'
 import Sheet from '../ui/Sheet'
 import FoodAvatar from '../ui/FoodAvatar'
@@ -11,10 +11,10 @@ import QuickWeighInSheet from '../QuickWeighInSheet'
 import QuickCardioModal from '../QuickCardioModal'
 import BPEntrySheet from '../BPEntrySheet'
 import CopyMealModal from '../CopyMealModal'
-import { foodAPI, weightAPI } from '../../services/api'
+import { foodAPI, weightAPI, mealTemplatesAPI } from '../../services/api'
 import { useSettingsStore, displayWeight } from '../../stores/settings'
 import { useWorkoutSession } from '../../stores/workoutSession'
-import { todayStr } from '../../utils/dateUtils'
+import { todayStr, dayToIsoNoon } from '../../utils/dateUtils'
 import { mealForNow } from '../../utils/foodVisual'
 import * as types from '../../types'
 
@@ -52,6 +52,7 @@ export default function QuickLogSheet({ isOpen, onClose }: { isOpen: boolean; on
   const [meal, setMeal] = useState<Meal>(mealForNow())
   const [recent, setRecent] = useState<types.RecentFood[]>([])
   const [pastMeals, setPastMeals] = useState<PastMeal[]>([])
+  const [templates, setTemplates] = useState<types.MealTemplate[]>([])
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [doneKeys, setDoneKeys] = useState<string[]>([])
   const [toast, setToast] = useState<Toast | null>(null)
@@ -64,6 +65,7 @@ export default function QuickLogSheet({ isOpen, onClose }: { isOpen: boolean; on
     setDoneKeys([])
     setToast(null)
     foodAPI.recent().then(r => setRecent(r ?? [])).catch(() => setRecent([]))
+    mealTemplatesAPI.list().then(t => setTemplates(t ?? [])).catch(() => setTemplates([]))
     const now = new Date()
     const days = [1, 2, 3].map(n => subDays(now, n))
     Promise.all(days.map(d => foodAPI.list(format(d, 'yyyy-MM-dd')).catch(() => [] as types.FoodLog[])))
@@ -101,6 +103,21 @@ export default function QuickLogSheet({ isOpen, onClose }: { isOpen: boolean; on
       announceFoodChanged()
     } catch {
       setToast({ text: 'Could not log that — try again', undoIds: [] })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const logTemplate = async (t: types.MealTemplate) => {
+    const key = `tpl-${t.id}`
+    setBusyKey(key)
+    try {
+      const created = await mealTemplatesAPI.log(t.id, dayToIsoNoon(todayStr()), meal)
+      setDoneKeys(k => [...k, key])
+      setToast({ text: `${t.name} → ${MEAL_LABEL[meal]}`, undoIds: created.map(c => c.id) })
+      announceFoodChanged()
+    } catch {
+      setToast({ text: 'Could not log that meal — try again', undoIds: [] })
     } finally {
       setBusyKey(null)
     }
@@ -178,6 +195,26 @@ export default function QuickLogSheet({ isOpen, onClose }: { isOpen: boolean; on
             </div>
           )}
 
+          {/* Saved meals — named groups you built from the diary */}
+          {templates.length > 0 && (
+            <section>
+              <p className="eyebrow mb-2 px-0.5">Your meals</p>
+              <div className="flex gap-2.5 overflow-x-auto no-scrollbar snap-x-mandatory -mx-4 px-4 pb-1">
+                {templates.map(t => (
+                  <TemplateCard
+                    key={t.id}
+                    template={t}
+                    busy={busyKey === `tpl-${t.id}`}
+                    done={doneKeys.includes(`tpl-${t.id}`)}
+                    onLog={() => logTemplate(t)}
+                    onRenamed={nt => setTemplates(ts => ts.map(x => x.id === nt.id ? nt : x))}
+                    onDeleted={() => setTemplates(ts => ts.filter(x => x.id !== t.id))}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Eat it again — whole meals from the last few days */}
           {pastMeals.length > 0 && (
             <section>
@@ -205,7 +242,7 @@ export default function QuickLogSheet({ isOpen, onClose }: { isOpen: boolean; on
                       <div className="flex gap-2">
                         <button
                           disabled={busyKey === pm.key || done}
-                          onClick={() => copy(pm.key, pm.entries.map(e => e.id), `Added ${pm.entries.length} items to ${MEAL_LABEL[meal]}`, meal)}
+                          onClick={() => copy(pm.key, pm.entries.map(e => e.id), `Added ${pm.entries.length} item${pm.entries.length === 1 ? '' : 's'} to ${MEAL_LABEL[meal]}`, meal)}
                           className={`flex-1 btn-sm ${done ? 'btn-secondary' : 'btn-primary'}`}
                         >
                           {done ? <><Check className="w-3.5 h-3.5" /> Added</> : <><Plus className="w-3.5 h-3.5" /> Add all</>}
@@ -318,5 +355,73 @@ function Tile({ icon: Icon, label, onClick, tone = 'text-tx-primary' }: {
       <Icon className={`w-5 h-5 ${tone}`} />
       <span className="text-xs font-medium text-tx-secondary">{label}</span>
     </button>
+  )
+}
+
+/** A saved meal: tap to log, with rename/delete tucked behind a menu. */
+function TemplateCard({ template: t, busy, done, onLog, onRenamed, onDeleted }: {
+  template: types.MealTemplate
+  busy: boolean
+  done: boolean
+  onLog: () => void
+  onRenamed: (t: types.MealTemplate) => void
+  onDeleted: () => void
+}) {
+  const [mode, setMode] = useState<'idle' | 'menu' | 'rename' | 'delete'>('idle')
+  const [name, setName] = useState(t.name)
+  const kcal = t.items.reduce((s, i) => s + i.calories, 0)
+  const protein = t.items.reduce((s, i) => s + i.protein, 0)
+
+  const rename = async () => {
+    if (!name.trim() || name.trim() === t.name) { setMode('idle'); return }
+    try { onRenamed(await mealTemplatesAPI.rename(t.id, name.trim())) } catch { setName(t.name) }
+    setMode('idle')
+  }
+  const remove = async () => {
+    try { await mealTemplatesAPI.delete(t.id); onDeleted() } catch { setMode('idle') }
+  }
+
+  return (
+    <div className="snap-start flex-shrink-0 w-[220px] card p-3 flex flex-col gap-2.5">
+      <div className="flex items-start justify-between gap-2">
+        {mode === 'rename' ? (
+          <form className="flex-1 flex gap-1" onSubmit={e => { e.preventDefault(); rename() }}>
+            <input value={name} onChange={e => setName(e.target.value)} maxLength={80} autoFocus
+              className="flex-1 min-w-0 bg-surface-overlay rounded-lg px-2 py-1 text-sm text-tx-primary focus:outline-none focus:ring-1 focus:ring-brand-500" />
+            <button type="submit" aria-label="Save name" className="p-1 text-brand-400"><Check className="w-4 h-4" /></button>
+          </form>
+        ) : (
+          <p className="text-sm font-semibold text-tx-primary line-clamp-2">{t.name}</p>
+        )}
+        {mode !== 'rename' && (
+          <button
+            aria-label={`Options for ${t.name}`}
+            onClick={() => setMode(m => (m === 'menu' ? 'idle' : 'menu'))}
+            className="p-1 -m-1 text-tx-muted hover:text-tx-primary flex-shrink-0"
+          >
+            {mode === 'menu' ? <X className="w-4 h-4" /> : <MoreHorizontal className="w-4 h-4" />}
+          </button>
+        )}
+      </div>
+      <div className="flex -space-x-2">
+        {t.items.slice(0, 5).map((i, n) => <FoodAvatar key={n} food={i} size="sm" className="ring-2 ring-surface-raised" />)}
+      </div>
+      <p className="text-xs text-tx-muted tabular-nums">{t.items.length} item{t.items.length === 1 ? '' : 's'} · {Math.round(kcal)} kcal · {Math.round(protein)}g P</p>
+      {mode === 'menu' ? (
+        <div className="flex gap-2">
+          <button onClick={() => setMode('rename')} className="flex-1 btn-secondary btn-sm"><Pencil className="w-3.5 h-3.5" /> Rename</button>
+          <button onClick={() => setMode('delete')} className="flex-1 btn-danger btn-sm"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
+        </div>
+      ) : mode === 'delete' ? (
+        <div className="flex gap-2">
+          <button onClick={() => setMode('idle')} className="flex-1 btn-secondary btn-sm">Keep</button>
+          <button onClick={remove} className="flex-1 btn-danger-solid btn-sm">Delete</button>
+        </div>
+      ) : (
+        <button disabled={busy || done} onClick={onLog} className={`btn-sm ${done ? 'btn-secondary' : 'btn-primary'}`}>
+          {done ? <><Check className="w-3.5 h-3.5" /> Logged</> : busy ? 'Logging…' : <><Plus className="w-3.5 h-3.5" /> Log meal</>}
+        </button>
+      )}
+    </div>
   )
 }

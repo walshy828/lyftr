@@ -4,6 +4,7 @@ import { X, AlertCircle, Sparkles, Mic, MicOff, Camera } from 'lucide-react'
 import { foodAPI } from '../services/api'
 import IconButton from './ui/IconButton'
 import * as types from '../types'
+import { downscaleToJpeg } from '../utils/image'
 
 interface Props {
   onTextResult: (items: types.MealItem[]) => void
@@ -14,36 +15,6 @@ interface Props {
 const EXAMPLE = 'e.g. "turkey sandwich with 2 pieces of turkey, honey wheat bread, and mayonnaise, with a can of ginger ale"'
 
 const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition
-
-const MAX_LONG_EDGE = 1600
-const JPEG_QUALITY = 0.85
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  let binary = ''
-  const bytes = new Uint8Array(buffer)
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
-  return btoa(binary)
-}
-
-// Downscales an in-memory image (from a picked/captured file) to a JPEG
-// data URL + base64 payload, mirroring NutritionLabelCamera's canvas
-// pipeline so both photo entry points send the same shape of image.
-async function downscaleToJpeg(file: File): Promise<{ dataUrl: string; base64: string }> {
-  const bitmap = await createImageBitmap(file)
-  const longEdge = Math.max(bitmap.width, bitmap.height)
-  const scale = longEdge > MAX_LONG_EDGE ? MAX_LONG_EDGE / longEdge : 1
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(bitmap.width * scale)
-  canvas.height = Math.round(bitmap.height * scale)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('canvas unavailable')
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-
-  const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY))
-  if (!blob) throw new Error('image encode failed')
-  const buffer = await blob.arrayBuffer()
-  return { dataUrl: canvas.toDataURL('image/jpeg', JPEG_QUALITY), base64: arrayBufferToBase64(buffer) }
-}
 
 export default function SmartMealEntry({ onTextResult, onPhotoResult, onClose }: Props) {
   const [description, setDescription] = useState('')

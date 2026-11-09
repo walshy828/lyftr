@@ -619,6 +619,36 @@ export interface SavedFood {
   image_url?: string
 }
 
+/** One food inside a saved meal — a snapshot of the entry it was built from. */
+export interface MealTemplateItem {
+  name: string
+  brand?: string
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  fiber: number
+  sugar: number
+  sodium: number
+  cholesterol: number
+  servings: number
+  serving_size: string
+  serving_size_grams: number
+  serving_size_ml: number
+  barcode?: string
+  image_url?: string
+  source?: FoodLog['source']
+}
+
+/** A named group of foods eaten together, logged in one tap. */
+export interface MealTemplate {
+  id: number
+  name: string
+  items: MealTemplateItem[]
+  created_at: string
+  updated_at: string
+}
+
 export interface FoodHistoryPoint {
   date: string
   calories: number
