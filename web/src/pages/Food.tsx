@@ -402,6 +402,7 @@ export default function Food() {
               target={settings.protein_target}
               color={MACRO_COLORS.protein}
               label="Protein"
+              kind="minimum"
             />
             <MacroBar
               value={s?.total_carbs ?? 0}

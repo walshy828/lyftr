@@ -248,6 +248,7 @@ export default function Settings() {
     fat_target: storedSettings.fat_target,
     cholesterol_target: storedSettings.cholesterol_target,
     sodium_target: storedSettings.sodium_target,
+    step_goal: storedSettings.step_goal ?? 10000,
     food_allergies: storedSettings.food_allergies,
     food_dislikes: storedSettings.food_dislikes,
     food_likes: storedSettings.food_likes,
@@ -274,6 +275,7 @@ export default function Settings() {
           fat_target: s.fat_target,
           cholesterol_target: s.cholesterol_target,
           sodium_target: s.sodium_target,
+          step_goal: s.step_goal ?? 10000,
           food_allergies: s.food_allergies,
           food_dislikes: s.food_dislikes,
           food_likes: s.food_likes,
@@ -704,8 +706,23 @@ export default function Settings() {
           </div>
         </SettingRow>
 
+        <SettingRow label="Step goal" description="Daily steps for Today's Steps ring">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1000}
+              max={100000}
+              step={500}
+              value={formData.step_goal}
+              onChange={e => setFormData({ ...formData, step_goal: parseInt(e.target.value) || 0 })}
+              className="input w-24 text-right"
+            />
+            <span className="text-xs text-tx-muted">steps</span>
+          </div>
+        </SettingRow>
+
         <div className="py-3 flex items-center justify-between">
-          <p className="text-xs text-tx-muted">Save calorie and macro targets</p>
+          <p className="text-xs text-tx-muted">Save daily targets</p>
           <button
             onClick={handleSave}
             disabled={saving}

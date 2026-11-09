@@ -1,6 +1,6 @@
 # Lyftr redesign: Train · Fuel · Trend
 
-Status: Phases 1–4 are built on `feature/redesign-today-first` (a few small items remain, listed per phase). Phase 5 is proposed.
+Status: Phases 1–5 are built on `feature/redesign-today-first`. A few small items remain, listed under each phase.
 
 ## Why
 
@@ -135,11 +135,15 @@ Still open:
 - Drag-to-day schedule editing, and a guided routine wizard (today's editor is a single long form).
 - Completing a planned session server-side still only recognises a lifting workout linked to the program, so a planned "Run" routine isn't marked done by a synced run.
 
-## Phase 5: Polish
+## Phase 5: Polish (built)
 
-- Rasterize the new mark into the PWA PNG icons (`pwa-*.png`, `favicon-transparent.png`), and a new login/register hero.
-- Add a step goal setting (Today currently assumes 10k).
-- Make MacroBar's "over" color domain-aware: protein over target shouldn't be red.
-- Light-mode QA pass. Many legacy components hardcode `text-emerald-400`-style shades that are low-contrast on white.
-- Motion: sheet spring, ring fill on load, haptics through the Android companion.
-- Desktop: a two-column Today (rings + focus | plan + weight) at `lg+`.
+- **App icons**: the new mark is rasterized into `favicon-transparent.png` and `pwa-192x192.png` / `pwa-512x512.png`. `pwa-maskable-512x512.png` is a full-bleed gradient with the glyph inside Android's safe zone. `logo.svg` matches.
+- **Step goal setting**: `user_settings.step_goal` (default 10,000, allowed 1,000–100,000), edited under Settings → daily targets. Today's Steps ring uses it.
+- **Protein is a minimum, not a limit**: `MacroBar kind="minimum"` shows going past the protein target as a win ("✓ +30g") in the macro's own color, instead of amber/red "over". Carbs, fat, sodium and cholesterol keep their warnings.
+- **Light-mode contrast**: one remap in `index.css` darkens every bright 300/400 accent text shade (~340 uses) to an AA-contrast ≈700 shade when the theme is light. Dark mode is unchanged.
+- **Desktop Today** is two columns at `lg+`: today (rings, focus, last week) on the left, plan and training on the right.
+- **Motion**: rings fill from empty when they mount, and bottom sheets rise with a slight spring. A global `prefers-reduced-motion` rule turns all of it off.
+
+Still open:
+- Haptics through the Android companion app.
+- A new login/register hero. The pages already use the new mark and tokens, but the layout is unchanged.

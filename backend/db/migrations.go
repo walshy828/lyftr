@@ -345,6 +345,7 @@ CREATE INDEX IF NOT EXISTS idx_clothing_profiles_user ON clothing_profiles(user_
 	// in front of lifters who never asked for one, and an empty column reads as
 	// "not rated" either way.
 	ensureColumn("user_settings", "track_effort", `ALTER TABLE user_settings ADD COLUMN track_effort TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("user_settings", "step_goal", `ALTER TABLE user_settings ADD COLUMN step_goal INTEGER NOT NULL DEFAULT 10000`)
 
 	// Device sessions close the gap between the two revocation levers above:
 	// revoked_tokens kills one token (which rotation replaces a moment later)

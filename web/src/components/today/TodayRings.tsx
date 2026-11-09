@@ -3,8 +3,6 @@ import Ring from '../ui/Ring'
 import { MACRO_COLORS } from '../../utils/macroColors'
 import * as types from '../../types'
 
-const STEP_GOAL = 10_000
-
 interface Props {
   food: types.DailyStats
   settings: types.UserSettings
@@ -22,6 +20,7 @@ const k = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ?
  * movement, training. Each ring is a link to where you'd act on it.
  */
 export default function TodayRings({ food, settings, steps, todaysPlan, workedOutToday, cardioMinutes = 0 }: Props) {
+  const stepGoal = settings.step_goal || 10_000
   const kcal = food.total_calories
   const left = settings.calorie_target - kcal
   const planned = todaysPlan?.programs ?? []
@@ -54,9 +53,9 @@ export default function TodayRings({ food, settings, steps, todaysPlan, workedOu
     },
     {
       to: '/stats?tab=activity', name: 'Steps', color: 'rgb(var(--c-move))', over: 'rgb(var(--c-move))',
-      value: (steps ?? 0) / STEP_GOAL,
+      value: (steps ?? 0) / stepGoal,
       big: steps === null ? '—' : k(steps), small: steps === null ? 'no sync' : 'steps',
-      foot: `goal ${k(STEP_GOAL)}`,
+      foot: `goal ${k(stepGoal)}`,
     },
     {
       to: '/plan', name: 'Training', color: 'rgb(var(--c-train))', over: 'rgb(var(--c-train))',

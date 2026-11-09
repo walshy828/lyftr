@@ -33,7 +33,7 @@ export default function Sheet({ isOpen, onClose, title, icon, children }: Props)
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="bg-surface-base border border-surface-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto animate-slide-up"
+        className="bg-surface-base border border-surface-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto animate-sheet-up"
         onClick={e => e.stopPropagation()}
       >
         <div className="mx-auto w-10 h-1 rounded-full bg-surface-muted mt-3 mb-1 sm:hidden" />

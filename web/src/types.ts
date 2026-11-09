@@ -31,6 +31,8 @@ export interface UserSettings {
    * as `10 - rir` — so the number means one thing however it was entered.
    */
   track_effort: '' | 'rpe' | 'rir'
+  /** Daily step target behind Today's Steps ring. Optional for older servers. */
+  step_goal?: number
   workout_layout?: 'list' | 'gym'
   // Client-only (localStorage, not persisted server-side):
   rest_enabled?: boolean        // master rest-timer on/off

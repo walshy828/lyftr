@@ -52,6 +52,8 @@ type UserSettings struct {
 	// as 10 - rir — so the stored number means one thing regardless of how it
 	// was entered.
 	TrackEffort string `json:"track_effort" db:"track_effort"`
+	// StepGoal is the daily step target behind Today's Steps ring.
+	StepGoal int `json:"step_goal" db:"step_goal"`
 }
 
 // DefaultUserSettings is the single source of truth for a brand-new user's
@@ -68,6 +70,7 @@ func DefaultUserSettings(uid int64) UserSettings {
 		CholesterolTarget: 300,
 		SodiumTarget:      2300,
 		SessionMaxDays:    config.DefaultSessionDays,
+		StepGoal:          10000,
 	}
 }
 
@@ -1454,6 +1457,7 @@ type UpdateSettingsRequest struct {
 	// `omitempty,oneof=...` — that tag would reject the very value that turns
 	// the feature back off. The allowed set is checked explicitly instead.
 	TrackEffort *string `json:"track_effort"`
+	StepGoal    *int    `json:"step_goal" validate:"omitempty,gte=1000,lte=100000"`
 }
 
 // ValidTrackEffort reports whether v is a supported effort scale. "" is valid

@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   plan_history_start TEXT    NOT NULL DEFAULT '',
   ai_health_insights_opt_in INTEGER NOT NULL DEFAULT 0,
   session_max_days   INTEGER NOT NULL DEFAULT 30,
-  track_effort       TEXT    NOT NULL DEFAULT ''
+  track_effort       TEXT    NOT NULL DEFAULT '',
+  step_goal          INTEGER NOT NULL DEFAULT 10000
 );
 CREATE TABLE IF NOT EXISTS webauthn_credentials (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

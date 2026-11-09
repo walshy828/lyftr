@@ -28,7 +28,7 @@ export default function NutritionTodayCard({ food, settings }: {
       </div>
 
       <div className="space-y-2.5">
-        <MacroBar label="Protein" value={food.total_protein} target={settings.protein_target} color={ENERGY_COLORS.protein} unit="g" />
+        <MacroBar label="Protein" value={food.total_protein} target={settings.protein_target} color={ENERGY_COLORS.protein} unit="g" kind="minimum" />
         <MacroBar label="Carbs" value={food.total_carbs} target={settings.carb_target} color={ENERGY_COLORS.carbs} unit="g" />
         <MacroBar label="Fat" value={food.total_fat} target={settings.fat_target} color={ENERGY_COLORS.fat} unit="g" />
         <MacroBar label="Cholesterol" value={food.total_cholesterol} target={settings.cholesterol_target} color="#f472b6" unit="mg" />

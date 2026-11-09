@@ -68,6 +68,30 @@ func TestUpdateSettings_partialUpdateSeedsDefaultsNotZeros(t *testing.T) {
 	assertNum(t, d, "protein_target", 150)
 	assertNum(t, d, "carb_target", 250)
 	assertNum(t, d, "fat_target", 65)
+	assertNum(t, d, "step_goal", 10000)
+}
+
+func TestUpdateSettings_stepGoal(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+
+	c, w := newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"step_goal": 8000})
+	th.UpdateSettings(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	assertNum(t, settingsData(t, w), "step_goal", 8000)
+
+	// Survives an unrelated partial update.
+	c, w = newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"weight_unit": "kg"})
+	th.UpdateSettings(c)
+	assertNum(t, settingsData(t, w), "step_goal", 8000)
+
+	c, w = newContext(uid, http.MethodPut, "/api/v1/settings", map[string]any{"step_goal": 50})
+	th.UpdateSettings(c)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an implausible goal, got %d", w.Code)
+	}
 }
 
 // A partial update over an EXISTING custom row leaves the omitted fields intact.

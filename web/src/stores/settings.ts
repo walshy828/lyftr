@@ -69,6 +69,7 @@ const DEFAULTS: types.UserSettings = {
   // Effort capture is opt-in: it adds a control to every completed set, and
   // most lifters don't want one.
   track_effort: '',
+  step_goal: 10000,
   ...clientPrefs(),
 }
 

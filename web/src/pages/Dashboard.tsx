@@ -120,6 +120,11 @@ export default function Dashboard() {
         </Link>
       )}
 
+      {/* One column on phones (in this order); two on desktop — "today" on the
+          left, "plan & training" on the right — so a wide screen isn't one
+          long stripe of cards. */}
+      <div className="grid lg:grid-cols-2 gap-4 items-start">
+      <div className="space-y-4 min-w-0">
       <TodayRings
         food={d.food} settings={d.settings} steps={steps}
         todaysPlan={d.todaysPlan} workedOutToday={workedOutToday} cardioMinutes={cardioMinutes}
@@ -128,6 +133,9 @@ export default function Dashboard() {
       <FocusToday items={focus} weekly={weekly} onAction={onAction} />
 
       <WeekInReview now={now} workouts={d.workouts} foodHistory={d.foodHistory} weightLogs={d.weightLogs} settings={d.settings} />
+      </div>
+
+      <div className="space-y-4 min-w-0">
 
       {d.plan && pulse
         ? <PlanPulseCard pulse={pulse} plan={d.plan} weightLogs={d.weightLogs} settings={d.settings} />
@@ -146,6 +154,8 @@ export default function Dashboard() {
           profile={d.profile} plan={d.plan} onLog={() => setSheetOpen(true)}
         />
       )}
+      </div>
+      </div>
 
       <Link to="/stats" className="card-interactive flex items-center justify-between px-4 py-3.5">
         <span className="flex items-center gap-3">
