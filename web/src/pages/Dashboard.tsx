@@ -14,11 +14,12 @@ import { buildTodayFocus, type FocusAction } from '../utils/todayFocus'
 import TodayRings from '../components/today/TodayRings'
 import FocusToday from '../components/today/FocusToday'
 import { weeklyInsights } from '../components/dashboard/InsightsCard'
-import PlanAdherenceHero from '../components/dashboard/PlanAdherenceHero'
-import JourneyRoad from '../components/dashboard/JourneyRoad'
+import PlanPulseCard from '../components/today/PlanPulseCard'
+import NoPlanCard from '../components/today/NoPlanCard'
+import WeekInReview from '../components/today/WeekInReview'
+import { buildPlanPulse } from '../utils/planPulse'
 import WeightTrendCard from '../components/dashboard/WeightTrendCard'
 import TodaysWorkoutCard from '../components/dashboard/TodaysWorkoutCard'
-import NutritionTodayCard from '../components/dashboard/NutritionTodayCard'
 
 function greeting(now: Date) {
   const h = now.getHours()
@@ -31,8 +32,8 @@ function greeting(now: Date) {
  * Today — the daily check-in screen.
  *
  * Top to bottom it answers, in order: where am I today (rings), what's left to
- * do (focus list with one-tap actions), what's the plan (today's session),
- * and am I on track (plan adherence, weight). Long-range analytics live under
+ * do (focus list with one-tap actions), am I on pace and should the plan
+ * change (Plan Pulse), and what's today's session. Long-range analytics live under
  * Trends → Overview so this screen stays short enough to read before coffee.
  */
 export default function Dashboard() {
@@ -74,6 +75,10 @@ export default function Dashboard() {
   const weekly = weeklyInsights({
     workouts: d.workouts, foodHistory: d.foodHistory, weightStats: d.weightStats, settings: d.settings, plan: d.plan,
   })
+
+  const pulse = d.plan
+    ? buildPlanPulse({ now, plan: d.plan, weightLogs: d.weightLogs, foodHistory: d.foodHistory, adherence: d.adherence })
+    : null
 
   const onAction = (a: FocusAction) => {
     if (a === 'weigh') setSheetOpen(true)
@@ -117,23 +122,25 @@ export default function Dashboard() {
 
       <FocusToday items={focus} weekly={weekly} onAction={onAction} />
 
+      <WeekInReview now={now} workouts={d.workouts} foodHistory={d.foodHistory} weightLogs={d.weightLogs} settings={d.settings} />
+
+      {d.plan && pulse
+        ? <PlanPulseCard pulse={pulse} plan={d.plan} weightLogs={d.weightLogs} settings={d.settings} />
+        : <NoPlanCard />}
+
       <TodaysWorkoutCard
         today={d.todaysPlan}
         hasSchedule={!!d.todaysPlan && (d.todaysPlan.programs.length > 0 || d.todaysPlan.source !== 'rest')}
       />
 
-      {d.plan && d.adherence && (
-        <PlanAdherenceHero plan={d.plan} adherence={d.adherence} weightStats={d.weightStats} settings={d.settings} />
+      {/* With a plan, Plan Pulse already charts weight against it; the raw
+          trend card is only the primary weight view when there's no plan. */}
+      {!d.plan && (
+        <WeightTrendCard
+          weightLogs={d.weightLogs} weightStats={d.weightStats} settings={d.settings}
+          profile={d.profile} plan={d.plan} onLog={() => setSheetOpen(true)}
+        />
       )}
-
-      <WeightTrendCard
-        weightLogs={d.weightLogs} weightStats={d.weightStats} settings={d.settings}
-        profile={d.profile} plan={d.plan} onLog={() => setSheetOpen(true)}
-      />
-
-      {d.plan && <JourneyRoad plan={d.plan} weightLogs={d.weightLogs} settings={d.settings} />}
-
-      <NutritionTodayCard food={d.food} settings={d.settings} />
 
       <Link to="/stats" className="card-interactive flex items-center justify-between px-4 py-3.5">
         <span className="flex items-center gap-3">

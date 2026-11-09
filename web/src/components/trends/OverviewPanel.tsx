@@ -12,6 +12,8 @@ import ConsistencyHeatmap, { type ConsistencySource } from '../dashboard/Consist
 import ActivityOverlapCard from '../dashboard/ActivityOverlapCard'
 import MuscleMapCard, { MUSCLE_PERIOD_DAYS, type MusclePeriod } from '../dashboard/MuscleMapCard'
 import LastWorkoutCard from '../dashboard/LastWorkoutCard'
+import PlanAdherenceHero from '../dashboard/PlanAdherenceHero'
+import JourneyRoad from '../dashboard/JourneyRoad'
 
 /**
  * Trends → Overview: the cross-domain KPI board. These cards used to sit on
@@ -30,6 +32,10 @@ export default function OverviewPanel() {
 
   return (
     <div className="space-y-4">
+      {d.plan && d.adherence && (
+        <PlanAdherenceHero plan={d.plan} adherence={d.adherence} weightStats={d.weightStats} settings={d.settings} />
+      )}
+      {d.plan && <JourneyRoad plan={d.plan} weightLogs={d.weightLogs} settings={d.settings} />}
       <ThisWeekScorecard
         workouts={d.workouts} cardioSessions={d.cardioSessions} foodHistory={d.foodHistory}
         weightStats={d.weightStats} settings={d.settings} plan={d.plan}

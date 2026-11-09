@@ -1,6 +1,6 @@
 # Lyftr redesign: Train · Fuel · Trend
 
-Status: Phase 1 and most of Phase 2 are built on `feature/redesign-today-first`. Phases 3–5 are proposed.
+Status: Phases 1–3 are built on `feature/redesign-today-first` (two small Phase 2 items remain). Phases 4–5 are proposed.
 
 ## Why
 
@@ -94,12 +94,28 @@ Still open:
 - Redesigned Log Food screen: tabs become one list grouped as Recent / My foods / Database, with a sticky amount stepper and unit chips.
 - Curated ordering for "Your usuals": pin and reorder, instead of only by how often you log something.
 
-## Phase 3: Plan & insight loop
+## Phase 3: Plan & insight loop (built)
 
-- **Plan status bar** on Today: day N of plan, on pace / behind, and expected vs. actual weight today.
-- **"Should I change my plan?"**: surface `should_regenerate` and `regenerate_reason` from adherence as a Today card with "Review plan" leading to the check-in.
-- A weekly review screen (`/stats/weekly` today): Monday's recap with wins, misses, and next week's focus.
-- Insight cards that explain themselves: each KPI tile drills into the chart and data behind it.
+- **Plan Pulse** on Today (`utils/planPulse.ts`, `components/today/PlanPulseCard.tsx`). It replaces the plan-adherence and road-ahead cards there, which moved to Trends → Overview.
+  - Trend weight is a least-squares fit over the last 21 days of weigh-ins, so one salty dinner doesn't move it.
+  - It shows where the plan says you should be today, your recent pace vs. the plan's pace, and the finish date your pace implies vs. the planned one.
+  - A small chart draws the plan line, your weigh-ins, and the projected path to the goal.
+- **"Should I change the plan?"** is answered explicitly. Being behind only counts as a reason to change the plan when you're actually following it:
+  - *Too early*: under 2 weeks into the plan, or too few weigh-ins. It names the date to re-check.
+  - *On track / ahead*: change nothing.
+  - *Behind, thin logging* (under 10 of 14 days logged): not yet. Log for two weeks, re-check on a named date.
+  - *Behind, calories over* (more than 150 kcal over target on average): not yet. Hit the target first.
+  - *Behind while hitting the numbers*: yes, adjust. Lower calories ~150–200, add activity, or extend the timeline. The server's `should_regenerate` reason is included when present.
+  - *Losing over 1% of body weight a week, far faster than planned*: consider easing off.
+  - *Goal reached*: set the next goal.
+- **No plan** → Today shows a "Set a weight goal" card instead.
+- **Last week in review** on Mondays and Tuesdays: days logged, average kcal vs. target, weight change, sessions. It links to the weekly summary.
+- **Drill-downs**: the This Week scorecard tiles open the matching Trends tab (training, nutrition, weight, cardio).
+- Today got shorter: the raw weight-trend card shows only when there's no plan, and the nutrition card is gone because the rings cover it.
+
+Known follow-ups:
+- The server's adherence card counts *completed* weeks ("Week 6") while Plan Pulse counts the week in progress ("Week 7"). The server also judges on/off plan from the latest single weigh-in, not the trend, so the two cards can disagree for a day or two after a noisy weigh-in. Move the server's verdict onto trend weight.
+- Make "Re-check on <date>" a reminder through the Android companion app.
 
 ## Phase 4: Train
 

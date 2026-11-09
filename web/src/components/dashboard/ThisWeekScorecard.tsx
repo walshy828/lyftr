@@ -58,10 +58,10 @@ export default function ThisWeekScorecard({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <StatTile
           label="Training"
-          to="/workouts"
-          linkLabel="Training this week — view workouts"
+          to="/stats?tab=training"
+          linkLabel="Training this week — view training trends"
           icon={Dumbbell}
-          accent="#2563eb"
+          accent="rgb(var(--c-train))"
           value={trainNow.sessions}
           sub={trainNow.sessions === 1 ? 'session' : 'sessions'}
           delta={<DeltaBadge value={sessionsDelta.abs} goodDirection="up" />}
@@ -71,17 +71,17 @@ export default function ThisWeekScorecard({
           to="/stats?tab=cardio"
           linkLabel="Synced cardio this week — view cardio stats"
           icon={HeartPulse}
-          accent="#ef4444"
+          accent="rgb(var(--c-heart))"
           value={cardioNow.sessions}
           sub={cardioNow.sessions === 1 ? 'session' : 'sessions'}
           delta={<DeltaBadge value={cardioDelta.abs} goodDirection="up" />}
         />
         <StatTile
           label="Nutrition"
-          to="/food"
-          linkLabel="Nutrition this week — view food log"
+          to="/stats?tab=nutrition"
+          linkLabel="Nutrition this week — view nutrition trends"
           icon={Flame}
-          accent="#00b8d9"
+          accent="rgb(var(--c-fuel))"
           value={nutNow.daysLogged > 0 ? Math.round(nutNow.avgCalories).toLocaleString() : '—'}
           sub={nutNow.daysLogged > 0 ? `kcal · ${nutNow.daysLogged}/${daysSoFar} logged` : 'not logged'}
           delta={
@@ -92,10 +92,10 @@ export default function ThisWeekScorecard({
         />
         <StatTile
           label="Weight"
-          to="/weight"
-          linkLabel="Weight this week — view weight log"
+          to="/stats?tab=weight"
+          linkLabel="Weight this week — view weight trends"
           icon={Scale}
-          accent="#6366f1"
+          accent="rgb(var(--c-body))"
           value={weightStats ? displayWeight(weightStats.latest, settings.weight_unit) : '—'}
           unit={weightStats ? wUnit : undefined}
           sub={weightStats ? '7-day' : 'no logs'}
