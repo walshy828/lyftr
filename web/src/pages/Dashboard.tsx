@@ -1,54 +1,55 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
-import { AlertCircle, Play, Timer, ArrowRight, Utensils, BarChart3 } from 'lucide-react'
+import { AlertCircle, Timer, ArrowRight, BarChart3 } from 'lucide-react'
 import { useNavigate, Link } from 'react-router-dom'
 import Loading from '../components/Loading'
 import QuickWeighInSheet from '../components/QuickWeighInSheet'
 import { useDashboardData } from '../hooks/useDashboardData'
 import { useWorkoutSession } from '../stores/workoutSession'
-import { useTrainingStats } from '../hooks/useTrainingStats'
-import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useAuthStore } from '../stores/auth'
-import { displayWeight } from '../stores/settings'
-import ThisWeekScorecard from '../components/dashboard/ThisWeekScorecard'
+import { displayWeight, weightShort } from '../stores/settings'
+import { healthMetricsAPI } from '../services/api'
+import { todayStr } from '../utils/dateUtils'
+import { buildTodayFocus, type FocusAction } from '../utils/todayFocus'
+import TodayRings from '../components/today/TodayRings'
+import FocusToday from '../components/today/FocusToday'
+import { weeklyInsights } from '../components/dashboard/InsightsCard'
 import PlanAdherenceHero from '../components/dashboard/PlanAdherenceHero'
 import JourneyRoad from '../components/dashboard/JourneyRoad'
-import InsightsCard from '../components/dashboard/InsightsCard'
 import WeightTrendCard from '../components/dashboard/WeightTrendCard'
-import ConsistencyHeatmap, { type ConsistencySource } from '../components/dashboard/ConsistencyHeatmap'
-import ActivityOverlapCard from '../components/dashboard/ActivityOverlapCard'
-import TrainingTrendsCard from '../components/dashboard/TrainingTrendsCard'
-import NutritionTodayCard from '../components/dashboard/NutritionTodayCard'
-import NutritionTrendCard from '../components/dashboard/NutritionTrendCard'
-import MuscleMapCard, { MUSCLE_PERIOD_DAYS, type MusclePeriod } from '../components/dashboard/MuscleMapCard'
-import LastWorkoutCard from '../components/dashboard/LastWorkoutCard'
 import TodaysWorkoutCard from '../components/dashboard/TodaysWorkoutCard'
+import NutritionTodayCard from '../components/dashboard/NutritionTodayCard'
 
-const TODAY = new Date()
-
-function greeting() {
-  const h = TODAY.getHours()
+function greeting(now: Date) {
+  const h = now.getHours()
   if (h < 12) return 'Good morning'
   if (h < 17) return 'Good afternoon'
   return 'Good evening'
 }
 
+/**
+ * Today — the daily check-in screen.
+ *
+ * Top to bottom it answers, in order: where am I today (rings), what's left to
+ * do (focus list with one-tap actions), what's the plan (today's session),
+ * and am I on track (plan adherence, weight). Long-range analytics live under
+ * Trends → Overview so this screen stays short enough to read before coffee.
+ */
 export default function Dashboard() {
   const navigate = useNavigate()
   const { session } = useWorkoutSession()
   const { user } = useAuthStore()
   const d = useDashboardData()
   const [sheetOpen, setSheetOpen] = useState(false)
-  // The coverage map has its own window, independent of the dashboard's
-  // trailing year — "what have I skipped this week" is the actionable question.
-  const [musclePeriod, setMusclePeriod] = useState<MusclePeriod>('week')
-  const muscleStats = useTrainingStats(MUSCLE_PERIOD_DAYS[musclePeriod], ['muscles'])
-  const [consistencySource, setConsistencySource] = useState<ConsistencySource>('both')
-  // A full year of 12px columns needs ~780px to lay out without scrolling —
-  // narrower than that (phones, most tablets in portrait) shows 6 months
-  // instead of a heatmap that either overflows or has to shrink to unreadable.
-  const isWideScreen = useMediaQuery('(min-width: 1024px)')
-  const consistencyWeeks = isWideScreen ? 52 : 26
+  const [steps, setSteps] = useState<number | null>(null)
+  const now = useMemo(() => new Date(), [])
+
+  useEffect(() => {
+    const t = todayStr()
+    healthMetricsAPI.daily('steps', t, t, 'sum')
+      .then(rows => setSteps(rows?.length ? rows.reduce((s, r) => s + r.value, 0) : null))
+      .catch(() => setSteps(null))
+  }, [])
 
   if (d.loading) return <Loading />
 
@@ -62,127 +63,93 @@ export default function Dashboard() {
   }
 
   const username = user?.name?.trim() || user?.email?.split('@')[0] || 'there'
+  const unit = weightShort(d.settings.weight_unit)
+  const lastWeight = d.weightLogs[0] ?? null
+  const lastWeightLabel = lastWeight ? `${displayWeight(lastWeight.weight, d.settings.weight_unit)} ${unit}` : undefined
+  const workedOutToday = d.workouts.some(w => format(new Date(w.started_at), 'yyyy-MM-dd') === todayStr())
+
+  const focus = buildTodayFocus({
+    now, food: d.food, settings: d.settings, lastWeight, lastWeightLabel, todaysPlan: d.todaysPlan,
+  })
+  const weekly = weeklyInsights({
+    workouts: d.workouts, foodHistory: d.foodHistory, weightStats: d.weightStats, settings: d.settings, plan: d.plan,
+  })
+
+  const onAction = (a: FocusAction) => {
+    if (a === 'weigh') setSheetOpen(true)
+    else if (a === 'log-food') navigate(`/food/log?date=${todayStr()}&mode=describe`)
+    else if (a === 'start-workout') navigate(session ? '/workout/active' : '/workout/start')
+  }
 
   return (
     <div className="space-y-4 animate-slide-up">
-      {/* Header */}
-      {/* Stacks on mobile so the greeting gets the full width instead of being
-          squeezed into a narrow column by the two action buttons. */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+      <header className="flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] text-tx-muted uppercase tracking-wider font-medium">{format(TODAY, 'EEEE, MMMM d')}</p>
-          <h1 className="font-display font-bold text-2xl text-tx-primary mt-0.5">{greeting()}, {username}</h1>
+          <p className="eyebrow">{format(now, 'EEEE, MMMM d')}</p>
+          <h1 className="font-display font-bold text-[26px] leading-tight text-tx-primary mt-0.5 truncate">
+            {greeting(now)}, {username}
+          </h1>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-shrink-0">
-          <button onClick={() => navigate('/food/log')} className="btn-secondary btn-sm flex-1 sm:flex-none">
-            <Utensils className="w-3.5 h-3.5" /> Log Food
-          </button>
-          <button onClick={() => navigate('/stats')} className="btn-secondary btn-sm flex-1 sm:flex-none">
-            <BarChart3 className="w-3.5 h-3.5" /> Stats
-          </button>
-          <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm flex-1 sm:flex-none">
-            <Play className="w-3.5 h-3.5" /> {session ? 'Resume' : 'Start'}
-          </button>
-        </div>
-      </div>
+        <Link to="/stats" className="btn-secondary btn-sm flex-shrink-0" aria-label="Open trends">
+          <BarChart3 className="w-3.5 h-3.5" /> Trends
+        </Link>
+      </header>
 
-      {/* Active session banner */}
       {session && (
-        <Link to="/workout/active" className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl hover:bg-amber-500/15 transition-colors">
+        <Link to="/workout/active" className="flex items-center justify-between p-3 bg-fuel/10 border border-fuel/30 rounded-2xl hover:bg-fuel/15 transition-colors">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
-              <Timer className="w-4 h-4 text-amber-400 animate-pulse" />
+            <div className="w-9 h-9 rounded-xl bg-fuel/20 flex items-center justify-center flex-shrink-0">
+              <Timer className="w-4 h-4 text-fuel animate-pulse" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-amber-300">Workout in progress</p>
-              <p className="text-xs text-amber-400/70">{session.name} — tap to resume</p>
+              <p className="text-sm font-semibold text-tx-primary">Workout in progress</p>
+              <p className="text-xs text-tx-muted">{session.name} — tap to resume</p>
             </div>
           </div>
-          <ArrowRight className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <ArrowRight className="w-4 h-4 text-fuel flex-shrink-0" />
         </Link>
       )}
 
-      {/* What the plan says to do today, when there is a plan */}
+      <TodayRings
+        food={d.food} settings={d.settings} steps={steps}
+        todaysPlan={d.todaysPlan} workedOutToday={workedOutToday}
+      />
+
+      <FocusToday items={focus} weekly={weekly} onAction={onAction} />
+
       <TodaysWorkoutCard
         today={d.todaysPlan}
         hasSchedule={!!d.todaysPlan && (d.todaysPlan.programs.length > 0 || d.todaysPlan.source !== 'rest')}
       />
 
-      {/* This week — the headline synthesis */}
-      <ThisWeekScorecard
-        workouts={d.workouts} cardioSessions={d.cardioSessions} foodHistory={d.foodHistory}
-        weightStats={d.weightStats} settings={d.settings} plan={d.plan}
-      />
-
-      {/* Plan adherence hero (only with an active plan) */}
       {d.plan && d.adherence && (
         <PlanAdherenceHero plan={d.plan} adherence={d.adherence} weightStats={d.weightStats} settings={d.settings} />
       )}
 
-      {/* The road ahead. Deliberately a separate card from the hero above:
-          that one answers "where am I right now", this one "where am I
-          heading". It needs no adherence data, so it renders on a brand-new
-          plan the hero can't yet describe. */}
-      {d.plan && (
-        <JourneyRoad plan={d.plan} weightLogs={d.weightLogs} settings={d.settings} />
-      )}
-
-      {/* Insights */}
-      <InsightsCard
-        workouts={d.workouts} foodHistory={d.foodHistory} weightStats={d.weightStats}
-        settings={d.settings} plan={d.plan}
-      />
-
-      {/* Weight trend */}
       <WeightTrendCard
         weightLogs={d.weightLogs} weightStats={d.weightStats} settings={d.settings}
         profile={d.profile} plan={d.plan} onLog={() => setSheetOpen(true)}
       />
 
-      {/* Nutrition: today + trend */}
-      <div className="grid lg:grid-cols-2 gap-4 min-w-0">
-        <NutritionTodayCard food={d.food} settings={d.settings} />
-        <NutritionTrendCard foodHistory={d.foodHistory} settings={d.settings} />
-      </div>
+      {d.plan && <JourneyRoad plan={d.plan} weightLogs={d.weightLogs} settings={d.settings} />}
 
-      {/* Training trends (mix + focus over time) + consistency */}
-      <TrainingTrendsCard workouts={d.workouts} />
-      {/* Half a year, shaded by time invested rather than session count.
-          Both choices depend on the server-side aggregate: the old client-side
-          version could only see one page of workouts, so a longer window would
-          have rendered as a wall of false blanks. Duration shading matters
-          because almost every training day holds exactly one workout — a
-          count-based scale is effectively binary and says nothing beyond
-          "showed up". */}
-      <ConsistencyHeatmap
-        workoutDaily={d.training?.daily ?? []}
-        cardioDaily={d.cardioStats?.daily ?? []}
-        streak={
-          consistencySource === 'cardio' ? d.cardioStats?.streak
-            : consistencySource === 'both' ? d.cardioStats?.combined_streak
-              : d.training?.streak
-        }
-        source={consistencySource}
-        onSourceChange={setConsistencySource}
-        weeks={consistencyWeeks}
-        metric="duration"
-      />
+      <NutritionTodayCard food={d.food} settings={d.settings} />
 
-      <ActivityOverlapCard workoutDaily={d.training?.daily ?? []} cardioDaily={d.cardioStats?.daily ?? []} />
-
-      {/* Coverage — what got trained, and what didn't */}
-      <MuscleMapCard
-        muscles={muscleStats.stats?.muscles ?? []}
-        period={musclePeriod}
-        onPeriodChange={setMusclePeriod}
-      />
-
-      <LastWorkoutCard workouts={d.workouts} settings={d.settings} />
+      <Link to="/stats" className="card-interactive flex items-center justify-between px-4 py-3.5">
+        <span className="flex items-center gap-3">
+          <BarChart3 className="w-5 h-5 text-brand-400" />
+          <span>
+            <span className="block text-sm font-semibold text-tx-primary">All trends</span>
+            <span className="block text-xs text-tx-muted">Consistency, training mix, muscle coverage, sleep, heart</span>
+          </span>
+        </span>
+        <ArrowRight className="w-4 h-4 text-tx-muted" />
+      </Link>
 
       <QuickWeighInSheet
         isOpen={sheetOpen}
-        lastValue={d.weightLogs[0] ? displayWeight(d.weightLogs[0].raw_weight ?? d.weightLogs[0].weight, d.settings.weight_unit) : null}
-        lastLog={d.weightLogs[0] ?? null}
+        lastValue={lastWeight ? displayWeight(lastWeight.raw_weight ?? lastWeight.weight, d.settings.weight_unit) : null}
+        lastLog={lastWeight}
         onClose={() => setSheetOpen(false)}
         onSuccess={log => { d.addWeightLog(log); setSheetOpen(false) }}
       />

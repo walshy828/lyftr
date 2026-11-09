@@ -3,14 +3,16 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { format, subDays, addDays } from 'date-fns'
 import {
   ChevronLeft, ChevronRight, ChevronDown, Flame, Plus, Trash2,
-  AlertCircle, Coffee, Sun, Moon, Cookie, CalendarDays, Utensils, Sparkles,
+  AlertCircle, Coffee, Sun, Moon, Cookie, CalendarDays, Sparkles,
   Bookmark, BookmarkCheck, Copy,
 } from 'lucide-react'
 import IconButton from '../components/ui/IconButton'
 import SectionHeader from '../components/ui/SectionHeader'
 import PageHeader from '../components/ui/PageHeader'
 import MacroBar from '../components/ui/MacroBar'
-import AuthedImg from '../components/ui/AuthedImg'
+import FoodAvatar from '../components/ui/FoodAvatar'
+import Ring from '../components/ui/Ring'
+import { FOOD_CHANGED_EVENT } from '../components/shell/QuickLogSheet'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts'
@@ -110,6 +112,16 @@ export default function Food() {
 
   useEffect(() => { loadDay(selectedDate) }, [selectedDate, location.key, loadDay])
 
+  // Something was logged from the global Log sheet while this page is open.
+  useEffect(() => {
+    const onChange = () => {
+      foodAPI.list(selectedDate).then(l => setLogs(l || [])).catch(() => {})
+      foodAPI.stats(selectedDate).then(setStats).catch(() => {})
+    }
+    window.addEventListener(FOOD_CHANGED_EVENT, onChange)
+    return () => window.removeEventListener(FOOD_CHANGED_EVENT, onChange)
+  }, [selectedDate])
+
   useEffect(() => {
     setHistoryLoading(true)
     const days = historyPeriod === '7d' ? 7 : historyPeriod === '30d' ? 30 : 90
@@ -201,11 +213,25 @@ export default function Food() {
       ? 'Yesterday'
       : format(selectedDateObj, 'EEE, MMM d')
 
+  // The 7 days ending at the selected day (or today, when browsing this week).
+  const kcalByDay = new Map(historyData.map(h => [h.date, h.calories]))
+  if (isToday) kcalByDay.set(selectedDate, totalCals)
+  const stripEnd = (() => {
+    const t = new Date(todayStr() + 'T12:00:00')
+    const diff = (t.getTime() - selectedDateObj.getTime()) / 86_400_000
+    return diff < 7 ? t : addDays(selectedDateObj, 3)
+  })()
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const obj = subDays(stripEnd, 6 - i)
+    const date = format(obj, 'yyyy-MM-dd')
+    return { obj, date, kcal: date === selectedDate ? totalCals : (kcalByDay.get(date) ?? 0) }
+  })
+
   return (
     <div className="space-y-4 animate-slide-up">
       <PageHeader
-        title="Nutrition"
-        subtitle="Macros & meals"
+        title="Food"
+        subtitle="Meals, macros, and what you usually eat"
         action={
           <button onClick={() => openLog('breakfast')} className="btn-primary btn-sm">
             <Plus className="w-4 h-4" /> Log Food
@@ -230,23 +256,43 @@ export default function Food() {
         </button>
       )}
 
-      {/* Date navigator */}
-      <div className="flex items-center gap-2">
+      {/* Week strip — each day carries a mini calorie ring from history, so
+          the last week of adherence is visible before tapping into any day. */}
+      <div className="flex items-center gap-1.5">
         <button
           aria-label="Previous day"
           onClick={() => setSelectedDate(prevDate)}
-          className="p-3 rounded-xl hover:bg-surface-muted active:scale-95 transition-all text-tx-muted"
+          className="p-2 rounded-xl hover:bg-surface-muted active:scale-95 transition-all text-tx-muted"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <div className="relative flex-1 cursor-pointer" onClick={() => dateInputRef.current?.showPicker?.()}>
-          <div className="flex items-center justify-center gap-2 py-2 rounded-xl bg-surface-muted pointer-events-none">
-            <CalendarDays className="w-4 h-4 text-tx-muted" />
-            <span className="text-sm font-semibold text-tx-primary">{dayLabel}</span>
-            {!isToday && (
-              <span className="text-xs text-tx-muted">{format(selectedDateObj, 'yyyy')}</span>
-            )}
-          </div>
+        <div className="flex-1 grid grid-cols-7 gap-1">
+          {weekDays.map(day => {
+            const active = day.date === selectedDate
+            const future = day.date > todayStr()
+            return (
+              <button
+                key={day.date}
+                disabled={future}
+                onClick={() => setSelectedDate(day.date)}
+                aria-label={format(day.obj, 'EEEE MMMM d')}
+                aria-pressed={active}
+                className={`flex flex-col items-center gap-1 py-1.5 rounded-xl transition-colors disabled:opacity-30 ${
+                  active ? 'bg-surface-raised border border-surface-border shadow-sm' : 'hover:bg-surface-muted'
+                }`}
+              >
+                <span className={`text-[10px] font-semibold uppercase ${active ? 'text-tx-primary' : 'text-tx-muted'}`}>{format(day.obj, 'EEEEE')}</span>
+                <Ring value={day.kcal / historyCalTarget} color="rgb(var(--c-fuel))" overColor="rgb(var(--c-heart))" size={30} stroke={3.5}>
+                  <span className={`text-[11px] font-bold tabular-nums ${active ? 'text-tx-primary' : 'text-tx-secondary'}`}>{format(day.obj, 'd')}</span>
+                </Ring>
+              </button>
+            )
+          })}
+        </div>
+        <div className="relative">
+          <button aria-label="Pick a date" onClick={() => dateInputRef.current?.showPicker?.()} className="p-2 rounded-xl hover:bg-surface-muted text-tx-muted">
+            <CalendarDays className="w-5 h-5" />
+          </button>
           <input
             ref={dateInputRef}
             type="date"
@@ -254,17 +300,19 @@ export default function Food() {
             onChange={e => e.target.value && setSelectedDate(e.target.value)}
             max={todayStr()}
             className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+            tabIndex={-1}
           />
         </div>
         <button
           aria-label="Next day"
           onClick={() => setSelectedDate(nextDate)}
           disabled={!canGoNext}
-          className="p-3 rounded-xl hover:bg-surface-muted active:scale-95 transition-all text-tx-muted disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-2 rounded-xl hover:bg-surface-muted active:scale-95 transition-all text-tx-muted disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>
+      <p className="text-center text-xs text-tx-muted -mt-2">{dayLabel}{!isToday && ` · ${format(selectedDateObj, 'yyyy')}`}</p>
 
       {/* Macro summary card */}
       {settings && (
@@ -466,16 +514,7 @@ export default function Food() {
                               onClick={() => navigate(`/food/log?edit=${entry.id}&date=${selectedDate}`)}
                               className="flex items-center gap-3 flex-1 min-w-0 text-left"
                             >
-                              <AuthedImg
-                                src={entry.image_url}
-                                alt=""
-                                className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border"
-                                fallback={
-                                  <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
-                                    <Utensils className="w-5 h-5 text-tx-muted opacity-40" />
-                                  </div>
-                                }
-                              />
+                              <FoodAvatar food={entry} size="md" />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   <p className="text-sm font-medium text-tx-primary truncate">{entry.name}</p>

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Home, Apple, CalendarDays, BarChart3, List,
+  Sun as TodayIcon, Apple, Dumbbell, BarChart3, List, Plus,
   LogOut, Moon, Sun, User,
   Shield, Timer, ChevronRight,
 } from 'lucide-react'
@@ -15,12 +15,16 @@ import { workoutAPI } from '../services/api'
 import GymModeWorkout from '../pages/GymModeWorkout'
 import RestTimerBanner from './RestTimerBanner'
 import Logo from './Logo'
+import QuickLogSheet from './shell/QuickLogSheet'
 
+// Four destinations around one action. Ordered by daily use: Today and Food
+// are opened every day, Trends most days, Train when it's a gym day. Each tab
+// also owns the deeper routes under it so it stays lit while you drill in.
 const NAV = [
-  { path: '/',        label: 'Home',   icon: Home },
-  { path: '/plan',    label: 'Plan',   icon: CalendarDays },
-  { path: '/food',    label: 'Food',   icon: Apple },
-  { path: '/stats',   label: 'Stats',  icon: BarChart3 },
+  { path: '/',      label: 'Today',  icon: TodayIcon, match: (p: string) => p === '/' },
+  { path: '/food',  label: 'Food',   icon: Apple,     match: (p: string) => p.startsWith('/food') },
+  { path: '/stats', label: 'Trends', icon: BarChart3, match: (p: string) => p.startsWith('/stats') || p.startsWith('/weight') },
+  { path: '/plan',  label: 'Train',  icon: Dumbbell,  match: (p: string) => ['/plan', '/workout', '/programs', '/exercises'].some(x => p.startsWith(x)) },
 ]
 
 function formatElapsed(seconds: number) {
@@ -68,7 +72,7 @@ function ActiveSessionBar() {
   }
 
   return (
-    <div className="absolute bottom-full left-0 right-0 flex justify-center pb-3 pointer-events-none">
+    <div className="absolute bottom-full lg:bottom-6 left-0 right-0 flex justify-center pb-3 pointer-events-none">
       <button
         onClick={handleClick}
         className="pointer-events-auto flex items-center gap-2.5 px-4 py-2.5 bg-brand-500 hover:bg-brand-600 active:scale-95 shadow-lg shadow-brand-500/40 rounded-full transition-all"
@@ -94,7 +98,7 @@ function ActiveSessionBar() {
   )
 }
 
-function UserMenu() {
+function UserMenu({ up = false }: { up?: boolean }) {
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useTheme()
   const [open, setOpen] = useState(false)
@@ -122,13 +126,13 @@ function UserMenu() {
         }`}
         aria-label="User menu"
       >
-        <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0891b2, #00b8d9)' }}>
-          <span className="text-sm font-bold text-white leading-none">{initial}</span>
+        <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #13c2ec, #4fe3a1)' }}>
+          <span className="text-sm font-bold text-[#0a0b0f] leading-none">{initial}</span>
         </div>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-56 bg-surface-overlay border border-surface-border/60 rounded-2xl shadow-dropdown z-50 animate-slide-up overflow-hidden">
+        <div className={`absolute ${up ? 'left-0 bottom-full mb-2' : 'right-0 top-full mt-2'} w-56 bg-surface-overlay border border-surface-border/60 rounded-2xl shadow-dropdown z-50 animate-slide-up overflow-hidden`}>
           {/* User info */}
           <div className="px-4 py-3 border-b border-surface-border/40">
             <p className="text-sm font-semibold text-tx-primary truncate">{username}</p>
@@ -202,18 +206,51 @@ export default function Layout() {
       .finally(() => clearEndedRemotely())
   }, [endedRemotely, navigate, clearEndedRemotely])
 
-  return (
-    <div className="min-h-screen flex flex-col bg-surface-base">
-      <header className="sticky top-0 z-50 border-b border-surface-border bg-surface-base/95 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-5 h-14 flex justify-between items-center">
-          <Link to="/"><Logo size="md" /></Link>
-          <UserMenu />
-        </div>
-      </header>
+  const [logOpen, setLogOpen] = useState(false)
 
-      <main className="flex-1 max-w-6xl mx-auto w-full min-w-0 overflow-x-hidden px-5 py-7 animate-fade-in">
-        <Outlet />
-      </main>
+  return (
+    <div className="min-h-screen flex bg-surface-base">
+      {/* Desktop rail — same destinations, with Log as a primary button */}
+      <aside className="hidden lg:flex flex-col w-60 flex-shrink-0 sticky top-0 h-screen border-r border-surface-border px-4 py-5">
+        <Link to="/" className="px-2 mb-6"><Logo size="md" /></Link>
+        <button onClick={() => setLogOpen(true)} className="btn-primary btn-md w-full mb-4">
+          <Plus className="w-4 h-4" /> Log
+        </button>
+        <nav className="flex flex-col gap-1">
+          {NAV.map(({ path, label, icon: Icon, match }) => {
+            const active = match(pathname)
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  active ? 'bg-surface-overlay text-tx-primary' : 'text-tx-muted hover:text-tx-primary hover:bg-surface-overlay/60'
+                }`}
+              >
+                <Icon className="w-[18px] h-[18px]" strokeWidth={active ? 2.4 : 1.8} />
+                {label}
+              </Link>
+            )
+          })}
+        </nav>
+        <div className="mt-auto flex items-center gap-3 px-2">
+          <UserMenu up />
+          <span className="text-xs text-tx-muted">Account</span>
+        </div>
+      </aside>
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="lg:hidden sticky top-0 z-50 glass border-b border-surface-border/60 pt-safe">
+          <div className="px-4 h-12 flex justify-between items-center">
+            <Link to="/"><Logo size="sm" /></Link>
+            <UserMenu />
+          </div>
+        </header>
+
+        <main className="flex-1 max-w-5xl mx-auto w-full min-w-0 overflow-x-hidden px-4 sm:px-6 pt-5 pb-28 lg:pb-10 lg:pt-8 animate-fade-in">
+          <Outlet />
+        </main>
+      </div>
 
       {/* Gym mode overlay — rendered at root so it persists across routes */}
       {session && settings.workout_layout === 'gym' && gymOpen && (
@@ -226,23 +263,44 @@ export default function Layout() {
           pill (ActiveSessionBar) rather than a panel following you around the app. */}
       {gymOpen && gymPhase !== 'exercise' && <RestTimerBanner />}
 
-      {/* Active session pill floats above bottom nav */}
-      <div className="sticky bottom-0 z-50 relative">
-        <ActiveSessionBar />
-        <nav className="border-t border-surface-border bg-surface-base/95 backdrop-blur-sm">
-          <div className="max-w-6xl mx-auto flex">
-            {NAV.map(({ path, label, icon: Icon }) => {
-              const active = pathname === path
+      {/* Mobile: floating tab bar with the Log action in the middle. The
+          active-session pill floats above it. */}
+      <div className="fixed bottom-0 inset-x-0 z-50 lg:left-60 pointer-events-none">
+        <div className="relative">
+          <ActiveSessionBar />
+        </div>
+        <nav className="lg:hidden pointer-events-auto glass border-t border-surface-border/60 pb-safe" aria-label="Primary">
+          <div className="max-w-md mx-auto grid grid-cols-5 items-center px-2">
+            {[NAV[0], NAV[1], null, NAV[2], NAV[3]].map((item, i) => {
+              if (!item) {
+                return (
+                  <div key="log" className="flex justify-center">
+                    <button
+                      onClick={() => setLogOpen(true)}
+                      aria-label="Log food, weight or a workout"
+                      className="-mt-5 w-14 h-14 rounded-2xl bg-gradient-brand text-tx-inverse shadow-float flex items-center justify-center active:scale-95 transition-transform"
+                    >
+                      <Plus className="w-7 h-7 text-[#0a0b0f]" strokeWidth={2.5} />
+                    </button>
+                  </div>
+                )
+              }
+              const { path, label, icon: Icon, match } = item
+              const active = match(pathname)
               return (
-                <Link key={path} to={path} className={`nav-item flex-1 ${active ? 'active' : ''}`}>
-                  <Icon className="w-5 h-5" strokeWidth={active ? 2.5 : 1.75} />
-                  <span>{label}</span>
+                <Link key={path + i} to={path} className={`nav-item ${active ? 'active' : ''}`} aria-current={active ? 'page' : undefined}>
+                  <span className={`px-4 py-1 rounded-full transition-colors ${active ? 'bg-surface-overlay' : ''}`}>
+                    <Icon className="w-5 h-5" strokeWidth={active ? 2.4 : 1.8} />
+                  </span>
+                  <span className="text-[11px]">{label}</span>
                 </Link>
               )
             })}
           </div>
         </nav>
       </div>
+
+      <QuickLogSheet isOpen={logOpen} onClose={() => setLogOpen(false)} />
     </div>
   )
 }

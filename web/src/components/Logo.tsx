@@ -1,28 +1,19 @@
-import BarbellSVG from './BarbellSVG'
+import LogoMark from './LogoMark'
 
 const sizeMap = {
-  sm: { scale: 0.6, fontSize: 14 },
-  md: { scale: 1, fontSize: 18 },
-  lg: { scale: 1.4, fontSize: 22 },
-};
+  sm: { mark: 24, fontSize: 17 },
+  md: { mark: 28, fontSize: 19 },
+  lg: { mark: 40, fontSize: 26 },
+}
 
 export default function Logo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
-  const s = sizeMap[size];
-
+  const s = sizeMap[size]
   return (
-    <div className="flex items-center gap-3.5">
-      {/* Barbell */}
-      <div style={{ transform: `scale(${s.scale})`, transformOrigin: 'left center' }} className="flex-shrink-0 text-slate-800 dark:text-slate-100">
-        <BarbellSVG />
-      </div>
-
-      {/* Text */}
-      <span className="font-display font-extrabold text-tx-primary tracking-tight" style={{
-        fontSize: `${s.fontSize}px`,
-        letterSpacing: '-0.02em',
-      }}>
+    <div className="flex items-center gap-2">
+      <LogoMark size={s.mark} />
+      <span className="font-display font-extrabold text-tx-primary" style={{ fontSize: s.fontSize, letterSpacing: '-0.04em' }}>
         lyftr
       </span>
     </div>
-  );
+  )
 }

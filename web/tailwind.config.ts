@@ -6,8 +6,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans:    ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-        display: ['Outfit', 'Plus Jakarta Sans', 'sans-serif'],
+        sans:    ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono:    ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       colors: {
@@ -26,20 +26,28 @@ export default {
           faint:     'var(--tx-faint)',
           inverse:   'var(--tx-inverse)',
         },
-        // Brand — electric cyan
+        // Brand — "signal" cyan. Lyftr's heritage hue, freshened toward the
+        // TraceApps family (mint/cyan on near-black).
         brand: {
-          50:  '#e0f9ff',
-          100: '#b0f1fe',
-          200: '#7ae7fd',
-          300: '#38d8fb',
-          400: '#0ecef7',
-          500: '#00b8d9',
-          600: '#0099b8',
-          700: '#007a96',
-          800: '#005c72',
-          900: '#003d4d',
-          DEFAULT: '#00b8d9',
+          50:  '#e6fbff',
+          100: '#bff3ff',
+          200: '#8aeaff',
+          300: '#55e1ff',
+          400: '#2ad6fa',
+          500: '#13c2ec',
+          600: '#0a9cc2',
+          700: '#087a99',
+          800: '#085c73',
+          900: '#073f4f',
+          DEFAULT: '#13c2ec',
         },
+        // Domain hues (CSS-var backed so they adapt per theme).
+        fuel: 'rgb(var(--c-fuel) / <alpha-value>)',
+        body: 'rgb(var(--c-body) / <alpha-value>)',
+        train: 'rgb(var(--c-train) / <alpha-value>)',
+        move: 'rgb(var(--c-move) / <alpha-value>)',
+        heart: 'rgb(var(--c-heart) / <alpha-value>)',
+        sleep: 'rgb(var(--c-sleep) / <alpha-value>)',
         violet: {
           400: '#a78bfa',
           500: '#8b5cf6',
@@ -51,7 +59,7 @@ export default {
         error:   { 400: '#f87171', 500: '#ef4444', 600: '#dc2626', 700: '#b91c1c', DEFAULT: '#ef4444' },
       },
       backgroundImage: {
-        'gradient-brand': 'linear-gradient(135deg, #00b8d9 0%, #8b5cf6 100%)',
+        'gradient-brand': 'linear-gradient(135deg, #13c2ec 0%, #4fe3a1 100%)',
       },
       boxShadow: {
         'glow-sm':  '0 0 16px rgba(0,184,217,0.18)',

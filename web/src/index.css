@@ -13,33 +13,56 @@
    never text, which is why it may sit below that threshold.
 ──────────────────────────────────────────────────────── */
 :root {
-  --surface-base:    #f8fafc;
+  /* Surfaces — layered, cool-neutral. Light mode. */
+  --surface-base:    #f4f6fa;
   --surface-raised:  #ffffff;
-  --surface-overlay: #f1f5f9;
-  --surface-border:  #e2e8f0;
-  --surface-muted:   #f1f5f9;
+  --surface-overlay: #eef1f6;
+  --surface-border:  #e2e6ee;
+  --surface-muted:   #eef1f6;
 
-  --tx-primary:   #0f172a;
-  --tx-secondary: #334155;
-  --tx-muted:     #64748b;
-  --tx-faint:     #94a3b8;
+  --tx-primary:   #0d0f14;
+  --tx-secondary: #363c48;
+  --tx-muted:     #5b6271;
+  --tx-faint:     #a3aab8;
   --tx-inverse:   #ffffff;
+
+  /* Domain colours — one hue per area of life the app tracks, so a glance at a
+     tile says which part of the day it is about. Darkened for light mode. */
+  --c-fuel:  217 119 6;   /* food / calories */
+  --c-body:  124 92 240;   /* weight / body comp */
+  --c-train: 8 145 178;   /* lifting / workouts */
+  --c-move:  5 150 105;   /* steps / cardio */
+  --c-heart: 225 29 72;   /* heart / BP */
+  --c-sleep: 79 95 224;   /* sleep */
+
+  --glass: rgba(255, 255, 255, 0.82);
+  --shadow-float: 0 10px 30px -8px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.06);
 
   color-scheme: light;
 }
 
 .dark {
-  --surface-base:    #070d1a;
-  --surface-raised:  #0d1629;
-  --surface-overlay: #111e35;
-  --surface-border:  #1c2f50;
-  --surface-muted:   #162240;
+  --surface-base:    #0a0b0f;
+  --surface-raised:  #12141a;
+  --surface-overlay: #1a1d26;
+  --surface-border:  #232733;
+  --surface-muted:   #1a1d26;
 
-  --tx-primary:   #f1f5f9;
-  --tx-secondary: #cbd5e1;
-  --tx-muted:     #94a3b8;
-  --tx-faint:     #475569;
-  --tx-inverse:   #0f172a;
+  --tx-primary:   #f0f2f8;
+  --tx-secondary: #c3c8d4;
+  --tx-muted:     #8b92a3;
+  --tx-faint:     #3a3f4d;
+  --tx-inverse:   #0a0b0f;
+
+  --c-fuel:  255 181 71;
+  --c-body:  167 139 250;
+  --c-train: 61 220 255;
+  --c-move:  79 227 161;
+  --c-heart: 255 107 138;
+  --c-sleep: 139 156 255;
+
+  --glass: rgba(18, 20, 26, 0.86);
+  --shadow-float: 0 12px 32px -8px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.4);
 
   color-scheme: dark;
 }
@@ -50,20 +73,24 @@
 
   body {
     @apply bg-surface-base text-tx-primary font-sans antialiased transition-colors duration-150;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-tap-highlight-color: transparent;
   }
+  h1, h2, h3 { letter-spacing: -0.02em; }
+  .tabular-nums { font-feature-settings: 'tnum', 'cv11'; }
 }
 
 /* ─── Components ────────────────────────────────────── */
 @layer components {
 
   /* Cards */
-  .card             { @apply bg-surface-raised border border-surface-border rounded-xl; }
+  .card             { @apply bg-surface-raised border border-surface-border rounded-2xl; }
   .card-interactive { @apply card hover:border-tx-faint transition-colors duration-150 cursor-pointer; }
-  .card-glass       { @apply bg-surface-raised backdrop-blur-xl border border-surface-border rounded-xl; }
+  .card-glass       { @apply bg-surface-raised backdrop-blur-xl border border-surface-border rounded-2xl; }
 
   /* Buttons */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg whitespace-nowrap
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-xl whitespace-nowrap active:scale-[0.98]
            transition-all duration-150 focus-visible:outline-none
            focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2
            focus-visible:ring-offset-surface-base
@@ -85,7 +112,7 @@
   .input {
     /* text-base (16px) is the minimum to prevent iOS Safari auto-zoom on focus. */
     /* min-w-0 overrides browser-imposed intrinsic min-width on date/number inputs. */
-    @apply w-full min-w-0 px-3.5 py-2.5 bg-surface-overlay border border-surface-border rounded-lg
+    @apply w-full min-w-0 px-3.5 py-2.5 bg-surface-overlay border border-surface-border rounded-xl
            text-tx-primary placeholder-tx-muted text-base
            focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500
            transition-colors duration-150;
@@ -117,11 +144,18 @@
     @apply flex flex-col items-center justify-center gap-1 py-3 text-tx-muted
            transition-colors duration-150 relative text-xs font-medium;
   }
-  .nav-item.active { @apply text-brand-500; }
-  .nav-item.active::after {
-    content: '';
-    @apply absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-px bg-brand-500;
+  .nav-item.active { @apply text-tx-primary; }
+
+  /* Small all-caps eyebrow used above section titles and KPI values. */
+  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-tx-muted; }
+
+  /* Floating glass surface (bottom bar, sheets' sticky footers). */
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: saturate(160%) blur(20px);
+    backdrop-filter: saturate(160%) blur(20px);
   }
+  .shadow-float { box-shadow: var(--shadow-float); }
 
   /* Empty state */
   .empty-state {
@@ -163,7 +197,7 @@
 /* ─── Utilities ─────────────────────────────────────── */
 @layer utilities {
   .text-gradient {
-    background: linear-gradient(135deg, #00b8d9 0%, #8b5cf6 100%);
+    background: linear-gradient(135deg, #13c2ec 0%, #4fe3a1 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -180,6 +214,11 @@
 
   .animate-slide-up { animation: slide-up 0.2s ease-out both; }
   .animate-fade-in  { animation: fade-in 0.15s ease-out both; }
+
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+  .snap-x-mandatory { scroll-snap-type: x mandatory; }
+  .snap-start { scroll-snap-align: start; }
 
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }

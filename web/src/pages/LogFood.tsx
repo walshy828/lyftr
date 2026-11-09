@@ -29,6 +29,7 @@ import ServingEditor from '../components/food/ServingEditor'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import DateInput from '../components/ui/DateInput'
 import AuthedImg from '../components/ui/AuthedImg'
+import FoodAvatar from '../components/ui/FoodAvatar'
 import * as types from '../types'
 
 type Phase = 'search' | 'detail' | 'scan' | 'scan-label' | 'smart' | 'smart-review' | 'photo-review'
@@ -146,16 +147,7 @@ function FoodResultRow({ item, onClick }: { item: types.FoodSearchResult; onClic
       onClick={onClick}
       className="flex items-center gap-3 w-full px-4 py-3.5 hover:bg-surface-muted active:bg-surface-muted/80 transition-colors border-b border-surface-border last:border-0 text-left"
     >
-      <AuthedImg
-        src={item.image_url}
-        alt=""
-        className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-border"
-        fallback={
-          <div className="w-11 h-11 rounded-xl bg-surface-muted border border-surface-border flex items-center justify-center flex-shrink-0">
-            <Utensils className="w-5 h-5 text-tx-muted" />
-          </div>
-        }
-      />
+      <FoodAvatar food={item} size="md" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <p className="text-sm font-semibold text-tx-primary truncate">{item.name}</p>
@@ -191,7 +183,10 @@ export default function LogFood() {
   const initMeal = (searchParams.get('meal') ?? 'breakfast') as types.FoodLog['meal']
   const initDate = searchParams.get('date') ?? todayStr()
 
-  const [phase, setPhase] = useState<Phase>('search')
+  // `mode` deep-links straight into an entry method from the Log sheet, so
+  // "Describe" or "Barcode" is one tap from anywhere instead of two screens.
+  const MODE_PHASE: Record<string, Phase> = { describe: 'smart', photo: 'smart', scan: 'scan', label: 'scan-label' }
+  const [phase, setPhase] = useState<Phase>(() => (!editId && MODE_PHASE[searchParams.get('mode') ?? '']) || 'search')
   const [filter, setFilter] = useState<SearchFilter>('all')
   // Which upstream databases to query. Persisted client-side, so the choice
   // survives leaving and coming back to the search. The fallback is a module

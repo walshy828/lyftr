@@ -6,6 +6,7 @@ import StatsControlBar from '../components/StatsControlBar'
 import Loading from '../components/Loading'
 import { StatsControlsProvider } from '../context/StatsControlsContext'
 
+const OverviewPanel = lazy(() => import('../components/trends/OverviewPanel'))
 const TrainingPanel = lazy(() => import('../components/training/TrainingPanel'))
 const WeightPanel = lazy(() => import('../components/health/WeightPanel'))
 const BloodPressurePanel = lazy(() => import('../components/health/BloodPressurePanel'))
@@ -23,6 +24,7 @@ const NutritionPanel = lazy(() => import('../components/health/NutritionPanel'))
  * this array, so nothing else has to change.
  */
 const TABS: { key: string; label: string; Panel: ComponentType }[] = [
+  { key: 'overview', label: 'Overview', Panel: OverviewPanel },
   { key: 'training', label: 'Training', Panel: TrainingPanel },
   { key: 'sleep', label: 'Sleep', Panel: SleepPanel },
   { key: 'heart', label: 'Heart', Panel: HeartPanel },
@@ -40,6 +42,7 @@ const DEFAULT_TAB = TABS[0].key
 const CONTROL_BAR_TABS = new Set(['sleep', 'heart', 'activity', 'nutrition', 'weight', 'bp'])
 
 const SUBTITLES: Record<string, string> = {
+  overview: 'Every KPI, week over week',
   training: 'Your training record',
   sleep: 'Stages, HRV, and resting heart rate overnight',
   heart: 'HRV, resting heart rate, and recovery trends',
@@ -72,7 +75,7 @@ export default function Stats() {
 
   return (
     <div className="space-y-5 animate-slide-up">
-      <PageHeader title="Stats" subtitle={SUBTITLES[tab]} />
+      <PageHeader title="Trends" subtitle={SUBTITLES[tab]} />
 
       <div className="overflow-x-auto -mx-1 px-1">
         <SegmentedControl
