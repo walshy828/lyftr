@@ -15,6 +15,7 @@ func NewScheduleStore(db *sql.DB) *ScheduleStore { return &ScheduleStore{db: db}
 type ScheduledProgram struct {
 	ProgramID     int64  `json:"program_id"`
 	Name          string `json:"name"`
+	Kind          string `json:"kind"` // the routine's training type
 	ExerciseCount int    `json:"exercise_count"`
 	OrderIndex    int    `json:"order_index"`
 	// CompletedWorkoutID is set when a workout for this program was already
@@ -47,6 +48,7 @@ type recurringRow struct {
 	Weekday    int
 	ProgramID  int64
 	Name       string
+	Kind       string
 	Exercises  int
 	OrderIndex int
 }
@@ -54,7 +56,7 @@ type recurringRow struct {
 // Recurring returns the whole weekly pattern (at most a handful of rows).
 func (s *ScheduleStore) Recurring(uid int64) (map[int][]ScheduledProgram, error) {
 	rows, err := s.db.Query(`
-		SELECT ps.weekday, ps.program_id, p.name, ps.order_index,
+		SELECT ps.weekday, ps.program_id, p.name, p.kind, ps.order_index,
 		       (SELECT COUNT(*) FROM program_exercises pe WHERE pe.program_id = p.id)
 		  FROM program_schedules ps
 		  JOIN programs p ON p.id = ps.program_id
@@ -69,11 +71,11 @@ func (s *ScheduleStore) Recurring(uid int64) (map[int][]ScheduledProgram, error)
 	out := map[int][]ScheduledProgram{}
 	for rows.Next() {
 		var r recurringRow
-		if err := rows.Scan(&r.Weekday, &r.ProgramID, &r.Name, &r.OrderIndex, &r.Exercises); err != nil {
+		if err := rows.Scan(&r.Weekday, &r.ProgramID, &r.Name, &r.Kind, &r.OrderIndex, &r.Exercises); err != nil {
 			return nil, err
 		}
 		out[r.Weekday] = append(out[r.Weekday], ScheduledProgram{
-			ProgramID: r.ProgramID, Name: r.Name, ExerciseCount: r.Exercises, OrderIndex: r.OrderIndex,
+			ProgramID: r.ProgramID, Name: r.Name, Kind: r.Kind, ExerciseCount: r.Exercises, OrderIndex: r.OrderIndex,
 		})
 	}
 	return out, rows.Err()
@@ -84,7 +86,7 @@ func (s *ScheduleStore) Recurring(uid int64) (map[int][]ScheduledProgram, error)
 // map with explicit keys rather than only non-empty entries.
 func (s *ScheduleStore) overridesBetween(uid int64, from, to string) (map[string][]ScheduledProgram, error) {
 	rows, err := s.db.Query(`
-		SELECT o.on_date, o.program_id, COALESCE(p.name, ''), o.order_index,
+		SELECT o.on_date, o.program_id, COALESCE(p.name, ''), COALESCE(p.kind, ''), o.order_index,
 		       COALESCE((SELECT COUNT(*) FROM program_exercises pe WHERE pe.program_id = o.program_id), 0)
 		  FROM program_schedule_overrides o
 		  LEFT JOIN programs p ON p.id = o.program_id
@@ -100,9 +102,9 @@ func (s *ScheduleStore) overridesBetween(uid int64, from, to string) (map[string
 	for rows.Next() {
 		var date string
 		var programID sql.NullInt64
-		var name string
+		var name, kind string
 		var orderIndex, exercises int
-		if err := rows.Scan(&date, &programID, &name, &orderIndex, &exercises); err != nil {
+		if err := rows.Scan(&date, &programID, &name, &kind, &orderIndex, &exercises); err != nil {
 			return nil, err
 		}
 		if _, ok := out[date]; !ok {
@@ -112,7 +114,7 @@ func (s *ScheduleStore) overridesBetween(uid int64, from, to string) (map[string
 		// stays empty.
 		if programID.Valid {
 			out[date] = append(out[date], ScheduledProgram{
-				ProgramID: programID.Int64, Name: name, ExerciseCount: exercises, OrderIndex: orderIndex,
+				ProgramID: programID.Int64, Name: name, Kind: kind, ExerciseCount: exercises, OrderIndex: orderIndex,
 			})
 		}
 	}

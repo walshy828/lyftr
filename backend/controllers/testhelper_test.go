@@ -131,9 +131,17 @@ CREATE TABLE IF NOT EXISTS exercises (
   source_id TEXT NOT NULL DEFAULT '',
   source TEXT NOT NULL DEFAULT '',
   is_timed INTEGER NOT NULL DEFAULT 0,
-  default_duration_seconds INTEGER NOT NULL DEFAULT 0
+  default_duration_seconds INTEGER NOT NULL DEFAULT 0,
+  modality TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_exercises_name ON exercises(name);
+CREATE TABLE IF NOT EXISTS training_goals (
+  user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind             TEXT    NOT NULL,
+  days_per_week    INTEGER NOT NULL DEFAULT 0,
+  minutes_per_week INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, kind)
+);
 CREATE TABLE IF NOT EXISTS exercise_migrations (
   id           INTEGER  PRIMARY KEY AUTOINCREMENT,
   from_source  TEXT     NOT NULL,
@@ -153,6 +161,7 @@ CREATE TABLE IF NOT EXISTS workouts (
   duration INTEGER NOT NULL DEFAULT 0,
   program_id INTEGER REFERENCES programs(id) ON DELETE SET NULL,
   feeling INTEGER NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL DEFAULT '',
   started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -183,6 +192,7 @@ CREATE TABLE IF NOT EXISTS programs (
   name TEXT NOT NULL,
   notes TEXT NOT NULL DEFAULT '',
   is_shared INTEGER NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL DEFAULT '',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS program_exercises (

@@ -9,6 +9,7 @@ import { useTheme } from '../hooks/useTheme'
 import PeriodSelector from './PeriodSelector'
 import ExerciseDemo from './exercise/ExerciseDemo'
 import TimedToggle from './exercise/TimedToggle'
+import ModalityPicker from './exercise/ModalityPicker'
 import { hasExerciseImage } from '../utils/exerciseMedia'
 import * as types from '../types'
 import { muscleColor, muscleColorBordered, EQUIPMENT_LABEL, muscleToBodySlugs } from '../utils/exerciseUtils'
@@ -141,6 +142,7 @@ export default function ExerciseDetailContent({ exercise, onExerciseUpdated }: P
         </div>
       )}
 
+      <ModalityPicker exercise={exercise} onUpdated={onExerciseUpdated ?? (() => {})} />
       <TimedToggle exercise={exercise} onUpdated={onExerciseUpdated ?? (() => {})} />
 
       {/* Watch on YouTube */}

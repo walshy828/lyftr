@@ -14,6 +14,8 @@ import { StatTile, SectionHeader } from '../ui'
 import Loading from '../Loading'
 import { TOOLTIP_STYLE, AXIS_TICK } from '../../utils/chartTheme'
 import { muscleColorBordered } from '../../utils/exerciseUtils'
+import TrainingBalanceCard from './TrainingBalanceCard'
+import SegmentedControl from '../ui/SegmentedControl'
 import * as types from '../../types'
 
 function hoursLabel(seconds: number): string {
@@ -44,7 +46,10 @@ export default function TrainingPanel() {
   const year = useTrainingStats(365, ['daily', 'streak'])
   const cardio = useCardioStats(365, ['daily', 'streak'], true)
   const [musclePeriod, setMusclePeriod] = useState<MusclePeriod>('month')
-  const muscles = useTrainingStats(MUSCLE_PERIOD_DAYS[musclePeriod], ['muscles'])
+  // Strength by default: without the filter, a hamstring stretch marks the
+  // hamstrings as trained. Mobility turns the same map into "areas stretched".
+  const [muscleKind, setMuscleKind] = useState<'strength' | 'mobility'>('strength')
+  const muscles = useTrainingStats(MUSCLE_PERIOD_DAYS[musclePeriod], ['muscles'], muscleKind)
   const [consistencySource, setConsistencySource] = useState<ConsistencySource>('both')
 
   const [prs, setPRs] = useState<types.RecentPR[]>([])
@@ -93,6 +98,8 @@ export default function TrainingPanel() {
           Weekly Summary <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
+
+      <TrainingBalanceCard />
 
       {/* Headline totals for the trailing year */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -188,6 +195,17 @@ export default function TrainingPanel() {
         period={musclePeriod}
         onPeriodChange={setMusclePeriod}
         large
+        title={muscleKind === 'strength' ? 'Muscle Coverage' : 'Areas Stretched'}
+        verb={muscleKind === 'strength' ? 'trained' : 'stretched'}
+        emptyText={muscleKind === 'strength' ? 'Log workouts to map your training coverage' : 'Log a stretching routine to map what you stretch'}
+        toolbar={
+          <SegmentedControl
+            options={[{ value: 'strength', label: 'Strength' }, { value: 'mobility', label: 'Mobility' }]}
+            value={muscleKind}
+            onChange={v => setMuscleKind(v as 'strength' | 'mobility')}
+            size="sm"
+          />
+        }
       />
 
       {/* Strength progression for whichever lift is selected below */}

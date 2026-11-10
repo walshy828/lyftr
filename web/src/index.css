@@ -34,6 +34,7 @@
   --c-move:  5 150 105;   /* steps / cardio */
   --c-heart: 225 29 72;   /* heart / BP */
   --c-sleep: 79 95 224;   /* sleep */
+  --c-mobility: 192 38 211; /* stretching / mobility */
 
   --glass: rgba(255, 255, 255, 0.82);
   --shadow-float: 0 10px 30px -8px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.06);
@@ -60,6 +61,7 @@
   --c-move:  79 227 161;
   --c-heart: 255 107 138;
   --c-sleep: 139 156 255;
+  --c-mobility: 232 121 249;
 
   --glass: rgba(18, 20, 26, 0.86);
   --shadow-float: 0 12px 32px -8px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.4);

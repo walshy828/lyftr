@@ -117,7 +117,11 @@ const completedWorkingSets = `s.is_warmup = 0 AND s.completed = 1`
 // multiplies w.duration by the set count — a workout with 18 sets would report
 // 18 hours. The subqueries ride idx_workout_exercises_workout and
 // idx_sets_workout_exercise.
-func (s *WorkoutStore) TrainingDaily(uid int64, from, to string, tzOffset int) ([]TrainingDay, error) {
+//
+// kind narrows to one training type (empty = every workout). Mixed workouts are
+// included under any kind they could contain — dropping them would make a
+// strength week that ended in one lift+stretch session look a day short.
+func (s *WorkoutStore) TrainingDaily(uid int64, from, to string, tzOffset int, kind string) ([]TrainingDay, error) {
 	rows, err := s.db.Query(`
 		SELECT day,
 		       COUNT(*)            AS workouts,
@@ -142,10 +146,11 @@ func (s *WorkoutStore) TrainingDaily(uid int64, from, to string, tzOffset int) (
 			  FROM workouts w
 			 WHERE w.user_id = ?2
 			   AND `+dayExpr+` BETWEEN ?3 AND ?4
+			   AND (?5 = '' OR w.kind = ?5 OR w.kind = 'mixed')
 		)
 		GROUP BY day
 		ORDER BY day ASC
-	`, tzModifier(tzOffset), uid, from, to)
+	`, tzModifier(tzOffset), uid, from, to, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +174,12 @@ func (s *WorkoutStore) TrainingDaily(uid int64, from, to string, tzOffset int) (
 // onto the user's totals. last_trained is computed over unbounded history via
 // conditional aggregation, so it needs no second query and no correlated
 // subquery per muscle.
-func (s *WorkoutStore) TrainingMuscles(uid int64, from, to string, tzOffset int) ([]MuscleTotal, error) {
+//
+// modality narrows to exercises of one training type (empty = all). Strength is
+// the useful default for the muscle map — without it, a hamstring stretch
+// marks hamstrings as trained — and mobility turns the same map into "which
+// areas have I stretched".
+func (s *WorkoutStore) TrainingMuscles(uid int64, from, to string, tzOffset int, modality string) ([]MuscleTotal, error) {
 	rows, err := s.db.Query(`
 		SELECT mg.muscle_group,
 		       COALESCE(t.sets_count, 0),
@@ -195,10 +205,11 @@ func (s *WorkoutStore) TrainingMuscles(uid int64, from, to string, tzOffset int)
 				 WHERE w.user_id = ?4 AND `+completedWorkingSets+`
 			  ) d
 			  JOIN exercises e ON e.id = d.exercise_id
+			 WHERE (?5 = '' OR e.modality = ?5)
 			 GROUP BY e.muscle_group
 		) t ON t.muscle_group = mg.muscle_group
 		ORDER BY sets_count DESC, mg.muscle_group ASC
-	`, tzModifier(tzOffset), from, to, uid)
+	`, tzModifier(tzOffset), from, to, uid, modality)
 	if err != nil {
 		return nil, err
 	}

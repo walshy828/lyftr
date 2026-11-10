@@ -12,6 +12,7 @@ import { muscleColor, formatExerciseName } from '../utils/exerciseUtils'
 import { isCardio, fmtClock } from '../utils/workoutSets'
 import MusclesWorked from '../components/exercise/MusclesWorked'
 import { FeelingBadge, FocusBadge } from '../components/WorkoutBadges'
+import { KindBadge } from '../components/training/KindPicker'
 
 // "32:10 · 3.10 mi · 5,400 steps" — omits any zero component. The canonical
 // readout for a logged cardio set.
@@ -184,6 +185,7 @@ export default function WorkoutDetail() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h1 className="font-display font-bold text-xl text-tx-primary leading-tight">{workout.name}</h1>
+              <KindBadge kind={workout.kind} />
               <FocusBadge workout={workout} />
             </div>
             <p className="text-sm text-tx-muted mt-0.5">

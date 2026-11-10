@@ -33,6 +33,12 @@ interface Props {
   onPeriodChange: (p: MusclePeriod) => void
   /** Renders the figures larger, for the dedicated stats screen. */
   large?: boolean
+  title?: string
+  /** Rendered between the header and the figures (e.g. a type toggle). */
+  toolbar?: React.ReactNode
+  emptyText?: string
+  /** Verb for the zero state ("trained" / "stretched"). */
+  verb?: string
 }
 
 function daysAgo(iso: string): number | null {
@@ -57,7 +63,7 @@ function lastTrainedLabel(m: types.MuscleTotal): string {
  * is the question that actually changes what you do next. Untrained groups come
  * back from the server with explicit zeros so they can be drawn.
  */
-export default function MuscleMapCard({ muscles, period, onPeriodChange, large }: Props) {
+export default function MuscleMapCard({ muscles, period, onPeriodChange, large, title = 'Muscle Coverage', toolbar, emptyText = 'Log workouts to map your training coverage', verb = 'trained' }: Props) {
   const { isDark } = useTheme()
   const [selected, setSelected] = useState<types.MuscleTotal | null>(null)
 
@@ -87,13 +93,13 @@ export default function MuscleMapCard({ muscles, period, onPeriodChange, large }
     trained.forEach(m => push(muscleIntensity(m.sets, maxSets) + 2, m.muscle_group))
 
     const bodyData: IExerciseData[] = [...byFrequency.entries()].map(([frequency, list]) => ({
-      name: frequency === 1 ? 'Not trained' : 'Trained',
+      name: frequency === 1 ? `Not ${verb}` : verb[0].toUpperCase() + verb.slice(1),
       muscles: [...new Set(list)] as never,
       frequency,
     }))
 
     return { bodyData, trained, neglected, maxSets }
-  }, [muscles])
+  }, [muscles, verb])
 
   const figureWidth = large ? 190 : 140
   const empty = muscles.length === 0 || (trained.length === 0 && neglected.length === 0)
@@ -102,7 +108,7 @@ export default function MuscleMapCard({ muscles, period, onPeriodChange, large }
     <div className="card p-4 min-w-0">
       <SectionHeader
         icon={PersonStanding}
-        title="Muscle Coverage"
+        title={title}
         right={
           <SegmentedControl
             options={PERIOD_OPTIONS}
@@ -113,11 +119,12 @@ export default function MuscleMapCard({ muscles, period, onPeriodChange, large }
         }
         className="mb-3"
       />
+      {toolbar && <div className="mb-3">{toolbar}</div>}
 
       {empty ? (
         <div className="flex flex-col items-center justify-center py-6 gap-2">
           <PersonStanding className="w-6 h-6 text-tx-muted opacity-30" />
-          <p className="text-xs text-tx-muted">Log workouts to map your training coverage</p>
+          <p className="text-xs text-tx-muted">{emptyText}</p>
         </div>
       ) : (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
@@ -149,7 +156,7 @@ export default function MuscleMapCard({ muscles, period, onPeriodChange, large }
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-sm" style={{ background: neglectColor }} />
-                <span className="text-[10px] text-tx-muted">Not trained</span>
+                <span className="text-[10px] text-tx-muted">Not {verb}</span>
               </div>
             </div>
           </div>
@@ -158,7 +165,7 @@ export default function MuscleMapCard({ muscles, period, onPeriodChange, large }
             {neglected.length > 0 && (
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: neglectColor }}>
-                  Not trained this {period === 'all' ? 'year' : period}
+                  Not {verb} this {period === 'all' ? 'year' : period}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {neglected.map(m => (

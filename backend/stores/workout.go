@@ -19,10 +19,10 @@ type WorkoutFilter struct {
 	Query         string
 }
 
-const workoutCols = `id, user_id, name, notes, duration, started_at, created_at, program_id, feeling`
+const workoutCols = `id, user_id, name, notes, duration, started_at, created_at, program_id, feeling, kind`
 
 func scanWorkout(row interface{ Scan(...any) error }, w *models.Workout) error {
-	return row.Scan(&w.ID, &w.UserID, &w.Name, &w.Notes, &w.Duration, &w.StartedAt, &w.CreatedAt, &w.ProgramID, &w.Feeling)
+	return row.Scan(&w.ID, &w.UserID, &w.Name, &w.Notes, &w.Duration, &w.StartedAt, &w.CreatedAt, &w.ProgramID, &w.Feeling, &w.Kind)
 }
 
 func (s *WorkoutStore) List(uid int64, f WorkoutFilter) ([]models.Workout, error) {
@@ -103,9 +103,13 @@ func (s *WorkoutStore) get(id int64) (models.Workout, error) {
 
 func (s *WorkoutStore) Create(uid int64, req models.CreateWorkoutRequest) (models.Workout, error) {
 	wid, err := inTx(s.db, func(tx *sql.Tx) (int64, error) {
+		kind, err := workoutKind(tx, uid, req)
+		if err != nil {
+			return 0, err
+		}
 		res, err := tx.Exec(
-			`INSERT INTO workouts (user_id, name, notes, duration, started_at, program_id, feeling) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			uid, req.Name, req.Notes, req.Duration, req.StartedAt, req.ProgramID, req.Feeling,
+			`INSERT INTO workouts (user_id, name, notes, duration, started_at, program_id, feeling, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			uid, req.Name, req.Notes, req.Duration, req.StartedAt, req.ProgramID, req.Feeling, kind,
 		)
 		if err != nil {
 			return 0, err
@@ -134,9 +138,24 @@ func (s *WorkoutStore) Update(uid, id int64, req models.CreateWorkoutRequest) (m
 		if err := tx.QueryRow(`SELECT id FROM workouts WHERE id = ? AND user_id = ?`, id, uid).Scan(&ownedID); err != nil {
 			return err // ErrNoRows = not theirs
 		}
+		// Update carries no program_id, so look up the stored one: an edit
+		// that leaves kind blank must re-derive from the same routine rather
+		// than flip a routine session to an exercise-inferred type.
+		var programID sql.NullInt64
+		if err := tx.QueryRow(`SELECT program_id FROM workouts WHERE id = ?`, id).Scan(&programID); err != nil {
+			return err
+		}
+		kreq := req
+		if programID.Valid {
+			kreq.ProgramID = &programID.Int64
+		}
+		kind, err := workoutKind(tx, uid, kreq)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.Exec(
-			`UPDATE workouts SET name = ?, notes = ?, duration = ?, started_at = ?, feeling = ? WHERE id = ?`,
-			req.Name, req.Notes, req.Duration, req.StartedAt, req.Feeling, id,
+			`UPDATE workouts SET name = ?, notes = ?, duration = ?, started_at = ?, feeling = ?, kind = ? WHERE id = ?`,
+			req.Name, req.Notes, req.Duration, req.StartedAt, req.Feeling, kind, id,
 		); err != nil {
 			return err
 		}
@@ -149,6 +168,30 @@ func (s *WorkoutStore) Update(uid, id int64, req models.CreateWorkoutRequest) (m
 		return models.Workout{}, err
 	}
 	return s.get(id)
+}
+
+// workoutKind is the session's type: what the request says; else its
+// routine's type (a mobility routine logged is a mobility session even if one
+// of its movements reads as strength); else inferred from the exercises.
+func workoutKind(tx *sql.Tx, uid int64, req models.CreateWorkoutRequest) (string, error) {
+	if ValidKind(req.Kind) {
+		return req.Kind, nil
+	}
+	if req.ProgramID != nil {
+		var k string
+		err := tx.QueryRow(`SELECT kind FROM programs WHERE id = ? AND (user_id = ? OR is_shared = 1)`, *req.ProgramID, uid).Scan(&k)
+		if err != nil && err != sql.ErrNoRows {
+			return "", err
+		}
+		if ValidKind(k) {
+			return k, nil
+		}
+	}
+	ids := make([]int64, len(req.Exercises))
+	for i, e := range req.Exercises {
+		ids[i] = e.ExerciseID
+	}
+	return inferKindForExercises(tx, ids)
 }
 
 func (s *WorkoutStore) Delete(uid, id int64) (int64, error) {

@@ -7,6 +7,7 @@ import { programAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
 import { FocusBadge } from './WorkoutBadges'
 import * as types from '../types'
+import { KindBadge } from './training/KindPicker'
 
 interface ProgramCardProps {
   program: types.Program
@@ -144,7 +145,7 @@ export default function ProgramCard({ program, variant, onEdit, onDelete, onShar
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-tx-primary truncate">{program.name}</p>
-          <p className="text-xs text-tx-muted">{program.exercises?.length || 0} exercises</p>
+          <p className="text-xs text-tx-muted flex items-center gap-1.5">{program.exercises?.length || 0} exercises <KindBadge kind={program.kind} /></p>
         </div>
         <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
       </button>
@@ -173,6 +174,7 @@ export default function ProgramCard({ program, variant, onEdit, onDelete, onShar
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <p className="text-sm font-semibold text-tx-primary truncate">{program.name}</p>
+              <KindBadge kind={program.kind} className="flex-shrink-0" />
               {variant === 'own' && program.is_shared && (
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-500/10 text-brand-400 flex-shrink-0">
                   Shared

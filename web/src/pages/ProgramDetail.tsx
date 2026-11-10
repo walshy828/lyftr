@@ -13,6 +13,7 @@ import { useSettingsStore, weightShort, displayWeight } from '../stores/settings
 import * as types from '../types'
 import { muscleColor, formatExerciseName } from '../utils/exerciseUtils'
 import { isTimed, fmtClock } from '../utils/workoutSets'
+import { KindBadge } from '../components/training/KindPicker'
 
 export default function ProgramDetail() {
   const { id } = useParams<{ id: string }>()
@@ -217,6 +218,7 @@ export default function ProgramDetail() {
           )}
           <div className="min-w-0 flex-1">
             <h1 className="font-display font-bold text-xl text-tx-primary leading-tight">{program.name}</h1>
+            <KindBadge kind={program.kind} className="mt-1" />
             <p className="text-sm text-tx-muted mt-0.5">
               {!isOwner && program.owner_email
                 ? `Shared by ${program.owner_email}`

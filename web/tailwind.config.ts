@@ -48,6 +48,7 @@ export default {
         move: 'rgb(var(--c-move) / <alpha-value>)',
         heart: 'rgb(var(--c-heart) / <alpha-value>)',
         sleep: 'rgb(var(--c-sleep) / <alpha-value>)',
+        mobility: 'rgb(var(--c-mobility) / <alpha-value>)',
         violet: {
           400: '#a78bfa',
           500: '#8b5cf6',

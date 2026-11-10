@@ -67,6 +67,9 @@ export interface Exercise {
   is_timed?: boolean
   /** Countdown length Gym Mode pre-fills when is_timed is true. */
   default_duration_seconds?: number
+  /** Training type this movement counts toward. Unlike `category` (whose
+   *  meaning differs per library), this means the same thing everywhere. */
+  modality?: Modality
 }
 
 /** Payload shape for creating or editing a custom exercise. */
@@ -117,6 +120,8 @@ export interface Workout {
   created_at: string
   program_id?: number
   feeling?: number // 0/undefined=unrated, 1=light, 2=moderate, 3=intense
+  /** Training type this session counted as (from its routine, or inferred). */
+  kind?: TrainingKind
   exercises: WorkoutExercise[]
 }
 
@@ -1002,6 +1007,8 @@ export interface Program {
   name: string
   notes?: string
   is_shared: boolean
+  /** Training type of the routine. */
+  kind?: TrainingKind
   owner_email?: string
   created_at: string
   last_used_at?: string
@@ -1104,6 +1111,7 @@ export interface RecentPR {
 export interface ScheduledProgram {
   program_id: number
   name: string
+  kind?: TrainingKind
   exercise_count: number
   order_index: number
   /** Set when a workout for this program was already logged on this date. */
@@ -1315,4 +1323,31 @@ export interface RegisterRequest {
   password: string
   // Required only when the server sets REGISTRATION_INVITE_CODE.
   invite_code?: string
+}
+
+// ── Training types ──────────────────────────────────────────────────────
+
+/** What a single exercise trains. */
+export type Modality = 'strength' | 'cardio' | 'mobility'
+/** What a routine or a logged session is; 'mixed' spans more than one. */
+export type TrainingKind = Modality | 'mixed'
+
+/** One type's weekly target. 0 on either axis = no target on that axis. */
+export interface TrainingGoal {
+  kind: Modality
+  days_per_week: number
+  minutes_per_week: number
+}
+
+export interface KindTotals {
+  sessions: number
+  minutes: number
+}
+
+/** One local day's training split by type (logged workouts + synced cardio). */
+export interface TrainingTypeDay {
+  date: string
+  strength: KindTotals
+  cardio: KindTotals
+  mobility: KindTotals
 }

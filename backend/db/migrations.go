@@ -683,6 +683,28 @@ CREATE TABLE IF NOT EXISTS meal_templates (
 CREATE INDEX IF NOT EXISTS idx_meal_templates_user ON meal_templates(user_id);`); err != nil {
 		log.Fatalf("create meal_templates: %v", err)
 	}
+
+	// Training types (see stores/training.go for the model). '' means "not
+	// classified yet" — stores.TrainingStore.Backfill fills these on every
+	// boot, so the columns stay plain TEXT with no CHECK: a CHECK would make
+	// the not-yet-backfilled state illegal.
+	ensureColumn("exercises", "modality", `ALTER TABLE exercises ADD COLUMN modality TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("programs", "kind", `ALTER TABLE programs ADD COLUMN kind TEXT NOT NULL DEFAULT ''`)
+	ensureColumn("workouts", "kind", `ALTER TABLE workouts ADD COLUMN kind TEXT NOT NULL DEFAULT ''`)
+
+	// One row per (user, type). Absent rows fall back to
+	// stores.DefaultTrainingGoals, so a new user sees sensible targets without
+	// a seeding step.
+	if _, err := DB.Exec(`
+CREATE TABLE IF NOT EXISTS training_goals (
+  user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind             TEXT    NOT NULL,
+  days_per_week    INTEGER NOT NULL DEFAULT 0,
+  minutes_per_week INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, kind)
+);`); err != nil {
+		log.Fatalf("create training_goals: %v", err)
+	}
 }
 
 // ensureColumn adds a column to a table if it's missing — idempotent on every boot.

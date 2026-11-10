@@ -27,6 +27,13 @@ func main() {
 
 	config.Load()
 	db.Connect()
+	// Set before seed.Exercises: a first-run sync runs in the background and
+	// its rows arrive unclassified, so it must find the hook already in place.
+	seed.AfterSync = func() {
+		if err := stores.NewTrainingStore(db.DB).Backfill(); err != nil {
+			log.Printf("training type backfill (after exercise sync): %v", err)
+		}
+	}
 	// Demo user/data carry a well-known password (demo@baseline.local /
 	// password123) and must never end up on a production deployment.
 	if config.C.SeedDemo {
@@ -34,7 +41,13 @@ func main() {
 	}
 	seed.Exercises(db.DB)
 	if config.C.SeedDemo {
-		go seed.DemoData(db.DB)
+		go func() {
+			seed.DemoData(db.DB)
+			// Demo workouts/routines land after the boot backfill below ran.
+			if err := stores.NewTrainingStore(db.DB).Backfill(); err != nil {
+				log.Printf("training type backfill (demo): %v", err)
+			}
+		}()
 	}
 
 	if config.C.Env == "production" {
@@ -52,6 +65,12 @@ func main() {
 	}
 
 	s := stores.New(db.DB)
+
+	// Classify any exercise/routine/workout that has no training type yet.
+	// Idempotent and only touches blank rows, so it's cheap after the first run.
+	if err := s.Training.Backfill(); err != nil {
+		log.Printf("training type backfill: %v", err)
+	}
 
 	visionProvider, err := vision.New(vision.Config{
 		VisionProvider:  config.C.VisionProvider,

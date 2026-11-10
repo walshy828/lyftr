@@ -8,10 +8,14 @@ import * as types from '../types'
 import { formatExerciseName } from '../utils/exerciseUtils'
 import { isTimed } from '../utils/workoutSets'
 import TimedToggle from './exercise/TimedToggle'
+import KindPicker from './training/KindPicker'
+import { suggestKind } from '../utils/trainingKinds'
 
 export interface ProgramFormData {
   name: string
   notes: string
+  /** Routine type. Omitted on a new routine = follow the exercises' suggestion. */
+  kind?: types.TrainingKind
   exercises: {
     exercise_id: number
     notes: string
@@ -58,6 +62,11 @@ export default function ProgramEditor({
   const [error, setError] = useState('')
   const [pickerExercises, setPickerExercises] = useState<Record<number, types.Exercise>>(initialPickerExercises ?? {})
   const [formData, setFormData] = useState<ProgramFormData>(initialData)
+  // Until the user picks a type, it follows what the exercises suggest — so a
+  // routine of stretches becomes Mobility without anyone thinking about it.
+  const [kindChosen, setKindChosen] = useState(!!initialData.kind)
+  const suggested = suggestKind(formData.exercises.map(e => pickerExercises[e.exercise_id]))
+  const kind = kindChosen && formData.kind ? formData.kind : suggested
 
   useEffect(() => { if (error && variant === 'page') window.scrollTo({ top: 0, behavior: 'smooth' }) }, [error, variant])
 
@@ -151,6 +160,7 @@ export default function ProgramEditor({
     try {
       const payload = {
         ...formData,
+        kind,
         exercises: formData.exercises.map(ex => ({
           ...ex,
           sets: ex.sets.map(s => ({ ...s, target_weight: displayToLbs(s.target_weight, settings.weight_unit) })),
@@ -205,8 +215,18 @@ export default function ProgramEditor({
             type="text"
             value={formData.name}
             onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-            placeholder="e.g., Push Pull Legs, Upper Lower"
+            placeholder="e.g., Push Day, Morning Mobility, Zone 2 Walk"
             className="input mt-1"
+          />
+        </div>
+
+        <div>
+          <label className="label mb-2 block">Type</label>
+          <KindPicker
+            value={kind}
+            suggested={suggested}
+            auto={!kindChosen}
+            onChange={k => { setKindChosen(true); setFormData(prev => ({ ...prev, kind: k })) }}
           />
         </div>
 

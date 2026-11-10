@@ -343,8 +343,22 @@ func seedBaselineCardio(db *sql.DB) error {
 		tx.Rollback()
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// Every sync path (first-run, admin sync, reset, library switch) ends
+	// here, so this is the one place to tell the app new rows landed.
+	if AfterSync != nil {
+		AfterSync()
+	}
+	return nil
 }
+
+// AfterSync, when set, runs after each exercise sync finishes. main wires it
+// to the training-type backfill: a first-run sync happens in the background
+// AFTER the boot backfill, and its rows arrive with no modality. (A hook
+// rather than a direct call because stores imports seed.)
+var AfterSync func()
 
 // fetchAll picks the upstream dataset based on config.C.ExerciseLibrarySource
 // and normalizes it into the common SeedItem shape.

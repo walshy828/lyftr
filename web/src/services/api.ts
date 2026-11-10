@@ -229,12 +229,15 @@ export const workoutAPI = {
     from?: string
     to?: string
     include?: ('daily' | 'muscles' | 'streak')[]
+    /** Narrow daily totals and the muscle map to one training type. */
+    kind?: types.Modality
   } = {}) =>
     api.get<{ data: types.TrainingStats }>('/workouts/stats', {
       params: {
         from: params.from,
         to: params.to,
         include: params.include?.join(','),
+        kind: params.kind,
         tz_offset: -new Date().getTimezoneOffset(),
       },
     }).then(res => unwrap(res)),
@@ -303,6 +306,13 @@ export const exerciseAPI = {
       exerciseAPI.clearCache()
       return ex
     }),
+  /** Reclassifies ANY exercise as strength / cardio / mobility — a
+   *  library-wide correction, like setTimed. */
+  setModality: (id: number, modality: types.Modality) =>
+    api.patch<{ data: types.Exercise }>(`/exercises/${id}/modality`, { modality }).then(res => unwrap(res)).then(ex => {
+      exerciseAPI.clearCache()
+      return ex
+    }),
   clearCache: () => { _exerciseCache = null; _exerciseCachePromise = null; _facetCache = null },
   seedStatus: () => api.get<{ data: { count: number; in_progress: boolean } }>('/admin/seed-status').then(res => unwrap(res)),
   sync: () => api.post<{ data: { synced: boolean; total: number } }>('/admin/sync-exercises').then(res => unwrap(res)),
@@ -336,6 +346,17 @@ export const scheduleAPI = {
       .then(res => unwrap(res)),
   clearOverride: (date: string) =>
     api.delete<{ data: types.ScheduledDay }>(`/schedule/overrides/${date}`).then(res => unwrap(res)),
+}
+
+export const trainingAPI = {
+  /** Weekly target per training type; defaults filled in for any never set. */
+  goals: () => api.get<{ data: types.TrainingGoal[] }>('/training/goals').then(res => unwrap(res)),
+  saveGoals: (goals: types.TrainingGoal[]) =>
+    api.put<{ data: types.TrainingGoal[] }>('/training/goals', goals).then(res => unwrap(res)),
+  /** Per-day sessions/minutes split by type, workouts and watch cardio merged. */
+  days: (from: string, to: string) =>
+    api.get<{ data: types.TrainingTypeDay[] }>('/training/days', { params: { from, to, tz_offset: tzOffset() } })
+      .then(res => unwrap(res)),
 }
 
 export const programAPI = {

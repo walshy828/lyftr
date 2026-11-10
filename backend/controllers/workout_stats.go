@@ -14,7 +14,12 @@ import (
 
 // GetWorkoutStats returns training aggregates over a date window.
 //
-//	GET /api/v1/workouts/stats?from=&to=&tz_offset=&include=daily,muscles,streak
+//	GET /api/v1/workouts/stats?from=&to=&tz_offset=&include=daily,muscles,streak&kind=
+//
+// kind (strength | cardio | mobility) narrows daily totals to that training
+// type and the muscle map to exercises of that type. Absent = everything,
+// which is what older clients get. The streak stays all-types: a streak is
+// "did I train today", and a stretch day counts.
 //
 // One composed endpoint rather than three, because with SetMaxOpenConns(1) the
 // database is a serialization point: three requests are three queued round
@@ -34,6 +39,12 @@ func (h *Handler) GetWorkoutStats(c *gin.Context) {
 
 	include := parseInclude(c.Query("include"))
 
+	kind := c.Query("kind")
+	if kind != "" && !stores.ValidModality(kind) {
+		utils.BadRequest(c, "kind must be strength, cardio or mobility")
+		return
+	}
+
 	// The unit rides along so the client can label volume without a second
 	// request; weight is stored in whichever unit the user logs in.
 	weightUnit := "lbs"
@@ -49,7 +60,7 @@ func (h *Handler) GetWorkoutStats(c *gin.Context) {
 
 	// Totals are derived from the daily rows, so they need `daily` computed even
 	// when the caller didn't ask for it back.
-	daily, err := h.s.Workout.TrainingDaily(uid, from, to, tzOffset)
+	daily, err := h.s.Workout.TrainingDaily(uid, from, to, tzOffset, kind)
 	if utils.DBError(c, err) {
 		return
 	}
@@ -65,7 +76,7 @@ func (h *Handler) GetWorkoutStats(c *gin.Context) {
 	}
 
 	if include["muscles"] {
-		muscles, err := h.s.Workout.TrainingMuscles(uid, from, to, tzOffset)
+		muscles, err := h.s.Workout.TrainingMuscles(uid, from, to, tzOffset, kind)
 		if utils.DBError(c, err) {
 			return
 		}

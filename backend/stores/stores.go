@@ -38,6 +38,7 @@ type Stores struct {
 	HeartRate         *HeartRateStore
 	HealthMetric      *HealthMetricStore
 	Sleep             *SleepStore
+	Training          *TrainingStore
 }
 
 func New(db *sql.DB) *Stores {
@@ -67,6 +68,7 @@ func New(db *sql.DB) *Stores {
 		HeartRate:         NewHeartRateStore(db),
 		HealthMetric:      NewHealthMetricStore(db),
 		Sleep:             NewSleepStore(db),
+		Training:          NewTrainingStore(db),
 	}
 }
 

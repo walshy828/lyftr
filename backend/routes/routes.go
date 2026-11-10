@@ -198,6 +198,11 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		// Weekly training schedule. A flat namespace on purpose: the only
 		// wildcard is overrides/:date, so no static sub-path can collide with
 		// it. Don't add schedule/:id.
+		// Training types: per-type weekly goals and the per-day type rollup.
+		protected.GET("training/goals", h.GetTrainingGoals)
+		protected.PUT("training/goals", h.PutTrainingGoals)
+		protected.GET("training/days", h.GetTrainingTypeDays)
+
 		protected.GET("schedule", h.GetSchedule)
 		protected.PUT("schedule", h.ReplaceSchedule)
 		protected.GET("schedule/today", h.GetTodaysWorkout)
@@ -209,6 +214,7 @@ func Setup(r *gin.Engine, h *controllers.Handler, s *stores.Stores) {
 		protected.POST("exercises", h.CreateExercise)
 		protected.PUT("exercises/:id", h.UpdateExercise)
 		protected.PATCH("exercises/:id/timed", h.SetExerciseTimed)
+		protected.PATCH("exercises/:id/modality", h.SetExerciseModality)
 		protected.DELETE("exercises/:id", h.DeleteExercise)
 		// Named sub-path before the :id wildcard, or the wildcard swallows it.
 		protected.GET("exercises/facets", h.GetExerciseFacets)

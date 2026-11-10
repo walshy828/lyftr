@@ -21,7 +21,7 @@ type ProgramFilter struct {
 	Sort          string // "name" | "created" | "smart" (default: last-used desc, then created desc)
 }
 
-const programCols = `id, user_id, name, notes, is_shared, created_at`
+const programCols = `id, user_id, name, notes, is_shared, kind, created_at`
 
 // lastUsedJoin attaches each program's most recent workout start time (NULL if
 // the program has never been used), for "smart" sorting and display.
@@ -43,7 +43,7 @@ func programOrderClause(sort string) string {
 }
 
 func scanProgram(row interface{ Scan(...any) error }, p *models.Program) error {
-	return row.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt)
+	return row.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.Kind, &p.CreatedAt)
 }
 
 // lastUsedLayouts are the datetime formats that may show up in
@@ -76,7 +76,7 @@ func parseLastUsed(ns sql.NullString) *time.Time {
 }
 
 func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error) {
-	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at, lu.last_used_at
+	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.kind, p.created_at, lu.last_used_at
 	         FROM programs p ` + lastUsedJoin + `
 	         WHERE p.user_id = ?`
 	order := programOrderClause(f.Sort)
@@ -100,7 +100,7 @@ func (s *ProgramStore) List(uid int64, f ProgramFilter) ([]models.Program, error
 	for rows.Next() {
 		var p models.Program
 		var lastUsed sql.NullString
-		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &lastUsed); err != nil {
+		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.Kind, &p.CreatedAt, &lastUsed); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -126,12 +126,12 @@ func (s *ProgramStore) Get(uid, id int64) (models.Program, error) {
 	var p models.Program
 	var ownerEmail sql.NullString
 	err := s.db.QueryRow(
-		`SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at,
+		`SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.kind, p.created_at,
 		        CASE WHEN p.user_id != ? THEN u.email ELSE NULL END
 		 FROM programs p JOIN users u ON u.id = p.user_id
 		 WHERE p.id = ? AND (p.user_id = ? OR p.is_shared = 1)`,
 		uid, id, uid,
-	).Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &ownerEmail)
+	).Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.Kind, &p.CreatedAt, &ownerEmail)
 	if err != nil {
 		return models.Program{}, err
 	}
@@ -152,7 +152,7 @@ func (s *ProgramStore) Get(uid, id int64) (models.Program, error) {
 func (s *ProgramStore) ListShared(uid int64, f ProgramFilter) ([]models.Program, error) {
 	var rows *sql.Rows
 	var err error
-	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.created_at, u.email, lu.last_used_at
+	base := `SELECT p.id, p.user_id, p.name, p.notes, p.is_shared, p.kind, p.created_at, u.email, lu.last_used_at
 	         FROM programs p JOIN users u ON u.id = p.user_id ` + lastUsedJoin + `
 	         WHERE p.is_shared = 1 AND p.user_id != ?`
 	order := programOrderClause(f.Sort)
@@ -170,7 +170,7 @@ func (s *ProgramStore) ListShared(uid int64, f ProgramFilter) ([]models.Program,
 		var p models.Program
 		var ownerEmail string
 		var lastUsed sql.NullString
-		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.CreatedAt, &ownerEmail, &lastUsed); err != nil {
+		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.Notes, &p.IsShared, &p.Kind, &p.CreatedAt, &ownerEmail, &lastUsed); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -219,6 +219,7 @@ func (s *ProgramStore) Copy(uid, srcID int64) (models.Program, error) {
 	req := models.CreateProgramRequest{
 		Name:  src.Name + " (Copy)",
 		Notes: src.Notes,
+		Kind:  src.Kind,
 	}
 	for _, ex := range src.Exercises {
 		cex := models.CreateProgramExerciseReq{
@@ -254,7 +255,11 @@ func (s *ProgramStore) get(id int64) (models.Program, error) {
 
 func (s *ProgramStore) Create(uid int64, req models.CreateProgramRequest) (models.Program, error) {
 	pid, err := inTx(s.db, func(tx *sql.Tx) (int64, error) {
-		res, err := tx.Exec(`INSERT INTO programs (user_id, name, notes) VALUES (?, ?, ?)`, uid, req.Name, req.Notes)
+		kind, err := programKind(tx, req)
+		if err != nil {
+			return 0, err
+		}
+		res, err := tx.Exec(`INSERT INTO programs (user_id, name, notes, kind) VALUES (?, ?, ?, ?)`, uid, req.Name, req.Notes, kind)
 		if err != nil {
 			return 0, err
 		}
@@ -281,7 +286,11 @@ func (s *ProgramStore) Update(uid, id int64, req models.CreateProgramRequest) (m
 		if err := tx.QueryRow(`SELECT id FROM programs WHERE id = ? AND user_id = ?`, id, uid).Scan(&ownedID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`UPDATE programs SET name = ?, notes = ? WHERE id = ?`, req.Name, req.Notes, id); err != nil {
+		kind, err := programKind(tx, req)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE programs SET name = ?, notes = ?, kind = ? WHERE id = ?`, req.Name, req.Notes, kind, id); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`DELETE FROM program_exercises WHERE program_id = ?`, id); err != nil {
@@ -292,6 +301,20 @@ func (s *ProgramStore) Update(uid, id int64, req models.CreateProgramRequest) (m
 		return models.Program{}, err
 	}
 	return s.get(id)
+}
+
+// programKind is the routine's type: what the request says, or — when it
+// leaves kind blank (older clients, the AI generator) — inferred from its
+// exercises, so a routine is never stored unclassified.
+func programKind(tx *sql.Tx, req models.CreateProgramRequest) (string, error) {
+	if ValidKind(req.Kind) {
+		return req.Kind, nil
+	}
+	ids := make([]int64, len(req.Exercises))
+	for i, e := range req.Exercises {
+		ids[i] = e.ExerciseID
+	}
+	return inferKindForExercises(tx, ids)
 }
 
 func (s *ProgramStore) Delete(uid, id int64) (int64, error) {

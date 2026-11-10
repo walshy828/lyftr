@@ -28,12 +28,13 @@ func NewExerciseStore(db *sql.DB) *ExerciseStore { return &ExerciseStore{db: db}
 type ExerciseFilter struct {
 	Query, MuscleGroup, Category, Equipment string
 	Level, Force, Mechanic                  string
+	Modality                                string
 	Limit                                   int
 }
 
 // "force" is quoted throughout: it isn't reserved in SQLite, but it reads like
 // a keyword and quoting costs nothing.
-const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url, image_url_end, gif_url, "force", level, mechanic, source_id, source, is_timed, default_duration_seconds FROM exercises`
+const exerciseSelect = `SELECT id, name, muscle_group, secondary_muscles, category, equipment, description, image_url, image_url_end, gif_url, "force", level, mechanic, source_id, source, is_timed, default_duration_seconds, modality FROM exercises`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -41,8 +42,13 @@ func scanExercise(row scanner, e *models.Exercise) error {
 	var secondaryRaw string
 	if err := row.Scan(&e.ID, &e.Name, &e.MuscleGroup, &secondaryRaw, &e.Category, &e.Equipment, &e.Description,
 		&e.ImageURL, &e.ImageEndURL, &e.GifURL, &e.Force, &e.Level, &e.Mechanic, &e.SourceID, &e.Source,
-		&e.IsTimed, &e.DefaultDurationSeconds); err != nil {
+		&e.IsTimed, &e.DefaultDurationSeconds, &e.Modality); err != nil {
 		return err
+	}
+	// A row a library sync inserted since the last backfill: classify it on
+	// read so callers never see a blank type.
+	if e.Modality == "" {
+		e.Modality = InferModality(e.Category, e.Source, e.Name)
 	}
 	json.Unmarshal([]byte(secondaryRaw), &e.SecondaryMuscles)
 	if e.SecondaryMuscles == nil {
@@ -61,6 +67,10 @@ func (s *ExerciseStore) List(f ExerciseFilter) ([]models.Exercise, error) {
 	if f.MuscleGroup != "" {
 		q += " AND muscle_group = ?"
 		args = append(args, f.MuscleGroup)
+	}
+	if f.Modality != "" {
+		q += " AND modality = ?"
+		args = append(args, f.Modality)
 	}
 	if f.Category != "" {
 		q += " AND category = ?"
@@ -128,6 +138,7 @@ func (s *ExerciseStore) Facets() (map[string][]FacetValue, error) {
 	rows, err := s.db.Query(`
 		SELECT 'muscle_group' AS facet, muscle_group AS value, COUNT(*) AS n FROM exercises WHERE muscle_group <> '' GROUP BY muscle_group
 		UNION ALL SELECT 'equipment', equipment, COUNT(*) FROM exercises WHERE equipment <> '' GROUP BY equipment
+		UNION ALL SELECT 'modality',  modality,  COUNT(*) FROM exercises WHERE modality  <> '' GROUP BY modality
 		UNION ALL SELECT 'category',  category,  COUNT(*) FROM exercises WHERE category  <> '' GROUP BY category
 		UNION ALL SELECT 'level',     level,     COUNT(*) FROM exercises WHERE level     <> '' GROUP BY level
 		UNION ALL SELECT 'mechanic',  mechanic,  COUNT(*) FROM exercises WHERE mechanic  <> '' GROUP BY mechanic
@@ -162,8 +173,9 @@ func (s *ExerciseStore) Create(name, muscleGroup, equipment, category, descripti
 		secondaryJSON = []byte("[]")
 	}
 	res, err := s.db.Exec(
-		`INSERT INTO exercises (name, muscle_group, category, equipment, description, image_url, secondary_muscles, source, is_timed, default_duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO exercises (name, muscle_group, category, equipment, description, image_url, secondary_muscles, source, is_timed, default_duration_seconds, modality) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), seed.SourceCustom, isTimed, defaultDurationSeconds,
+		InferModality(category, seed.SourceCustom, name),
 	)
 	if err != nil {
 		return models.Exercise{}, err
@@ -194,9 +206,12 @@ func (s *ExerciseStore) Update(id int64, name, muscleGroup, equipment, category,
 		secondaryJSON = []byte("[]")
 	}
 	res, err := s.db.Exec(
-		`UPDATE exercises SET name = ?, muscle_group = ?, category = ?, equipment = ?, description = ?, image_url = ?, secondary_muscles = ?, is_timed = ?, default_duration_seconds = ?
+		`UPDATE exercises SET name = ?, muscle_group = ?, category = ?, equipment = ?, description = ?, image_url = ?, secondary_muscles = ?, is_timed = ?, default_duration_seconds = ?, modality = ?
 		 WHERE id = ? AND source = ?`,
-		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), isTimed, defaultDurationSeconds, id, seed.SourceCustom,
+		name, muscleGroup, category, equipment, description, imageURL, string(secondaryJSON), isTimed, defaultDurationSeconds,
+		// A custom exercise's category IS its type (the form offers strength /
+		// cardio / stretching), so editing it re-derives the modality.
+		InferModality(category, seed.SourceCustom, name), id, seed.SourceCustom,
 	)
 	if err != nil {
 		return models.Exercise{}, err
@@ -244,6 +259,22 @@ func (s *ExerciseStore) Delete(id int64) error {
 // survives untouched. Returns sql.ErrNoRows if the id doesn't exist.
 func (s *ExerciseStore) SetTimed(id int64, isTimed bool, defaultDurationSeconds int) (models.Exercise, error) {
 	res, err := s.db.Exec(`UPDATE exercises SET is_timed = ?, default_duration_seconds = ? WHERE id = ?`, isTimed, defaultDurationSeconds, id)
+	if err != nil {
+		return models.Exercise{}, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return models.Exercise{}, err
+	} else if n == 0 {
+		return models.Exercise{}, sql.ErrNoRows
+	}
+	return s.Get(id)
+}
+
+// SetModality overrides ANY exercise's training type, library or custom —
+// the same library-wide-correction stance as SetTimed. Library syncs never
+// write this column, so the override survives a re-sync.
+func (s *ExerciseStore) SetModality(id int64, modality string) (models.Exercise, error) {
+	res, err := s.db.Exec(`UPDATE exercises SET modality = ? WHERE id = ?`, modality, id)
 	if err != nil {
 		return models.Exercise{}, err
 	}

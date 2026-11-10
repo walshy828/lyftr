@@ -27,6 +27,8 @@ const EMPTY: types.TrainingStats = {
 export function useTrainingStats(
   days = 365,
   include?: ('daily' | 'muscles' | 'streak')[],
+  /** Narrow to one training type (see GET /workouts/stats?kind=). */
+  kind?: types.Modality,
 ): TrainingStatsResult {
   const [stats, setStats] = useState<types.TrainingStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,6 +48,7 @@ export function useTrainingStats(
         from: format(subDays(to, days - 1), 'yyyy-MM-dd'),
         to: format(to, 'yyyy-MM-dd'),
         include,
+        kind,
       })
       .then(res => {
         if (cancelled) return
@@ -63,7 +66,7 @@ export function useTrainingStats(
 
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days, includeKey])
+  }, [days, includeKey, kind])
 
   return { stats, loading, error }
 }

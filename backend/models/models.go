@@ -116,18 +116,25 @@ type Exercise struct {
 	// DefaultDurationSeconds is the countdown length Gym Mode pre-fills when
 	// IsTimed is true. Meaningless (and left 0) otherwise.
 	DefaultDurationSeconds int `json:"default_duration_seconds,omitempty" db:"default_duration_seconds"`
+	// Modality is the training type this movement counts toward: "strength",
+	// "cardio" or "mobility". Unlike Category (whose meaning differs by
+	// library — see stores/training.go) it means the same thing everywhere.
+	Modality string `json:"modality" db:"modality"`
 }
 
 type Workout struct {
-	ID        int64             `json:"id" db:"id"`
-	UserID    int64             `json:"user_id" db:"user_id"`
-	Name      string            `json:"name" db:"name"`
-	Notes     string            `json:"notes,omitempty" db:"notes"`
-	Duration  int               `json:"duration" db:"duration"` // seconds
-	StartedAt time.Time         `json:"started_at" db:"started_at"`
-	CreatedAt time.Time         `json:"created_at" db:"created_at"`
-	ProgramID *int64            `json:"program_id,omitempty" db:"program_id"`
-	Feeling   int               `json:"feeling" db:"feeling"` // 0=unrated, 1=light, 2=moderate, 3=intense
+	ID        int64     `json:"id" db:"id"`
+	UserID    int64     `json:"user_id" db:"user_id"`
+	Name      string    `json:"name" db:"name"`
+	Notes     string    `json:"notes,omitempty" db:"notes"`
+	Duration  int       `json:"duration" db:"duration"` // seconds
+	StartedAt time.Time `json:"started_at" db:"started_at"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	ProgramID *int64    `json:"program_id,omitempty" db:"program_id"`
+	Feeling   int       `json:"feeling" db:"feeling"` // 0=unrated, 1=light, 2=moderate, 3=intense
+	// Kind is the training type this session counted as: strength, cardio,
+	// mobility or mixed. Copied from the routine, or inferred.
+	Kind      string            `json:"kind" db:"kind"`
 	Exercises []WorkoutExercise `json:"exercises,omitempty"`
 }
 
@@ -871,6 +878,7 @@ type CreateWorkoutRequest struct {
 	StartedAt time.Time                  `json:"started_at"`
 	ProgramID *int64                     `json:"program_id"`
 	Feeling   int                        `json:"feeling" validate:"gte=0,lte=3"`
+	Kind      string                     `json:"kind" validate:"omitempty,oneof=strength cardio mobility mixed"` // optional; empty = routine kind, else inferred
 	Exercises []CreateWorkoutExerciseReq `json:"exercises"`
 }
 
@@ -1472,6 +1480,7 @@ type Program struct {
 	Name       string            `json:"name"`
 	Notes      string            `json:"notes"`
 	IsShared   bool              `json:"is_shared"`
+	Kind       string            `json:"kind"` // strength | cardio | mobility | mixed
 	OwnerEmail string            `json:"owner_email,omitempty"`
 	CreatedAt  time.Time         `json:"created_at"`
 	LastUsedAt *time.Time        `json:"last_used_at,omitempty"`
@@ -1501,6 +1510,7 @@ type ProgramSet struct {
 type CreateProgramRequest struct {
 	Name      string                     `json:"name" validate:"required"`
 	Notes     string                     `json:"notes"`
+	Kind      string                     `json:"kind" validate:"omitempty,oneof=strength cardio mobility mixed"` // optional; empty = infer from exercises
 	Exercises []CreateProgramExerciseReq `json:"exercises"`
 }
 

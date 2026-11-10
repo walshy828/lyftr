@@ -39,15 +39,30 @@ describe('ProgramEditor', () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<ProgramEditor initialData={EMPTY} title="New Program" onSave={onSave} onCancel={() => {}} />)
 
-    fireEvent.change(screen.getByPlaceholderText(/push pull legs/i), { target: { value: 'My Program' } })
+    fireEvent.change(screen.getByPlaceholderText(/push day/i), { target: { value: 'My Program' } })
     fireEvent.click(screen.getByRole('button', { name: /add exercise/i }))
     fireEvent.click(screen.getByText('pick-deadlift'))
     fireEvent.click(screen.getByRole('button', { name: /save program/i }))
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       name: 'My Program',
+      // Not chosen by the user, so it follows the exercises.
+      kind: 'strength',
       exercises: [expect.objectContaining({ exercise_id: 2 })],
     })))
+  })
+
+  it('saves the type the user picks over the suggested one', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<ProgramEditor initialData={EMPTY} title="New Program" onSave={onSave} onCancel={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/push day/i), { target: { value: 'Deadlift + walk' } })
+    fireEvent.click(screen.getByRole('button', { name: /add exercise/i }))
+    fireEvent.click(screen.getByText('pick-deadlift'))
+    fireEvent.click(screen.getByRole('radio', { name: /mixed/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save program/i }))
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: 'mixed' })))
   })
 
   it('renders initialData with resolved exercise names from initialPickerExercises', () => {
@@ -84,7 +99,7 @@ describe('ProgramEditor', () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<ProgramEditor initialData={EMPTY} title="New Program" onSave={onSave} onCancel={() => {}} />)
 
-    fireEvent.change(screen.getByPlaceholderText(/push pull legs/i), { target: { value: 'Mobility' } })
+    fireEvent.change(screen.getByPlaceholderText(/push day/i), { target: { value: 'Mobility' } })
     fireEvent.click(screen.getByRole('button', { name: /add exercise/i }))
     fireEvent.click(screen.getByText('pick-plank'))
 

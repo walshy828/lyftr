@@ -21,6 +21,7 @@ func (h *Handler) ListExercises(c *gin.Context) {
 		Query:       c.Query("q"),
 		MuscleGroup: c.Query("muscle_group"),
 		Category:    c.Query("category"),
+		Modality:    c.Query("modality"),
 		Equipment:   c.Query("equipment"),
 		Level:       c.Query("level"),
 		Force:       c.Query("force"),
@@ -202,6 +203,36 @@ func (h *Handler) SetExerciseTimed(c *gin.Context) {
 	}
 	e, err := h.s.Exercise.SetTimed(id, body.IsTimed, body.DefaultDurationSeconds)
 	if err == sql.ErrNoRows {
+		utils.NotFound(c, "exercise not found")
+		return
+	}
+	if utils.DBError(c, err) {
+		return
+	}
+	utils.OK(c, e)
+}
+
+// SetExerciseModality reclassifies ANY exercise (custom or library) as
+// strength, cardio or mobility — a library-wide correction, like
+// SetExerciseTimed, for movements the name/category rule gets wrong (e.g.
+// "Ankle Circles" reads as strength).
+//
+//	PATCH /api/v1/exercises/:id/modality  {"modality": "mobility"}
+func (h *Handler) SetExerciseModality(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		utils.BadRequest(c, "invalid exercise id")
+		return
+	}
+	var body struct {
+		Modality string `json:"modality"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || !stores.ValidModality(body.Modality) {
+		utils.BadRequest(c, "modality must be strength, cardio or mobility")
+		return
+	}
+	e, err := h.s.Exercise.SetModality(id, body.Modality)
+	if errors.Is(err, sql.ErrNoRows) {
 		utils.NotFound(c, "exercise not found")
 		return
 	}

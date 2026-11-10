@@ -7,6 +7,7 @@ import CreateExerciseSheet from '../components/exercise/CreateExerciseSheet'
 import AddToRoutineSheet from '../components/AddToRoutineSheet'
 import { PageHeader, HScrollTabs } from '../components/ui'
 import { BODY_PART_GROUPS, EQUIPMENT_LABEL, bodyPartOf, type BodyPartGroup } from '../utils/exerciseUtils'
+import { modalityOf } from '../utils/trainingKinds'
 import * as types from '../types'
 
 // Alphabetical, matching how ExerciseDB-style browse UIs order body-part
@@ -14,8 +15,12 @@ import * as types from '../types'
 // not muscle_group) so it's spliced in here rather than in that shared list.
 const PART_TABS: { key: string; label: string }[] = [
   { key: 'all', label: 'All' },
-  ...[...BODY_PART_GROUPS, { key: 'cardio', label: 'Cardio', muscleGroups: [] } satisfies BodyPartGroup]
-    .sort((a, b) => a.label.localeCompare(b.label)),
+  ...[
+    ...BODY_PART_GROUPS,
+    { key: 'cardio', label: 'Cardio', muscleGroups: [] } satisfies BodyPartGroup,
+    // Training-type tab, like Cardio: driven by modality, not muscle_group.
+    { key: 'mobility', label: 'Stretching', muscleGroups: [] } satisfies BodyPartGroup,
+  ].sort((a, b) => a.label.localeCompare(b.label)),
 ]
 
 /**
@@ -94,7 +99,9 @@ export default function Exercises() {
     const q = query.trim().toLowerCase()
     return exercises.filter(ex => {
       if (q && !ex.name.toLowerCase().includes(q)) return false
-      if (part !== 'all' && bodyPartOf(ex) !== part) return false
+      if (part === 'cardio' || part === 'mobility') {
+        if (modalityOf(ex) !== part) return false
+      } else if (part !== 'all' && bodyPartOf(ex) !== part) return false
       if (equipment && ex.equipment !== equipment) return false
       return true
     })
