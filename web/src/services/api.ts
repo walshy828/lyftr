@@ -514,6 +514,10 @@ export const foodAPI = {
       .then(res => unwrap(res)),
   history: (days = 30) => api.get<{ data: types.FoodHistoryPoint[] }>('/food/history', { params: { days } }).then(res => unwrap(res)),
   recent:  () => api.get<{ data: types.RecentFood[] }>('/food/recent').then(res => unwrap(res)),
+  // Searches everything the user has ever logged (not just the last week), one
+  // row per distinct food — for re-logging something eaten a while ago.
+  searchPast: (q: string) =>
+    api.get<{ data: types.RecentFood[] }>('/food/recent', { params: { q } }).then(res => unwrap(res)),
   // `sources` narrows which upstream databases are queried ('off' | 'fdc').
   // Omitted means all of them — the backend treats an absent value as "no
   // restriction", so callers that don't care can ignore it entirely.

@@ -8,6 +8,7 @@ vi.mock('../services/api', () => ({
   foodAPI: {
     list: vi.fn().mockResolvedValue([]),
     recent: vi.fn().mockResolvedValue([]),
+    searchPast: vi.fn().mockResolvedValue([]),
     log: vi.fn().mockResolvedValue({}),
     get: vi.fn(),
     update: vi.fn().mockResolvedValue({}),
@@ -129,6 +130,19 @@ describe('LogFood unified search', () => {
     ;(foodAPI.recent as any).mockResolvedValue([recentEntry, { ...recentEntry, id: 8, name: 'Mustard', brand: '' }])
     ;(savedFoodsAPI.list as any).mockResolvedValue([])
     ;(foodAPI.search as any).mockResolvedValue([])
+    ;(foodAPI.searchPast as any).mockResolvedValue([])
+  })
+
+  it('surfaces older logged entries that are outside the Recent window', async () => {
+    ;(foodAPI.searchPast as any).mockResolvedValue([
+      { ...recentEntry, id: 99, name: 'Chicken burrito bowl', brand: '', log_count: 1 },
+    ])
+
+    renderLogFood()
+    fireEvent.change(await screen.findByPlaceholderText(/search your foods/i), { target: { value: 'burrito' } })
+
+    await waitFor(() => expect(screen.getByText('Chicken burrito bowl')).toBeTruthy())
+    expect(foodAPI.searchPast).toHaveBeenCalledWith('burrito')
   })
 
   it('filters your own foods as you type, without waiting on the database', async () => {

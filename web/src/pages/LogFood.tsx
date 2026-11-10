@@ -199,6 +199,8 @@ export default function LogFood() {
   const [recentItems, setRecentItems] = useState<types.FoodSearchResult[]>([])
   const [recentError, setRecentError] = useState(false)
   const [savedFoods, setSavedFoods] = useState<types.SavedFood[]>([])
+  // Older log entries matching the query — beyond the 7-day Recent window.
+  const [pastItems, setPastItems] = useState<types.FoodSearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [rateLimited, setRateLimited] = useState(false)
@@ -277,6 +279,21 @@ export default function LogFood() {
     // Re-runs when the source selection changes, so toggling a source updates
     // the list in place instead of waiting for the next keystroke.
   }, [query, sources])
+
+  // Search the full log history so a food eaten weeks ago (say, an AI-described
+  // meal) can be found and re-logged. Same debounce as the database search; a
+  // stale response is dropped so a slow request can't overwrite a newer query.
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) { setPastItems([]); return }
+    let cancelled = false
+    const t = setTimeout(() => {
+      foodAPI.searchPast(q)
+        .then(items => { if (!cancelled) setPastItems((items || []).map(entryToResult)) })
+        .catch(() => { if (!cancelled) setPastItems([]) })
+    }, 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [query])
 
   const selectResult = (result: types.FoodSearchResult, quick = false) => {
     const portion = initPortion(result, 1)
@@ -528,6 +545,13 @@ export default function LogFood() {
     return list.filter(sf => !recentNames.has(normalizeFoodName(sf.name)))
   }, [savedFoods, query, filteredRecent, filter])
 
+  // Past log entries that aren't already on screen as a Recent or My Foods row.
+  const filteredPast = useMemo(() => {
+    const seen = new Set(filteredRecent.map(r => normalizeFoodName(r.name)))
+    if (filter === 'all') filteredSaved.forEach(sf => seen.add(normalizeFoodName(sf.name)))
+    return pastItems.filter(p => !seen.has(normalizeFoodName(p.name)))
+  }, [pastItems, filteredRecent, filteredSaved, filter])
+
   // Portion → servings. Every macro is scaled by `servings` exactly as before;
   // only the control the user drives it with has changed.
   const unitOptions: UnitOption[] = useMemo(
@@ -603,7 +627,7 @@ export default function LogFood() {
   const showRecent = filter === 'all' || filter === 'recent'
   const showSaved = filter === 'all' || filter === 'myfoods'
   const showDatabase = filter === 'all' || filter === 'database'
-  const yourFoodsCount = (showRecent ? filteredRecent.length : 0) + (showSaved ? filteredSaved.length : 0)
+  const yourFoodsCount = (showRecent ? filteredRecent.length + filteredPast.length : 0) + (showSaved ? filteredSaved.length : 0)
 
   // Macro inputs edit the displayed (servings-multiplied) total; back-solve the
   // per-serving base value stored on `selected` so the Servings stepper keeps working.
@@ -670,7 +694,7 @@ export default function LogFood() {
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search your foods and the food database…"
+              placeholder="Search your foods, past entries and the food database…"
               className="input pl-10 pr-10 w-full h-12 text-base"
             />
             {query && (
@@ -732,6 +756,14 @@ export default function LogFood() {
             {showRecent && filteredRecent.map((item, i) => (
               <FoodResultRow
                 key={`recent-${item.name}-${item.brand}-${item.calories}-${i}`}
+                item={item}
+                onClick={() => selectResult(item, true)}
+              />
+            ))}
+
+            {showRecent && filteredPast.map((item, i) => (
+              <FoodResultRow
+                key={`past-${item.name}-${item.brand}-${item.calories}-${i}`}
                 item={item}
                 onClick={() => selectResult(item, true)}
               />

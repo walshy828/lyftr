@@ -54,9 +54,22 @@ func (h *Handler) ListFoodLogs(c *gin.Context) {
 
 // ListRecentFoods returns the user's frequently-used foods (most-recent entry
 // per distinct food, ranked most-used-first over the last 7 days) — powers the
-// Log Food "Recent" tab.
+// Log Food "Recent" tab. With ?q=, it instead searches the user's entire
+// logged history (no 7-day window) so an older entry can be found and re-logged.
 func (h *Handler) ListRecentFoods(c *gin.Context) {
 	uid := middleware.UserID(c)
+
+	if q := strings.TrimSpace(c.Query("q")); q != "" {
+		if len(q) > 100 {
+			q = q[:100]
+		}
+		foods, err := h.s.Food.SearchPastFoods(uid, q, 20)
+		if utils.DBError(c, err) {
+			return
+		}
+		utils.OK(c, foods)
+		return
+	}
 
 	foods, err := h.s.Food.RecentFrequentFoods(uid, 7, 20)
 	if utils.DBError(c, err) {

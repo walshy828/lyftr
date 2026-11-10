@@ -2342,3 +2342,41 @@ func TestDeleteFoodLog_cannotDeleteAnotherUsersPhoto(t *testing.T) {
 		t.Fatalf("another user's photo was deleted: %v", err)
 	}
 }
+
+func TestListRecentFoods_querySearchesFullHistory(t *testing.T) {
+	setupTestDB(t)
+	uid := createTestUser(t)
+	other := otherUser(t)
+	now := time.Now()
+
+	// Well outside the 7-day Recent window.
+	insertFoodLog(t, uid, "Chicken burrito bowl", "lunch", 650, 40, 70, 20, now.AddDate(0, 0, -30))
+	insertFoodLog(t, uid, "Chicken burrito bowl", "lunch", 600, 38, 65, 18, now.AddDate(0, 0, -20))
+	insertFoodLog(t, uid, "Oatmeal", "breakfast", 300, 10, 50, 5, now.AddDate(0, 0, -20))
+	insertFoodLog(t, other, "Chicken secret", "lunch", 100, 1, 1, 1, now)
+
+	c, w := newContext(uid, http.MethodGet, "/api/v1/food/recent?q=burrito+chicken", nil)
+	th.ListRecentFoods(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	data := decodeResponse(t, w)["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("expected 1 deduped match (own only), got %d", len(data))
+	}
+	got := data[0].(map[string]any)
+	if got["calories"].(float64) != 600 {
+		t.Errorf("expected latest entry's macros (600 kcal), got %v", got["calories"])
+	}
+	if got["log_count"].(float64) != 2 {
+		t.Errorf("expected log_count=2, got %v", got["log_count"])
+	}
+
+	// LIKE wildcards in the query are literal, not patterns.
+	c, w = newContext(uid, http.MethodGet, "/api/v1/food/recent?q=%25", nil)
+	th.ListRecentFoods(c)
+	if n := len(decodeResponse(t, w)["data"].([]any)); n != 0 {
+		t.Errorf("expected '%%' to match nothing, got %d", n)
+	}
+}

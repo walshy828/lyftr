@@ -3,6 +3,7 @@ package stores
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Cawlumm/lyftr-backend/models"
@@ -257,6 +258,59 @@ func (s *FoodStore) RecentFrequentFoods(uid int64, sinceDays, limit int) ([]mode
 	for rows.Next() {
 		var f models.RecentFood
 		var lastLogged string // throwaway; only present to trigger the max()-row rule
+		if err := rows.Scan(
+			&f.ID, &f.UserID, &f.Name, &f.Brand, &f.Meal,
+			&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol,
+			&f.Servings, &f.ServingSize, &f.ServingSizeGrams, &f.ServingSizeML, &f.Barcode, &f.ImageURL, &f.Source,
+			&f.LoggedAt, &f.CreatedAt, &f.LogCount, &lastLogged,
+		); err != nil {
+			return nil, err
+		}
+		foods = append(foods, f)
+	}
+	return foods, rows.Err()
+}
+
+// SearchPastFoods finds foods the user has logged at any point in their history
+// whose name or brand matches every whitespace-separated token of q. It shares
+// RecentFrequentFoods' shape (one row per distinct food, carrying its latest
+// entry's macros and a log_count) but has no time window and ranks the most
+// recently logged first — the point is to dig up something eaten weeks ago
+// (an AI-described meal, a one-off) by name.
+func (s *FoodStore) SearchPastFoods(uid int64, q string, limit int) ([]models.RecentFood, error) {
+	tokens := strings.Fields(strings.ToLower(q))
+	if len(tokens) == 0 {
+		return []models.RecentFood{}, nil
+	}
+
+	where := "user_id = ?"
+	args := []any{uid}
+	esc := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+	for _, tok := range tokens {
+		where += " AND lower(name || ' ' || COALESCE(brand, '')) LIKE ? ESCAPE '\\'"
+		args = append(args, "%"+esc.Replace(tok)+"%")
+	}
+	args = append(args, limit)
+
+	rows, err := s.db.Query(
+		// Same bare-column-follows-max() trick as RecentFrequentFoods.
+		`SELECT id, user_id, name, brand, meal, calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, servings, serving_size, serving_size_grams, serving_size_ml, barcode, image_url, source, logged_at, created_at, COUNT(*) AS log_count, MAX(logged_at) AS last_logged
+		 FROM food_logs
+		 WHERE `+where+`
+		 GROUP BY `+foodNameKey("name")+`
+		 ORDER BY MAX(logged_at) DESC
+		 LIMIT ?`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	foods := []models.RecentFood{}
+	for rows.Next() {
+		var f models.RecentFood
+		var lastLogged string
 		if err := rows.Scan(
 			&f.ID, &f.UserID, &f.Name, &f.Brand, &f.Meal,
 			&f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.Fiber, &f.Sugar, &f.Sodium, &f.Cholesterol,
