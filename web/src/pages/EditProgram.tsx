@@ -21,7 +21,7 @@ export default function EditProgram() {
 
   useEffect(() => {
     const programId = Number(id)
-    if (!programId) { navigate('/plan'); return }
+    if (!programId) { navigate('/train'); return }
     programAPI.get(programId)
       .then(p => {
         const map: Record<number, types.Exercise> = {}
@@ -61,13 +61,13 @@ export default function EditProgram() {
 
   return (
     <ProgramEditor
-      title="Edit Program"
+      title="Edit Routine"
       initialData={initial.data}
       initialPickerExercises={initial.exercises}
       saveLabel="Save Changes"
       onSave={async payload => {
         await programAPI.update(Number(id), payload)
-        navigate(`/programs/${id}`)
+        navigate(`/routines/${id}`)
       }}
       onCancel={() => navigate(-1)}
     />

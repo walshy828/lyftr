@@ -103,7 +103,7 @@ export default function GymModeWorkout({ wUnit }: GymModeWorkoutProps) {
       if (session) await syncProgramWeights(session)
       cancelSession()
       minimizeGym()
-      navigate('/workouts')
+      navigate('/train/history')
     } catch (err: any) {
       setSaveError(err.response?.data?.error || 'Failed to save workout')
       setSaving(false)

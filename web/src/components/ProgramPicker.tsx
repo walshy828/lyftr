@@ -28,8 +28,8 @@ export default function ProgramPicker({ onSelect, onClose }: Props) {
       <div className="bg-surface-base border border-surface-border rounded-2xl w-full sm:max-w-lg flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border flex-shrink-0">
           <div>
-            <h3 className="font-semibold text-tx-primary">Load from Program</h3>
-            <p className="text-xs text-tx-muted mt-0.5">Pick a program to pre-fill exercises</p>
+            <h3 className="font-semibold text-tx-primary">Load from Routine</h3>
+            <p className="text-xs text-tx-muted mt-0.5">Pick a routine to pre-fill exercises</p>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-surface-muted rounded-lg transition-colors">
             <X className="w-4 h-4 text-tx-muted" />
@@ -50,8 +50,8 @@ export default function ProgramPicker({ onSelect, onClose }: Props) {
           ) : programs.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <BookOpen className="w-8 h-8 text-tx-muted mb-2 opacity-50" />
-              <p className="text-sm text-tx-muted">No programs yet</p>
-              <p className="text-xs text-tx-muted mt-1">Create a program first</p>
+              <p className="text-sm text-tx-muted">No routines yet</p>
+              <p className="text-xs text-tx-muted mt-1">Create a routine first</p>
             </div>
           ) : (
             <div className="divide-y divide-surface-border">

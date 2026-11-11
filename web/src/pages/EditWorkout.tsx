@@ -44,7 +44,7 @@ export default function EditWorkout() {
 
   useEffect(() => {
     const workoutId = Number(id)
-    if (!workoutId) { navigate('/workouts'); return }
+    if (!workoutId) { navigate('/train/history'); return }
     workoutAPI.get(workoutId)
       .then(workout => {
         const map: Record<number, types.Exercise> = {}
@@ -130,7 +130,7 @@ export default function EditWorkout() {
         })),
       }
       await workoutAPI.update(Number(id), payload)
-      navigate('/workouts')
+      navigate('/train/history')
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to update workout')
     } finally {

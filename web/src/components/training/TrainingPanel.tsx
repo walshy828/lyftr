@@ -93,7 +93,10 @@ export default function TrainingPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <Link to="/train/history" className="btn-ghost inline-flex items-center gap-1.5 text-sm">
+          History <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
         <Link to="/stats/weekly" className="btn-secondary inline-flex items-center gap-1.5 text-sm">
           Weekly Summary <ArrowRight className="w-3.5 h-3.5" />
         </Link>
@@ -149,46 +152,18 @@ export default function TrainingPanel() {
 
       <ActivityOverlapCard workoutDaily={year.stats?.daily ?? []} cardioDaily={cardio.stats?.daily ?? []} />
 
-      {/* Synced Cardio totals — a distinct data source from any "Cardio" label
-          elsewhere on this page (that one classifies exercises logged inside a
-          workout; this is the Health Connect import). Same trailing year as
-          the headline totals above. */}
-      <div className="card p-4">
-        <SectionHeader icon={HeartPulse} title="Synced Cardio" className="mb-3" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatTile
-            label="Sessions"
-            value={cardio.stats?.totals.sessions ?? 0}
-            sub={`${cardio.stats?.totals.active_days ?? 0} active days`}
-            icon={HeartPulse}
-            accent="#ef4444"
-          />
-          <StatTile
-            label="Time"
-            value={hoursLabel(cardio.stats?.totals.duration ?? 0)}
-            unit="h"
-            sub="past year"
-            icon={Clock}
-            accent="#a78bfa"
-          />
-          <StatTile
-            label="Distance"
-            value={((cardio.stats?.totals.distance_meters ?? 0) / 1000).toFixed(1)}
-            unit="km"
-            sub="past year"
-            icon={TrendingUp}
-            accent="#22d3ee"
-          />
-          <StatTile
-            label="Calories"
-            value={Math.round(cardio.stats?.totals.calories ?? 0).toLocaleString()}
-            unit="kcal"
-            sub="past year"
-            icon={Flame}
-            accent="#f59e0b"
-          />
-        </div>
-      </div>
+      {/* Synced cardio has its own tab (sessions, HR zones, distance); the
+          heatmap and overlap card above already fold it into consistency. */}
+      <Link to="/stats?tab=cardio" className="card-interactive flex items-center gap-3 p-4">
+        <HeartPulse className="w-5 h-5 text-heart flex-shrink-0" />
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-semibold text-tx-primary">Synced cardio</span>
+          <span className="block text-xs text-tx-muted">
+            {cardio.stats?.totals.sessions ?? 0} sessions · {hoursLabel(cardio.stats?.totals.duration ?? 0)} h · {((cardio.stats?.totals.distance_meters ?? 0) / 1609.34).toFixed(0)} mi past year
+          </span>
+        </span>
+        <ArrowRight className="w-4 h-4 text-tx-muted" />
+      </Link>
 
       <MuscleMapCard
         muscles={muscles.stats?.muscles ?? []}

@@ -68,7 +68,7 @@ export default function LastWorkoutCard({ workouts, settings }: {
             </span>
           )}
         </div>
-        <Link to="/workouts" onClick={e => e.stopPropagation()} className="flex items-center gap-0.5 text-xs text-brand-400 hover:text-brand-300 flex-shrink-0 transition-colors">
+        <Link to="/train/history" onClick={e => e.stopPropagation()} className="flex items-center gap-0.5 text-xs text-brand-400 hover:text-brand-300 flex-shrink-0 transition-colors">
           All <ArrowRight className="w-3 h-3" />
         </Link>
       </div>

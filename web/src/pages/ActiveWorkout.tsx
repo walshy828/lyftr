@@ -117,7 +117,7 @@ export default function ActiveWorkout() {
       await workoutAPI.create(payload)
       if (session) await syncProgramWeights(session)
       cancelSession()
-      navigate('/workouts')
+      navigate('/train/history')
     } catch (err: any) {
       setSaveError(err.response?.data?.error || 'Failed to save workout')
       setSaving(false)

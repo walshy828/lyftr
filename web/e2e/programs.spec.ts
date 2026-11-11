@@ -52,22 +52,22 @@ test.describe('Programs', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/plan/schedule')
+    await page.goto('/train')
   })
 
   test('page loads and shows routines or empty state', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /schedule & routines/i })).toBeVisible()
-    await expect(page.getByText('Routines')).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^train$/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^routines$/i })).toBeVisible()
     const hasPrograms = await page.getByText(SEED_PROGRAM_NAME).isVisible().catch(() => false)
     const hasEmpty = await page.getByText(/no routines/i).isVisible().catch(() => false)
     expect(hasPrograms || hasEmpty).toBe(true)
   })
 
   test('create program via add page', async ({ page }) => {
-    await page.goto('/programs/new')
-    await expect(page.getByRole('heading', { name: /new program/i })).toBeVisible()
+    await page.goto('/routines/new')
+    await expect(page.getByRole('heading', { name: /new routine/i })).toBeVisible()
 
-    await page.getByPlaceholder(/push pull legs, upper lower/i).fill(E2E_PROGRAM_NAME)
+    await page.getByPlaceholder(/push day, morning mobility/i).fill(E2E_PROGRAM_NAME)
     await page.getByPlaceholder(/description or goals/i).fill('Test description')
 
     // Add exercise
@@ -85,14 +85,14 @@ test.describe('Programs', () => {
     await page.locator('input[placeholder="10"]').first().fill('5')
     await page.locator('input[placeholder="135"]').first().fill('225')
 
-    await page.getByRole('button', { name: /save program/i }).click()
-    await page.waitForURL(/\/programs\/\d+(\?new=1)?$/)
+    await page.getByRole('button', { name: /save routine/i }).click()
+    await page.waitForURL(/\/routines\/\d+(\?new=1)?$/)
     await expect(page.getByText(E2E_PROGRAM_NAME).first()).toBeVisible()
   })
 
   test('search filters program list', async ({ page }) => {
     await expect(page.getByText(SEED_SEARCH_PROGRAM_NAME).first()).toBeVisible({ timeout: 5000 })
-    const searchInput = page.getByPlaceholder(/search programs/i)
+    const searchInput = page.getByPlaceholder(/search routines/i)
     await searchInput.fill('SearchTarget')
     await expect(page.getByText(SEED_SEARCH_PROGRAM_NAME).first()).toBeVisible()
     // toHaveCount(0) auto-retries until fully filtered out; not.toBeVisible()
@@ -101,7 +101,7 @@ test.describe('Programs', () => {
   })
 
   test('clearing search restores full list', async ({ page }) => {
-    const searchInput = page.getByPlaceholder(/search programs/i)
+    const searchInput = page.getByPlaceholder(/search routines/i)
     await searchInput.fill('SearchTarget')
     await expect(page.getByText(SEED_SEARCH_PROGRAM_NAME).first()).toBeVisible()
     await searchInput.fill('')
@@ -109,16 +109,29 @@ test.describe('Programs', () => {
     await expect(page.getByText(SEED_SEARCH_PROGRAM_NAME).first()).toBeVisible()
   })
 
+  test('schedule page loads from Train', async ({ page }) => {
+    await page.getByRole('link', { name: /schedule/i }).first().click()
+    await expect(page).toHaveURL(/\/train\/schedule$/)
+    await expect(page.getByRole('heading', { name: /^schedule$/i })).toBeVisible()
+  })
+
+  test('old /programs and /plan links redirect', async ({ page }) => {
+    await page.goto('/plan/schedule')
+    await expect(page).toHaveURL(/\/train\/schedule$/)
+    await page.goto('/programs/new')
+    await expect(page).toHaveURL(/\/routines\/new$/)
+  })
+
   test('search input stays focused while typing', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /schedule & routines/i })).toBeVisible()
-    const searchInput = page.getByPlaceholder(/search programs/i)
+    await expect(page.getByRole('heading', { name: /^train$/i })).toBeVisible()
+    const searchInput = page.getByPlaceholder(/search routines/i)
     await searchInput.click()
     await searchInput.type('S')
     await expect(searchInput).toBeFocused()
   })
 
   test('program detail page loads with exercises', async ({ page }) => {
-    await page.goto(`/programs/${programId}`)
+    await page.goto(`/routines/${programId}`)
     await expect(page.getByRole('heading')).toBeVisible()
   })
 
@@ -126,13 +139,13 @@ test.describe('Programs', () => {
     // Quick-start lives on the program's own detail page — the Plan page's
     // compact routine cards just link through to it (see ProgramCard's
     // `compact` variant).
-    await page.goto(`/programs/${programId}`)
+    await page.goto(`/routines/${programId}`)
     await page.getByRole('button', { name: /start workout/i }).click()
     await expect(page).toHaveURL(/\/workout\/(active|start|add)|\/workouts/)
   })
 
   test('target weight unit shown correctly in program add form', async ({ page }) => {
-    await page.goto('/programs/new')
+    await page.goto('/routines/new')
     await page.getByRole('button', { name: /add exercise/i }).click()
     await page.getByPlaceholder(/search name/i).fill('deadlift')
     await page.getByText(/deadlift/i).first().click()
@@ -148,18 +161,18 @@ test.describe('Programs', () => {
     // Delete lives on the program's own detail page now — the Plan page's
     // compact routine cards link straight through instead of carrying a
     // kebab menu (see ProgramCard's `compact` variant).
-    await page.goto(`/programs/${programId}`)
+    await page.goto(`/routines/${programId}`)
     await expect(page.getByRole('heading', { name: SEED_PROGRAM_NAME })).toBeVisible({ timeout: 5000 })
 
-    await page.getByRole('button', { name: /delete program/i }).click()
+    await page.getByRole('button', { name: /delete routine/i }).click()
     await expect(page.getByText(/will be permanently deleted/i)).toBeVisible({ timeout: 5000 })
     await page.getByRole('button', { name: /cancel/i }).click()
     await expect(page.getByText(/will be permanently deleted/i)).not.toBeVisible()
   })
 
   test('edit program preserves existing data', async ({ page }) => {
-    await page.goto(`/programs/${programId}/edit`)
-    await expect(page.getByRole('heading', { name: /edit program/i })).toBeVisible()
+    await page.goto(`/routines/${programId}/edit`)
+    await expect(page.getByRole('heading', { name: /edit routine/i })).toBeVisible()
     const nameInput = page.locator('input[type="text"]').first()
     const value = await nameInput.inputValue()
     expect(value.length).toBeGreaterThan(0)
@@ -192,8 +205,8 @@ test.describe('Programs', () => {
     const reorderProgramId = created.id
 
     try {
-      await page.goto(`/programs/${reorderProgramId}/edit`)
-      await expect(page.getByRole('heading', { name: /edit program/i })).toBeVisible()
+      await page.goto(`/routines/${reorderProgramId}/edit`)
+      await expect(page.getByRole('heading', { name: /edit routine/i })).toBeVisible()
 
       const exerciseNames = page.locator('p.font-semibold.text-tx-primary')
       await expect(exerciseNames).toHaveCount(2)
@@ -206,7 +219,7 @@ test.describe('Programs', () => {
       await expect(exerciseNames.nth(1)).toHaveText(firstBefore || '')
 
       await page.getByRole('button', { name: /save changes/i }).click()
-      await page.waitForURL(`/programs/${reorderProgramId}`)
+      await page.waitForURL(`/routines/${reorderProgramId}`)
 
       const getResp = await request.get(`${API}/programs/${reorderProgramId}`, { headers })
       const program = (await getResp.json()).data

@@ -67,13 +67,13 @@ test.describe('Workouts', () => {
   })
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('/workouts')
+    await page.goto('/train/history')
   })
 
   test('page loads and shows workouts or empty state', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /workouts/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^history$/i })).toBeVisible()
     const hasWorkouts = await page.locator('.card').count() > 0
-    const hasEmpty = await page.getByText(/no workouts|start your first/i).isVisible().catch(() => false)
+    const hasEmpty = await page.getByText(/nothing found|nothing logged/i).isVisible().catch(() => false)
     expect(hasWorkouts || hasEmpty).toBe(true)
   })
 
@@ -101,7 +101,7 @@ test.describe('Workouts', () => {
     await page.locator('input[placeholder="225"]').first().fill('135')
 
     await page.getByRole('button', { name: /save workout/i }).click()
-    await page.waitForURL('/workouts')
+    await page.waitForURL('/train/history')
     await expect(page.getByText(E2E_WORKOUT_NAME).first()).toBeVisible()
   })
 
@@ -155,7 +155,7 @@ test.describe('Workouts', () => {
   })
 
   test('search input stays focused while typing', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /workouts/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^history$/i })).toBeVisible()
     const searchInput = page.getByPlaceholder(/search workouts/i)
     await searchInput.click()
     await searchInput.type('S')
@@ -172,7 +172,7 @@ test.describe('Workouts', () => {
       kgButton.click(),
     ])
 
-    await page.goto('/workouts')
+    await page.goto('/train/history')
     const volumeElements = page.locator('text=/\\d+ kg/')
     const count = await volumeElements.count()
     if (count > 0) {

@@ -24,7 +24,7 @@ const NAV = [
   { path: '/',      label: 'Today',  icon: TodayIcon, match: (p: string) => p === '/' },
   { path: '/food',  label: 'Food',   icon: Apple,     match: (p: string) => p.startsWith('/food') },
   { path: '/stats', label: 'Trends', icon: BarChart3, match: (p: string) => p.startsWith('/stats') || p.startsWith('/weight') },
-  { path: '/plan',  label: 'Train',  icon: Dumbbell,  match: (p: string) => ['/plan', '/workout', '/programs', '/exercises'].some(x => p.startsWith(x)) },
+  { path: '/train',  label: 'Train',  icon: Dumbbell,  match: (p: string) => ['/train', '/workout', '/routines', '/exercises'].some(x => p.startsWith(x)) },
 ]
 
 function formatElapsed(seconds: number) {
@@ -150,7 +150,7 @@ function UserMenu({ up = false }: { up?: boolean }) {
               Settings
             </Link>
             <Link
-              to="/workouts"
+              to="/train/history"
               onClick={() => setOpen(false)}
               className="flex items-center gap-3 px-4 py-2.5 text-sm text-tx-secondary hover:text-tx-primary hover:bg-surface-muted/50 transition-colors"
             >
@@ -200,9 +200,9 @@ export default function Layout() {
     workoutAPI.list({ limit: 5 })
       .then(workouts => {
         const match = workouts.find(w => new Date(w.started_at).getTime() === endedStartedAt)
-        navigate(match ? `/workouts/${match.id}` : '/workouts')
+        navigate(match ? `/workouts/${match.id}` : '/train/history')
       })
-      .catch(() => navigate('/workouts'))
+      .catch(() => navigate('/train/history'))
       .finally(() => clearEndedRemotely())
   }, [endedRemotely, navigate, clearEndedRemotely])
 

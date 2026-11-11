@@ -1,24 +1,56 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { format, startOfWeek, subDays, isAfter, isBefore } from 'date-fns'
-import { Dumbbell, Plus, Play, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, TrendingDown, Minus, ChevronRight, MoreVertical, Footprints } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Dumbbell, Plus, Clock, Search, AlertCircle, Edit2, Trash2, TrendingUp, TrendingDown, Minus, ChevronRight, ChevronLeft, MoreVertical, RefreshCw } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import Loading from '../components/Loading'
 import EmptyState from '../components/ui/EmptyState'
 import PageHeader from '../components/ui/PageHeader'
 import PeriodSelector from '../components/PeriodSelector'
 import { FeelingBadge, FocusBadge } from '../components/WorkoutBadges'
-import QuickCardioModal from '../components/QuickCardioModal'
+import { KindChips } from '../components/training/TrainSheet'
+import { KIND_META, kindsOf } from '../utils/trainingKinds'
 import { useServerInfiniteList } from '../hooks/useServerInfiniteList'
-import { workoutAPI } from '../services/api'
+import { workoutAPI, cardioAPI } from '../services/api'
 import { useSettingsStore, weightShort, displayVolume } from '../stores/settings'
-import { useWorkoutSession } from '../stores/workoutSession'
 import * as types from '../types'
 import { muscleColor } from '../utils/exerciseUtils'
 
 const PERIODS = ['7d', '30d', '90d', 'All'] as const
 type Period = typeof PERIODS[number]
 const PERIOD_DAYS: Record<Period, number | null> = { '7d': 7, '30d': 30, '90d': 90, 'All': null }
+
+/** One row of history: a logged workout, or a cardio session synced from the watch. */
+type Row =
+  | { source: 'workout'; at: string; duration: number; kind: types.TrainingKind; workout: types.Workout }
+  | { source: 'synced'; at: string; duration: number; kind: 'cardio'; session: types.CardioSession }
+
+const rowKey = (r: Row) => (r.source === 'workout' ? `w-${r.workout.id}` : `c-${r.session.id}`)
+
+function SyncedCard({ session: c }: { session: types.CardioSession }) {
+  const at = new Date(c.started_at)
+  const m = KIND_META.cardio
+  const title = c.title || c.activity_type.replace(/_/g, ' ').toLowerCase().replace(/^./, x => x.toUpperCase())
+  return (
+    <Link to="/stats?tab=cardio" className="card flex items-center p-4 gap-3">
+      <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 leading-none ${m.tint}`}>
+        <span className="text-[9px] font-bold uppercase tracking-wide">{format(at, 'EEE')}</span>
+        <span className="text-base font-bold text-tx-primary mt-0.5">{format(at, 'd')}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-tx-primary whitespace-nowrap">{format(at, 'MMM d, yyyy')}</p>
+        <p className="text-xs text-tx-muted truncate mt-0.5">{title}</p>
+        <div className="flex items-center gap-x-2 mt-1 text-xs text-tx-muted">
+          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{Math.round(c.duration_seconds / 60)} min</span>
+          {c.distance_meters > 0 && <><span className="text-tx-muted/40">·</span><span>{(c.distance_meters / 1609.34).toFixed(1)} mi</span></>}
+          <span className="text-tx-muted/40">·</span>
+          <span className="flex items-center gap-1"><RefreshCw className="w-3 h-3" />Synced</span>
+        </div>
+      </div>
+      <ChevronRight className="w-4 h-4 text-tx-muted flex-shrink-0" />
+    </Link>
+  )
+}
 
 function WorkoutCard({ workout, onEdit, onDelete }: { workout: types.Workout; onEdit: (id: number) => void; onDelete: (id: number) => void }) {
   const navigate = useNavigate()
@@ -207,12 +239,16 @@ function WorkoutCard({ workout, onEdit, onDelete }: { workout: types.Workout; on
 
 export default function Workouts() {
   const navigate = useNavigate()
-  const { session } = useWorkoutSession()
+  const [kind, setKind] = useState<types.TrainingKind | 'all'>('all')
+  const [synced, setSynced] = useState<types.CardioSession[]>([])
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [period, setPeriod] = useState<Period>('30d')
   const [error, setError] = useState<string | null>(null)
-  const [showQuickCardio, setShowQuickCardio] = useState(false)
+
+  useEffect(() => {
+    cardioAPI.list({ limit: 200 }).then(r => setSynced(r ?? [])).catch(() => setSynced([]))
+  }, [])
 
   // Debounce search so we don't fire a request on every keystroke
   useEffect(() => {
@@ -236,49 +272,59 @@ export default function Workouts() {
     )
   }
 
+  // Synced sessions only go back as far as the loaded workouts do, so the
+  // merged list doesn't run ahead of infinite scroll.
+  const oldestLoaded = !hasMore || workouts.length === 0 ? '' : workouts[workouts.length - 1].started_at
+  const needle = debouncedSearch.trim().toLowerCase()
+  const rows: Row[] = [
+    ...workouts.map(w => ({
+      source: 'workout' as const, at: w.started_at, duration: w.duration, workout: w,
+      kind: w.kind ?? kindsOf(w.kind, w.exercises?.map(e => e.exercise))[0],
+    })),
+    ...synced
+      .filter(c => c.started_at >= oldestLoaded)
+      .filter(c => !needle || (c.title || c.activity_type).toLowerCase().includes(needle))
+      .map(c => ({ source: 'synced' as const, at: c.started_at, duration: c.duration_seconds, kind: 'cardio' as const, session: c })),
+  ]
+    .filter(r => kind === 'all' || r.kind === kind)
+    .sort((a, b) => b.at.localeCompare(a.at))
+
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   const lastWeekStart = subDays(weekStart, 7)
-  const thisWeek = workouts.filter(w => isAfter(new Date(w.started_at), weekStart))
-  const lastWeek = workouts.filter(w => {
-    const d = new Date(w.started_at)
+  const thisWeek = rows.filter(r => isAfter(new Date(r.at), weekStart))
+  const lastWeek = rows.filter(r => {
+    const d = new Date(r.at)
     return !isBefore(d, lastWeekStart) && isBefore(d, weekStart)
   })
   const weekDelta = thisWeek.length - lastWeek.length
-  const thisWeekIds = new Set(thisWeek.map(w => w.id))
+  const thisWeekKeys = new Set(thisWeek.map(rowKey))
   const periodDays = PERIOD_DAYS[period]
   const periodCutoff = periodDays != null ? subDays(new Date(), periodDays) : null
-  const historical = workouts
-    .filter(w => !thisWeekIds.has(w.id))
-    .filter(w => !periodCutoff || isAfter(new Date(w.started_at), periodCutoff))
+  const historical = rows
+    .filter(r => !thisWeekKeys.has(rowKey(r)))
+    .filter(r => !periodCutoff || isAfter(new Date(r.at), periodCutoff))
+
+  const renderRow = (r: Row) => r.source === 'synced'
+    ? <SyncedCard key={rowKey(r)} session={r.session} />
+    : <WorkoutCard key={rowKey(r)} workout={r.workout}
+        onEdit={(id) => navigate(`/workouts/${id}/edit`)}
+        onDelete={() => reload()}
+      />
 
   return (
     <div className="space-y-5 animate-slide-up">
+      <Link to="/train" className="inline-flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary">
+        <ChevronLeft className="w-4 h-4" /> Train
+      </Link>
       <PageHeader
-        title="Workouts"
-        subtitle="Track and review your training sessions"
+        title="History"
+        subtitle="Every workout you've logged, plus cardio synced from your watch"
         action={
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button onClick={() => setShowQuickCardio(true)} className="btn-secondary btn-sm flex-1 sm:flex-none">
-              <Footprints className="w-4 h-4" /> Cardio
-            </button>
-            <button onClick={() => navigate('/workouts/new')} className="btn-secondary btn-sm flex-1 sm:flex-none min-w-0">
-              <Plus className="w-4 h-4" />
-              {/* Single flex item so .btn's gap doesn't stack with the word space. */}
-              <span><span className="hidden sm:inline">Log </span>Workout</span>
-            </button>
-            <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm flex-1 sm:flex-none">
-              <Play className="w-4 h-4" /> {session ? 'Resume' : 'Start'}
-            </button>
-          </div>
+          <button onClick={() => navigate('/train?start=1')} className="btn-primary btn-sm w-full sm:w-auto">
+            <Plus className="w-4 h-4" /> Start or log
+          </button>
         }
       />
-
-      {showQuickCardio && (
-        <QuickCardioModal
-          onClose={() => setShowQuickCardio(false)}
-          onLogged={() => reload()}
-        />
-      )}
 
       {/* Summary — this week vs last week trend */}
       <div className="grid grid-cols-3 gap-3">
@@ -317,7 +363,7 @@ export default function Workouts() {
             <span className="stat-label text-[10px] sm:text-xs truncate">Avg Time</span>
           </div>
           <div className="flex items-end gap-1 min-w-0">
-            <span className="stat-value text-xl">{workouts.length > 0 ? Math.round(workouts.reduce((sum, w) => sum + w.duration, 0) / workouts.length / 60) : 0}</span>
+            <span className="stat-value text-xl">{rows.length > 0 ? Math.round(rows.reduce((sum, r) => sum + r.duration, 0) / rows.length / 60) : 0}</span>
             <span className="text-xs text-tx-muted mb-0.5 truncate">min</span>
           </div>
         </div>
@@ -333,11 +379,12 @@ export default function Workouts() {
           placeholder="Search workouts…"
         />
       </div>
+      <KindChips value={kind} onChange={setKind} />
 
-      {workouts.length === 0 && !loading ? (
+      {rows.length === 0 && !loading ? (
         <EmptyState
           icon={Dumbbell}
-          title="No workouts found"
+          title="Nothing found"
           subtitle={search ? 'Try a different search' : 'Log a workout to get started'}
         />
       ) : (
@@ -348,14 +395,11 @@ export default function Workouts() {
             {thisWeek.length === 0 ? (
               <EmptyState
                 icon={Dumbbell}
-                title="No workouts yet this week"
+                title="Nothing logged yet this week"
                 subtitle="Let's fix that"
               />
             ) : (
-              thisWeek.map(w => <WorkoutCard key={w.id} workout={w}
-                onEdit={(id) => navigate(`/workouts/${id}/edit`)}
-                onDelete={() => reload()}
-              />)
+              thisWeek.map(renderRow)
             )}
           </div>
 
@@ -368,14 +412,11 @@ export default function Workouts() {
             {historical.length === 0 ? (
               <EmptyState
                 icon={Dumbbell}
-                title="No historical workouts"
+                title="Nothing earlier in this period"
                 subtitle="Try a wider time period"
               />
             ) : (
-              historical.map(w => <WorkoutCard key={w.id} workout={w}
-                onEdit={(id) => navigate(`/workouts/${id}/edit`)}
-                onDelete={() => reload()}
-              />)
+              historical.map(renderRow)
             )}
             <div ref={sentinelRef} />
             {hasMore && loading && (

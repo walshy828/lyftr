@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { format, startOfWeek, addDays, parseISO } from 'date-fns'
 import {
-  Play, Plus, Footprints, Check, X, Circle, Dumbbell, Trophy, CalendarRange, Sparkles,
-  Library, List, ChevronRight, Timer,
+  Play, Plus, Check, X, Circle, CalendarRange, Library, Timer, BarChart3, History, Target,
 } from 'lucide-react'
 import { scheduleAPI, workoutAPI, cardioAPI, programAPI, trainingAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
-import { useSettingsStore, displayWeight, weightShort } from '../stores/settings'
 import { buildTrainWeek, goalProgress, nextSession, type TrainDay } from '../utils/trainWeek'
 import { KIND_META, MODALITIES, kindsOf } from '../utils/trainingKinds'
 import { GoalBars, GoalsSheet } from '../components/training/TrainingGoals'
+import TrainSheet from '../components/training/TrainSheet'
+import RoutineList from '../components/training/RoutineList'
 import QuickCardioModal from '../components/QuickCardioModal'
 import Loading from '../components/Loading'
 import * as types from '../types'
@@ -18,69 +18,81 @@ import * as types from '../types'
 const iso = (d: Date) => format(d, 'yyyy-MM-dd')
 
 /**
- * Train — the gym-day screen. What's planned this week and how it's going,
- * the next session ready to start, recent PRs and activity. Building routines
- * and editing the weekly pattern is rarer, so it sits one level down under
- * "Build" rather than taking the first screen.
+ * Train — everything about training in one place, top to bottom in the order
+ * it's needed: one button to start or log anything, how this week stands
+ * against the goals, what's on today, the routines themselves, and recent
+ * history with the way into Trends. Editing the weekly pattern lives one level
+ * down on /train/schedule.
  */
 export default function Train() {
   const navigate = useNavigate()
+  const { hash } = useLocation()
+  const [params, setParams] = useSearchParams()
   const { session } = useWorkoutSession()
-  const { settings } = useSettingsStore()
-  const [now] = useState(() => new Date())
-  const [schedule, setSchedule] = useState<types.ScheduledDay[]>([])
+  const [now, setNow] = useState(() => new Date())
+  const [schedule, setSchedule] = useState<types.ScheduleResponse | null>(null)
   const [workouts, setWorkouts] = useState<types.Workout[]>([])
   const [cardio, setCardio] = useState<types.CardioSession[]>([])
-  const [prs, setPrs] = useState<types.RecentPR[]>([])
-  const [routineCount, setRoutineCount] = useState<number | null>(null)
+  const [routines, setRoutines] = useState<types.Program[]>([])
   const [next, setNext] = useState<types.Program | null>(null)
   const [typeDays, setTypeDays] = useState<types.TrainingTypeDay[]>([])
   const [goals, setGoals] = useState<types.TrainingGoal[]>([])
   const [loading, setLoading] = useState(true)
   const [showCardio, setShowCardio] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
+  const showSheet = params.get('start') === '1'
+  const setShowSheet = (open: boolean) => setParams(prev => {
+    const p = new URLSearchParams(prev)
+    if (open) p.set('start', '1'); else p.delete('start')
+    return p
+  }, { replace: true })
 
   useEffect(() => {
     const start = startOfWeek(now, { weekStartsOn: 1 })
     Promise.all([
       // Two weeks, so "next session" can roll into next week on a Sunday.
-      scheduleAPI.range(iso(start), iso(addDays(start, 13))).then(r => r.days).catch(() => []),
+      scheduleAPI.range(iso(start), iso(addDays(start, 13))).catch(() => null),
       workoutAPI.list({ limit: 30 }).catch(() => []),
       cardioAPI.list({ limit: 30 }).catch(() => []),
-      workoutAPI.prs(5).catch(() => []),
-      programAPI.list({ limit: 100 }).catch(() => null),
+      programAPI.list({ sort: 'smart', limit: 100 }).catch(() => []),
       trainingAPI.days(iso(start), iso(addDays(start, 6))).catch(() => []),
       trainingAPI.goals().catch(() => []),
-    ]).then(([s, w, c, p, progs, td, g]) => {
-      setSchedule(s); setWorkouts(w); setCardio(c); setPrs(p)
-      setRoutineCount(progs ? progs.length : null)
+    ]).then(([s, w, c, progs, td, g]) => {
+      setSchedule(s); setWorkouts(w); setCardio(c); setRoutines(progs ?? [])
       setTypeDays(td); setGoals(g)
     }).finally(() => setLoading(false))
   }, [now])
 
-  const week = useMemo(() => buildTrainWeek(now, schedule, workouts, cardio, typeDays), [now, schedule, workouts, cardio, typeDays])
+  // Landing on /train#routines (old /programs links) scrolls to the list.
+  useEffect(() => {
+    if (!loading && hash === '#routines') document.getElementById('routines')?.scrollIntoView()
+  }, [loading, hash])
+
+  const days = useMemo(() => schedule?.days ?? [], [schedule])
+  const week = useMemo(() => buildTrainWeek(now, days, workouts, cardio, typeDays), [now, days, workouts, cardio, typeDays])
   const progress = useMemo(() => goalProgress(week.byKind, goals), [week, goals])
-  const upNext = useMemo(() => nextSession(schedule, iso(now)), [schedule, now])
+  const todayPlan = useMemo(() => days.find(d => d.date === iso(now))?.programs ?? [], [days, now])
+  const todayPending = todayPlan.filter(p => !p.completed_workout_id)
+  const upNext = useMemo(() => nextSession(days, iso(now)), [days, now])
 
   useEffect(() => {
     if (!upNext) { setNext(null); return }
+    const local = routines.find(r => r.id === upNext.programId)
+    if (local) { setNext(local); return }
     programAPI.get(upNext.programId).then(setNext).catch(() => setNext(null))
-  }, [upNext])
+  }, [upNext, routines])
 
   const activity = useMemo(() => {
     const rows = [
       ...workouts.map(w => ({ source: 'workout' as const, kind: w.kind ?? kindsOf(w.kind, w.exercises?.map(e => e.exercise))[0], id: w.id, at: w.started_at, title: w.name, sub: `${w.exercises?.length ?? 0} exercises · ${Math.round(w.duration / 60)} min` })),
-      ...cardio.map(c => ({ source: 'synced' as const, kind: 'cardio' as const, id: c.id, at: c.started_at, title: c.title || cardioLabel(c.activity_type), sub: `${Math.round(c.duration_seconds / 60)} min${c.distance_meters ? ` · ${(c.distance_meters / 1609.34).toFixed(1)} mi` : ''}` })),
+      ...cardio.map(c => ({ source: 'synced' as const, kind: 'cardio' as const, id: c.id, at: c.started_at, title: c.title || cardioLabel(c.activity_type), sub: `${Math.round(c.duration_seconds / 60)} min${c.distance_meters ? ` · ${(c.distance_meters / 1609.34).toFixed(1)} mi` : ''} · synced` })),
     ]
-    return rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6)
+    return rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5)
   }, [workouts, cardio])
 
   if (loading) return <Loading />
 
-  const unit = weightShort(settings.weight_unit)
-  const nextLabel = upNext
-    ? upNext.date === iso(now) ? 'Today' : format(parseISO(upNext.date), 'EEEE')
-    : null
+  const upNextLabel = upNext && upNext.date !== iso(now) ? format(parseISO(upNext.date), 'EEEE') : null
 
   return (
     <div className="space-y-4 animate-slide-up">
@@ -89,18 +101,70 @@ export default function Train() {
           <p className="eyebrow">Week of {format(startOfWeek(now, { weekStartsOn: 1 }), 'MMM d')}</p>
           <h1 className="font-display font-bold text-[26px] leading-tight text-tx-primary mt-0.5">Train</h1>
         </div>
-        <Link to="/plan/schedule" className="btn-secondary btn-sm"><CalendarRange className="w-3.5 h-3.5" /> Schedule</Link>
+        <Link to="/train/schedule" className="btn-secondary btn-sm"><CalendarRange className="w-3.5 h-3.5" /> Schedule</Link>
       </header>
 
-      <div className="grid grid-cols-3 gap-2">
-        <button onClick={() => navigate(session ? '/workout/active' : '/workout/start')} className="btn-primary btn-md">
-          {session ? <><Timer className="w-4 h-4" /> Resume</> : <><Play className="w-4 h-4" /> Start</>}
+      {session ? (
+        <button onClick={() => navigate('/workout/active')} className="btn-primary btn-lg w-full">
+          <Timer className="w-4 h-4" /> Resume {session.name}
         </button>
-        <button onClick={() => navigate('/workouts/new')} className="btn-secondary btn-md"><Plus className="w-4 h-4" /> Log</button>
-        <button onClick={() => setShowCardio(true)} className="btn-secondary btn-md"><Footprints className="w-4 h-4" /> Cardio</button>
+      ) : (
+        <button onClick={() => setShowSheet(true)} className="btn-primary btn-lg w-full">
+          <Plus className="w-4 h-4" /> Start or log training
+        </button>
+      )}
+
+      {/* Today — what's scheduled, or what's next if today is clear */}
+      <div className="card overflow-hidden">
+        <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+          <p className="eyebrow">Today · {format(now, 'EEEE')}</p>
+          {todayPlan.length > 0 && todayPending.length === 0 && <span className="text-xs text-train flex items-center gap-1"><Check className="w-3.5 h-3.5" /> All done</span>}
+        </div>
+        {todayPlan.length > 0 ? (
+          <ul className="divide-y divide-surface-border border-t border-surface-border">
+            {todayPlan.map(p => {
+              const m = KIND_META[p.kind ?? 'strength']
+              return (
+                <li key={p.program_id} className="px-4 py-3 flex items-center gap-3">
+                  <span className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${m.tint}`}><m.icon className="w-4 h-4" /></span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold text-tx-primary truncate">{p.name}</span>
+                    <span className="block text-[11px] text-tx-muted">{p.exercise_count} exercises · {m.label}</span>
+                  </span>
+                  {p.completed_workout_id ? (
+                    <Link to={`/workouts/${p.completed_workout_id}`} className="text-xs text-train flex items-center gap-1 flex-shrink-0"><Check className="w-3.5 h-3.5" /> Done</Link>
+                  ) : (
+                    <button disabled={!!session} onClick={() => navigate(`/workout/start?program=${p.program_id}`)} className="btn-primary btn-sm flex-shrink-0">
+                      <Play className="w-3.5 h-3.5" /> Start
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="px-4 pb-3 text-sm text-tx-muted">Rest day — nothing scheduled. Start or log anything above.</p>
+        )}
+        {upNextLabel && todayPending.length === 0 && (
+          <div className="px-4 py-3 border-t border-surface-border flex items-center justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block text-[11px] text-tx-muted">Up next · {upNextLabel}</span>
+              <span className="block text-sm font-medium text-tx-primary truncate">{upNext!.name}</span>
+              {next && <span className="block text-[11px] text-tx-muted">{next.exercises.length} exercises · {next.exercises.reduce((s, e) => s + e.sets.length, 0)} sets</span>}
+            </span>
+            <button disabled={!!session} onClick={() => navigate(`/workout/start?program=${upNext!.programId}`)} className="btn-secondary btn-sm flex-shrink-0">
+              <Play className="w-3.5 h-3.5" /> Start early
+            </button>
+          </div>
+        )}
+        {!upNext && todayPlan.length === 0 && (
+          <Link to="/train/schedule" className="px-4 py-3 border-t border-surface-border flex items-center gap-2 text-xs text-brand-400">
+            <CalendarRange className="w-3.5 h-3.5" /> Put routines on days of the week to plan ahead
+          </Link>
+        )}
       </div>
 
-      {/* This week */}
+      {/* This week vs goals */}
       <div className="card p-4">
         <div className="grid grid-cols-7 gap-1">
           {week.days.map(d => <DayCell key={d.date} day={d} />)}
@@ -112,124 +176,59 @@ export default function Train() {
           <WeekStat value={`${week.byKind.cardio.minutes}`} label="cardio min" />
           <WeekStat value={String(week.byKind.mobility.days)} label={week.byKind.mobility.days === 1 ? 'stretch day' : 'stretch days'} />
         </div>
-      </div>
-
-      {goals.length > 0 && (
-        <div className="card p-4">
-          <GoalBars progress={progress} onEdit={() => setShowGoals(true)} />
-        </div>
-      )}
-
-      {/* Up next */}
-      {upNext ? (
-        <div className="card overflow-hidden">
-          <div className="p-4 flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="eyebrow">Up next · {nextLabel}</p>
-              <p className="text-lg font-bold text-tx-primary truncate mt-0.5">{upNext.name}</p>
-              {next && <p className="text-xs text-tx-muted">{next.exercises.length} exercises · {next.exercises.reduce((s, e) => s + e.sets.length, 0)} sets</p>}
-            </div>
-            <button onClick={() => navigate(`/workout/start?program=${upNext.programId}`)} className="btn-primary btn-md flex-shrink-0">
-              <Play className="w-4 h-4" /> Start
+        <div className="mt-3 pt-3 border-t border-surface-border">
+          {goals.length > 0 ? (
+            <GoalBars progress={progress} onEdit={() => setShowGoals(true)} />
+          ) : (
+            <button onClick={() => setShowGoals(true)} className="w-full flex items-center gap-2 text-left text-xs text-brand-400">
+              <Target className="w-3.5 h-3.5" /> Set weekly goals for strength, cardio and mobility
             </button>
-          </div>
-          {next && next.exercises.length > 0 && (
-            <ul className="border-t border-surface-border divide-y divide-surface-border">
-              {next.exercises.slice(0, 5).map(ex => {
-                const top = ex.sets.reduce((m, s) => Math.max(m, s.target_weight || 0), 0)
-                const reps = ex.sets[0]?.target_reps
-                return (
-                  <li key={ex.id ?? ex.exercise_id} className="px-4 py-2.5 flex items-center justify-between gap-3">
-                    <span className="text-sm text-tx-secondary truncate">{ex.exercise?.name}</span>
-                    <span className="text-xs text-tx-muted tabular-nums flex-shrink-0">
-                      {ex.sets.length}×{reps || '—'}{top > 0 ? ` @ ${displayWeight(top, settings.weight_unit)} ${unit}` : ''}
-                    </span>
-                  </li>
-                )
-              })}
-              {next.exercises.length > 5 && (
-                <li className="px-4 py-2 text-xs text-tx-muted">+{next.exercises.length - 5} more</li>
-              )}
-            </ul>
-          )}
-        </div>
-      ) : (
-        <Link to="/plan/schedule" className="card-interactive flex items-center gap-3 p-4">
-          <CalendarRange className="w-5 h-5 text-train flex-shrink-0" />
-          <span className="flex-1 min-w-0">
-            <span className="block text-sm font-semibold text-tx-primary">Nothing scheduled</span>
-            <span className="block text-xs text-tx-muted">Put routines on days of the week and they'll show up here, ready to start.</span>
-          </span>
-          <ChevronRight className="w-4 h-4 text-tx-muted" />
-        </Link>
-      )}
-
-      <div className="grid lg:grid-cols-2 gap-4">
-        {/* PRs */}
-        <div className="card p-4">
-          <p className="eyebrow mb-2 flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5 text-fuel" /> Recent PRs</p>
-          {prs.length === 0 ? (
-            <p className="text-sm text-tx-muted py-2">PRs show up here as you beat your best sets.</p>
-          ) : (
-            <ul className="divide-y divide-surface-border">
-              {prs.map(pr => (
-                <li key={`${pr.exercise_id}-${pr.date}`}>
-                  <Link to={`/workouts/${pr.workout_id}`} className="flex items-center justify-between gap-3 py-2.5">
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-tx-primary truncate">{pr.exercise_name}</span>
-                      <span className="block text-xs text-tx-muted">{format(parseISO(pr.date), 'MMM d')} · e1RM {displayWeight(pr.estimated_1rm, settings.weight_unit)} {unit}</span>
-                    </span>
-                    <span className="text-sm font-bold tabular-nums text-tx-primary flex-shrink-0">
-                      {displayWeight(pr.weight, settings.weight_unit)} × {pr.reps}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Recent activity — lifts and synced cardio together */}
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="eyebrow">Recent activity</p>
-            <Link to="/workouts" className="text-xs text-brand-400">All workouts</Link>
-          </div>
-          {activity.length === 0 ? (
-            <p className="text-sm text-tx-muted py-2">Nothing logged yet.</p>
-          ) : (
-            <ul className="divide-y divide-surface-border">
-              {activity.map(a => (
-                <li key={`${a.source}-${a.id}`}>
-                  <Link to={a.source === 'workout' ? `/workouts/${a.id}` : '/stats?tab=cardio'} className="flex items-center gap-3 py-2.5">
-                    <ActivityIcon kind={a.kind} />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-medium text-tx-primary truncate">{a.title}</span>
-                      <span className="block text-xs text-tx-muted">{format(new Date(a.at), 'EEE, MMM d')} · {a.sub}</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
           )}
         </div>
       </div>
 
-      {/* Build — the less frequent work, one tap down */}
-      <section>
-        <p className="eyebrow mb-2 px-0.5">Build</p>
-        <div className="grid grid-cols-2 gap-2">
-          <BuildTile to="/plan/schedule" icon={CalendarRange} title="Schedule" sub={routineCount === null ? 'Weekly pattern' : `Week + ${routineCount} routine${routineCount === 1 ? '' : 's'}`} />
-          <BuildTile to="/programs/new" icon={Plus} title="New routine" sub="Lift, cardio or stretch" />
-          <BuildTile to="/programs/ai-new" icon={Sparkles} title="Create with AI" sub="From your goals" />
-          <BuildTile to="/exercises" icon={Library} title="Exercise library" sub="Browse and add" />
-          <BuildTile to="/workouts" icon={List} title="Workout history" sub="Every session" />
-          <BuildTile to="/stats?tab=training" icon={Trophy} title="Training trends" sub="Volume, PRs, coverage" />
+      <RoutineList routines={routines} recurring={schedule?.recurring ?? {}} />
+
+      {/* Recent — lifts, logged cardio and synced cardio together */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="eyebrow">Recent</p>
+          <Link to="/train/history" className="text-xs text-brand-400">Full history</Link>
         </div>
+        {activity.length === 0 ? (
+          <p className="text-sm text-tx-muted py-2">Nothing logged yet.</p>
+        ) : (
+          <ul className="divide-y divide-surface-border">
+            {activity.map(a => (
+              <li key={`${a.source}-${a.id}`}>
+                <Link to={a.source === 'workout' ? `/workouts/${a.id}` : '/stats?tab=cardio'} className="flex items-center gap-3 py-2.5">
+                  <ActivityIcon kind={a.kind} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-tx-primary truncate">{a.title}</span>
+                    <span className="block text-xs text-tx-muted">{format(new Date(a.at), 'EEE, MMM d')} · {a.sub}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <section className="grid grid-cols-2 gap-2">
+        <LinkTile to="/train/history" icon={History} title="History" sub="Every session" />
+        <LinkTile to="/stats?tab=training" icon={BarChart3} title="Training trends" sub="Volume, PRs, coverage" />
+        <LinkTile to="/exercises" icon={Library} title="Exercise library" sub="Browse and add" />
+        <LinkTile to="/train/schedule" icon={CalendarRange} title="Schedule" sub="Weekly pattern, calendar" />
       </section>
 
+      <TrainSheet
+        isOpen={showSheet}
+        onClose={() => setShowSheet(false)}
+        today={todayPending}
+        onLogCardio={() => { setShowSheet(false); setShowCardio(true) }}
+      />
       <GoalsSheet isOpen={showGoals} goals={goals} onClose={() => setShowGoals(false)} onSaved={setGoals} />
-      {showCardio && <QuickCardioModal onClose={() => setShowCardio(false)} onLogged={() => setShowCardio(false)} />}
+      {showCardio && <QuickCardioModal onClose={() => setShowCardio(false)} onLogged={() => { setShowCardio(false); setNow(new Date()) }} />}
     </div>
   )
 }
@@ -306,7 +305,7 @@ function WeekStat({ value, label }: { value: string; label: string }) {
   )
 }
 
-function BuildTile({ to, icon: Icon, title, sub }: { to: string; icon: React.ElementType; title: string; sub: string }) {
+function LinkTile({ to, icon: Icon, title, sub }: { to: string; icon: React.ElementType; title: string; sub: string }) {
   return (
     <Link to={to} className="card-interactive flex items-center gap-3 p-3.5">
       <Icon className="w-5 h-5 text-train flex-shrink-0" />

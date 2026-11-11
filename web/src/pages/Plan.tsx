@@ -1,18 +1,15 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import {
-  ChevronLeft, ChevronRight, CalendarDays, Check, Play, RotateCcw, X, Plus, Dumbbell, Sparkles, Search, Footprints,
+  ChevronLeft, ChevronRight, CalendarDays, Check, Play, RotateCcw, X, Plus,
 } from 'lucide-react'
 import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths,
   eachDayOfInterval, isSameMonth, isToday, isSameDay, parseISO,
 } from 'date-fns'
 import { scheduleAPI, programAPI } from '../services/api'
-import { useWorkoutSession } from '../stores/workoutSession'
 import { PageHeader } from '../components/ui'
-import ProgramCard from '../components/ProgramCard'
 import PlanDaySheet from '../components/PlanDaySheet'
-import QuickCardioModal from '../components/QuickCardioModal'
 import Loading from '../components/Loading'
 import * as types from '../types'
 
@@ -29,8 +26,6 @@ const iso = (d: Date) => format(d, 'yyyy-MM-dd')
 
 export default function Plan() {
   const navigate = useNavigate()
-  const { session } = useWorkoutSession()
-  const [showQuickCardio, setShowQuickCardio] = useState(false)
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [data, setData] = useState<types.ScheduleResponse | null>(null)
   const [programs, setPrograms] = useState<types.Program[]>([])
@@ -39,7 +34,6 @@ export default function Plan() {
   const [error, setError] = useState('')
   const [openDay, setOpenDay] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [routineSearch, setRoutineSearch] = useState('')
 
   // The grid always shows whole weeks, so it spills into the neighbouring
   // months — fetch the visible range, not the calendar month.
@@ -75,14 +69,6 @@ export default function Plan() {
     () => eachDayOfInterval({ start: gridStart, end: gridEnd }),
     [gridStart, gridEnd],
   )
-
-  // Filtered display-only: the day sheet and "just this day" overrides still
-  // need the full, unfiltered `programs` list to resolve assignments.
-  const visibleRoutines = useMemo(() => {
-    const q = routineSearch.trim().toLowerCase()
-    if (!q) return programs
-    return programs.filter(p => p.name.toLowerCase().includes(q))
-  }, [programs, routineSearch])
 
   const mutate = async (fn: () => Promise<unknown>) => {
     setSaving(true)
@@ -124,44 +110,16 @@ export default function Plan() {
 
   return (
     <div className="space-y-4 animate-slide-up">
-      <Link to="/plan" className="inline-flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary">
+      <Link to="/train" className="inline-flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary">
         <ChevronLeft className="w-4 h-4" /> Train
       </Link>
       <PageHeader
-        title="Schedule & routines"
-        subtitle="Your weekly pattern and the routines on it"
-        action={
-          <div className="flex gap-2 w-full sm:w-auto">
-            <button onClick={() => navigate('/exercises')} className="btn-ghost btn-sm flex-1 sm:flex-none">
-              <Dumbbell className="w-4 h-4" /> Exercises
-            </button>
-            <button onClick={() => navigate('/programs/ai-new')} className="btn-ghost btn-sm flex-1 sm:flex-none">
-              <Sparkles className="w-4 h-4" /> AI Routine
-            </button>
-          </div>
-        }
+        title="Schedule"
+        subtitle="Which routines fall on which days. Tap a weekday to change the pattern, or a date to change just that day."
       />
 
       {error && <div className="alert-error text-sm">{error}</div>}
 
-      {/* Log something right now — no need to go through a routine or the
-          weekly pattern for an ad-hoc session. */}
-      <div className="flex items-center gap-2">
-        <button onClick={() => setShowQuickCardio(true)} className="btn-secondary btn-sm flex-1">
-          <Footprints className="w-4 h-4" /> Cardio
-        </button>
-        <button onClick={() => navigate('/workouts/new')} className="btn-secondary btn-sm flex-1 min-w-0">
-          <Plus className="w-4 h-4" />
-          <span><span className="hidden sm:inline">Log </span>Workout</span>
-        </button>
-        <button onClick={() => navigate('/workout/start')} className="btn-primary btn-sm flex-1">
-          <Play className="w-4 h-4" /> {session ? 'Resume' : 'Start'}
-        </button>
-      </div>
-
-      {showQuickCardio && <QuickCardioModal onClose={() => setShowQuickCardio(false)} />}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Week schedule — the weekly pattern that actually repeats. */}
         <div className="card p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -193,41 +151,6 @@ export default function Plan() {
             })}
           </div>
         </div>
-
-        {/* Routines — reusable templates you assign to days. */}
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider">Routines</p>
-            <button onClick={() => navigate('/programs/new')} className="btn-secondary btn-sm">
-              <Plus className="w-3.5 h-3.5" /> New
-            </button>
-          </div>
-
-          {programs.length > 0 && (
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-tx-muted pointer-events-none" />
-              <input
-                value={routineSearch}
-                onChange={e => setRoutineSearch(e.target.value)}
-                className="input pl-8 py-1.5 text-sm"
-                placeholder="Search programs…"
-              />
-            </div>
-          )}
-
-          {programs.length === 0 ? (
-            <p className="text-xs text-tx-muted py-2">No routines yet — create one to get started.</p>
-          ) : visibleRoutines.length === 0 ? (
-            <p className="text-xs text-tx-muted py-2">No routines match that search.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {visibleRoutines.map(p => (
-                <ProgramCard key={p.id} program={p} variant="own" compact />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Month view — planned vs actually done, including previous weeks. */}
       <div className="card p-4">

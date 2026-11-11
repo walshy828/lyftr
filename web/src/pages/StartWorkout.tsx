@@ -1,184 +1,29 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { format } from 'date-fns'
-import { ArrowLeft, Zap, BookOpen, ChevronRight, Dumbbell, AlertCircle, Play, Timer, Trash2, CalendarClock } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { programAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
-import { FocusBadge } from '../components/WorkoutBadges'
-import * as types from '../types'
+import { useStartRoutine } from '../hooks/useStartRoutine'
+import Loading from '../components/Loading'
 
+/**
+ * /workout/start — a deep link, not a screen. `?program=<id>` starts that
+ * routine straight away (the user already pressed Start wherever they came
+ * from); anything else, or a workout already running, lands on Train with
+ * the start sheet open, which owns resume / pick-a-routine / empty.
+ */
 export default function StartWorkout() {
-  const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { session, startSession, cancelSession } = useWorkoutSession()
-  const [programs, setPrograms] = useState<types.Program[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const { session } = useWorkoutSession()
+  const { startRoutine } = useStartRoutine()
+  const id = Number(params.get('program'))
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    setLoading(true)
-    programAPI.list({ sort: 'smart' })
-      .then(data => setPrograms(data || []))
-      .catch(() => setError('Failed to load programs'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  // Arriving from the schedule ("Start" on today's plan) names the program in
-  // the query string. Fetch it in full — the list response is enough to render
-  // a card but startFromProgram needs the exercises — and begin immediately;
-  // the user already pressed Start on the previous screen, so making them press
-  // it twice is just a second tap. Skipped when a session is already running,
-  // which the resume/discard UI below handles instead.
-  useEffect(() => {
-    const id = Number(params.get('program'))
     if (!id || session) return
-    programAPI.get(id).then(startFromProgram).catch(() => setError('Could not load that program'))
+    programAPI.get(id).then(startRoutine).catch(() => setFailed(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, session])
+  }, [id])
 
-  const startQuick = () => {
-    const name = `Workout — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-    startSession(name, [])
-    navigate('/workout/active')
-  }
-
-  const startFromProgram = (program: types.Program) => {
-    const exercises: types.ActiveSessionExercise[] = (program.exercises || []).map(ex => ({
-      exercise_id: ex.exercise_id,
-      exercise: ex.exercise,
-      notes: ex.notes || '',
-      rest_seconds: ex.rest_seconds,
-      sets: (ex.sets || []).map(s => ({
-        set_number: s.set_number,
-        target_reps: s.target_reps,
-        target_weight: s.target_weight,
-        actual_reps: s.target_reps,
-        actual_weight: s.target_weight,
-        actual_duration: s.target_duration_seconds || 0,
-        completed: false,
-      })),
-    }))
-    startSession(program.name, exercises, program.id)
-    navigate('/workout/active')
-  }
-
-  return (
-    <div className="space-y-6 animate-slide-up">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 hover:bg-surface-muted rounded-lg transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-tx-muted" />
-        </button>
-        <h1 className="font-display font-bold text-2xl text-tx-primary">Start Workout</h1>
-      </div>
-
-      {/* Active session — resume or discard */}
-      {session && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/8 p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
-              <Timer className="w-5 h-5 text-amber-400 animate-pulse" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-tx-primary">{session.name}</p>
-              <p className="text-xs text-amber-400/80">Workout in progress</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate('/workout/active')}
-              className="flex-1 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              <Play className="w-4 h-4" /> Resume
-            </button>
-            <button
-              onClick={() => cancelSession()}
-              className="flex-1 py-2.5 bg-surface-muted hover:bg-error-500/10 text-tx-secondary hover:text-error-400 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 border border-surface-border"
-            >
-              <Trash2 className="w-4 h-4" /> Discard
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Quick start */}
-      <button
-        onClick={startQuick}
-        className="w-full flex items-center gap-4 p-5 bg-brand-500/10 border border-brand-500/20 hover:bg-brand-500/15 rounded-2xl transition-colors group"
-      >
-        <div className="w-12 h-12 rounded-xl bg-brand-500 flex items-center justify-center flex-shrink-0">
-          <Zap className="w-6 h-6 text-white" />
-        </div>
-        <div className="text-left flex-1">
-          <p className="font-semibold text-tx-primary text-lg">Quick Start</p>
-          <p className="text-sm text-tx-muted mt-0.5">Start blank, add exercises as you go</p>
-        </div>
-        <ChevronRight className="w-5 h-5 text-tx-muted opacity-0 group-hover:opacity-100 transition-opacity" />
-      </button>
-
-      {/* Programs section */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <BookOpen className="w-4 h-4 text-brand-500" />
-          <h2 className="font-semibold text-tx-primary">Start from Program</h2>
-        </div>
-
-        {error && (
-          <div className="alert-error mb-3">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center py-12 text-tx-muted text-sm">
-            <Dumbbell className="w-5 h-5 mr-2 animate-pulse text-brand-500" />
-            Loading programs…
-          </div>
-        ) : programs.length === 0 ? (
-          <div className="text-center py-10 card">
-            <BookOpen className="w-8 h-8 text-tx-muted mx-auto mb-2 opacity-50" />
-            <p className="text-sm text-tx-muted">No programs yet</p>
-            <button
-              onClick={() => navigate('/programs/new')}
-              className="mt-3 text-xs text-brand-400 hover:text-brand-300 font-medium transition-colors"
-            >
-              Create your first program →
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {programs.map(p => (
-              <button
-                key={p.id}
-                onClick={() => startFromProgram(p)}
-                className="w-full flex items-center gap-3 p-4 card hover:bg-surface-muted transition-colors text-left group"
-              >
-                <div className="w-10 h-10 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
-                  <BookOpen className="w-5 h-5 text-brand-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <p className="font-semibold text-tx-primary truncate">{p.name}</p>
-                    <FocusBadge workout={p} />
-                  </div>
-                  <div className="flex items-center gap-x-2 mt-0.5 min-w-0 overflow-hidden">
-                    <span className="text-xs text-tx-muted whitespace-nowrap">{p.exercises?.length || 0} exercises</span>
-                    <span className="text-tx-muted/40 text-xs">·</span>
-                    <span className="flex items-center gap-1 text-xs text-tx-muted whitespace-nowrap">
-                      <CalendarClock className="w-3 h-3 flex-shrink-0" />
-                      {p.last_used_at ? `Last done ${format(new Date(p.last_used_at), 'MMM d, yyyy')}` : 'Never done'}
-                    </span>
-                  </div>
-                </div>
-                <Play className="w-4 h-4 text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  if (!id || session || failed) return <Navigate to="/train?start=1" replace />
+  return <Loading />
 }

@@ -30,8 +30,8 @@ describe('ProgramEditor', () => {
     const onSave = vi.fn()
     render(<ProgramEditor initialData={EMPTY} title="New Program" onSave={onSave} onCancel={() => {}} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /save program/i }))
-    await waitFor(() => expect(screen.getByText(/program name required/i)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /save routine/i }))
+    await waitFor(() => expect(screen.getByText(/routine name required/i)).toBeTruthy())
     expect(onSave).not.toHaveBeenCalled()
   })
 
@@ -42,7 +42,7 @@ describe('ProgramEditor', () => {
     fireEvent.change(screen.getByPlaceholderText(/push day/i), { target: { value: 'My Program' } })
     fireEvent.click(screen.getByRole('button', { name: /add exercise/i }))
     fireEvent.click(screen.getByText('pick-deadlift'))
-    fireEvent.click(screen.getByRole('button', { name: /save program/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save routine/i }))
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       name: 'My Program',
@@ -60,7 +60,7 @@ describe('ProgramEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /add exercise/i }))
     fireEvent.click(screen.getByText('pick-deadlift'))
     fireEvent.click(screen.getByRole('radio', { name: /mixed/i }))
-    fireEvent.click(screen.getByRole('button', { name: /save program/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save routine/i }))
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: 'mixed' })))
   })
@@ -70,7 +70,7 @@ describe('ProgramEditor', () => {
       <ProgramEditor
         initialData={WITH_EXERCISE}
         initialPickerExercises={PICKER_EXERCISES}
-        title="Edit Program"
+        title="Edit Routine"
         onSave={vi.fn()}
         onCancel={() => {}}
       />,
@@ -85,13 +85,13 @@ describe('ProgramEditor', () => {
         initialData={WITH_EXERCISE}
         initialPickerExercises={PICKER_EXERCISES}
         title="Draft"
-        saveLabel="Create Program"
+        saveLabel="Create Routine"
         cancelLabel="Discard"
         onSave={vi.fn()}
         onCancel={() => {}}
       />,
     )
-    expect(screen.getByRole('button', { name: 'Create Program' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Create Routine' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy()
   })
 
@@ -108,7 +108,7 @@ describe('ProgramEditor', () => {
     expect(screen.queryByText(/target weight/i)).toBeNull()
     expect(screen.getByPlaceholderText('30')).toHaveProperty('value', '45')
 
-    fireEvent.click(screen.getByRole('button', { name: /save program/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save routine/i }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       exercises: [expect.objectContaining({
         exercise_id: 3,
@@ -122,7 +122,7 @@ describe('ProgramEditor', () => {
       <ProgramEditor
         initialData={WITH_EXERCISE}
         initialPickerExercises={PICKER_EXERCISES}
-        title="Edit Program"
+        title="Edit Routine"
         onSave={vi.fn()}
         onCancel={() => {}}
       />,

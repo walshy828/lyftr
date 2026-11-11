@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { programAPI } from '../services/api'
 import { useWorkoutSession } from '../stores/workoutSession'
+import { useStartRoutine } from '../hooks/useStartRoutine'
 import { useAuthStore } from '../stores/auth'
 import { useSettingsStore, weightShort, displayWeight } from '../stores/settings'
 import * as types from '../types'
@@ -20,7 +21,8 @@ export default function ProgramDetail() {
   const [searchParams] = useSearchParams()
   const justCreated = searchParams.get('new') === '1'
   const navigate = useNavigate()
-  const { session, startSession } = useWorkoutSession()
+  const { session } = useWorkoutSession()
+  const { startRoutine } = useStartRoutine()
   const { user } = useAuthStore()
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
@@ -41,7 +43,7 @@ export default function ProgramDetail() {
         const data = await programAPI.get(Number(id))
         setProgram(data)
       } catch (err: any) {
-        setError(err.message || 'Failed to load program')
+        setError(err.message || 'Failed to load routine')
       } finally {
         setLoading(false)
       }
@@ -51,24 +53,9 @@ export default function ProgramDetail() {
 
   const handleStart = () => {
     if (!program) return
-    if (session) { navigate('/workout/start'); return }
-    const exercises: types.ActiveSessionExercise[] = (program.exercises || []).map(ex => ({
-      exercise_id: ex.exercise_id,
-      exercise: ex.exercise,
-      notes: ex.notes || '',
-      rest_seconds: ex.rest_seconds,
-      sets: (ex.sets || []).map(s => ({
-        set_number: s.set_number,
-        target_reps: s.target_reps,
-        target_weight: s.target_weight,
-        actual_reps: s.target_reps,
-        actual_weight: s.target_weight,
-        actual_duration: s.target_duration_seconds || 0,
-        completed: false,
-      })),
-    }))
-    startSession(program.name, exercises, program.id)
-    navigate('/workout/active')
+    // A workout already running: the Train sheet offers resume or discard.
+    if (session) { navigate('/train?start=1'); return }
+    startRoutine(program)
   }
 
   const handleDelete = async () => {
@@ -76,7 +63,7 @@ export default function ProgramDetail() {
     setDeleting(true)
     try {
       await programAPI.delete(program.id)
-      navigate('/plan', { replace: true })
+      navigate('/train', { replace: true })
     } catch {
       setDeleting(false)
       setConfirming(false)
@@ -99,7 +86,7 @@ export default function ProgramDetail() {
     setCopying(true)
     try {
       const copy = await programAPI.copy(program.id)
-      navigate(`/programs/${copy.id}/edit`)
+      navigate(`/routines/${copy.id}/edit`)
     } finally {
       setCopying(false)
     }
@@ -116,12 +103,12 @@ export default function ProgramDetail() {
   if (error || !program) {
     return (
       <div className="space-y-4">
-        <Link to="/plan" className="flex items-center gap-2 text-sm text-tx-muted hover:text-tx-primary transition-colors">
+        <Link to="/train" className="flex items-center gap-2 text-sm text-tx-muted hover:text-tx-primary transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
         <div className="alert-error">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span>{error || 'Program not found'}</span>
+          <span>{error || 'Routine not found'}</span>
         </div>
       </div>
     )
@@ -134,7 +121,7 @@ export default function ProgramDetail() {
     <div className="space-y-5 animate-slide-up max-w-2xl">
       {/* Back nav */}
       <div className="flex items-center justify-between">
-        <Link to="/plan/schedule" className="flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
+        <Link to="/train#routines" className="flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
           <ArrowLeft className="w-4 h-4" /> Routines
         </Link>
         <div className="flex items-center gap-1">
@@ -147,7 +134,7 @@ export default function ProgramDetail() {
           {isOwner ? (
             <>
               <button
-                onClick={() => navigate(`/programs/${program.id}/edit`)}
+                onClick={() => navigate(`/routines/${program.id}/edit`)}
                 className="p-2 hover:bg-surface-muted rounded-lg transition-colors"
               >
                 <Edit2 className="w-4 h-4 text-brand-500" />
@@ -156,13 +143,13 @@ export default function ProgramDetail() {
                 onClick={handleShareToggle}
                 disabled={sharing}
                 className="p-2 hover:bg-surface-muted rounded-lg transition-colors disabled:opacity-50"
-                title={program.is_shared ? 'Unshare program' : 'Share program'}
+                title={program.is_shared ? 'Unshare routine' : 'Share routine'}
               >
                 <Share2 className={`w-4 h-4 ${program.is_shared ? 'text-brand-500' : 'text-tx-muted'}`} />
               </button>
               <button
                 onClick={() => setConfirming(true)}
-                aria-label="Delete program"
+                aria-label="Delete routine"
                 className="p-2 hover:bg-error-500/10 rounded-lg transition-colors"
               >
                 <Trash2 className="w-4 h-4 text-error-400" />
@@ -174,7 +161,7 @@ export default function ProgramDetail() {
               disabled={copying}
               className="flex items-center gap-1.5 px-3 py-2 hover:bg-surface-muted text-tx-primary text-xs font-semibold rounded-xl transition-colors disabled:opacity-50"
             >
-              <Copy className="w-3.5 h-3.5 text-brand-500" /> {copying ? 'Copying…' : 'Copy to My Programs'}
+              <Copy className="w-3.5 h-3.5 text-brand-500" /> {copying ? 'Copying…' : 'Copy to My Routines'}
             </button>
           )}
         </div>
@@ -185,7 +172,7 @@ export default function ProgramDetail() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-surface-base border border-surface-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-6">
             <div className="mx-auto w-10 h-1 rounded-full bg-surface-muted mb-4 sm:hidden" />
-            <h3 className="font-display font-bold text-lg text-tx-primary mb-1">Delete Program?</h3>
+            <h3 className="font-display font-bold text-lg text-tx-primary mb-1">Delete Routine?</h3>
             <p className="text-sm text-tx-muted mb-5">"{program.name}" will be permanently deleted.</p>
             <div className="flex gap-3">
               <button onClick={() => setConfirming(false)} className="flex-1 py-3 bg-surface-muted hover:bg-surface-muted/80 text-tx-secondary rounded-xl transition-colors font-medium text-sm">

@@ -58,7 +58,7 @@ export default function TodayRings({ food, settings, steps, todaysPlan, workedOu
       foot: `goal ${k(stepGoal)}`,
     },
     {
-      to: '/plan', name: 'Training', color: 'rgb(var(--c-train))', over: 'rgb(var(--c-train))',
+      to: '/train', name: 'Training', color: 'rgb(var(--c-train))', over: 'rgb(var(--c-train))',
       value: trainValue, big: trainLabel, small: planned.length ? 'sessions' : cardioMinutes > 0 ? 'cardio' : '',
       foot: trainFoot,
     },

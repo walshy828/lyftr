@@ -118,6 +118,12 @@ let _syncTimer: ReturnType<typeof setTimeout> | null = null
 // completed on the watch) — the server's updated_at alone can't, since a
 // debounced PUT lands after the local edit that produced it.
 let _lastSyncedJson: string | null = null
+// When the most recent push started, and how many are still on the wire. A
+// poll that was answered before our own PUT landed (e.g. the focus listener
+// firing on the same tap that started the workout) sees "no session" — that
+// isn't the workout ending elsewhere, it's the server not having heard yet.
+let _lastPushAt = 0
+let _pushesInFlight = 0
 
 // Strips the heavy, sync-irrelevant fields off an embedded Exercise before it
 // goes into the server-synced session payload. A custom exercise's image_url
@@ -152,11 +158,15 @@ function scheduleSync(immediate = false) {
       rest_duration_sec: state.restDurationSec,
     }
     const json = JSON.stringify(payload)
+    _lastPushAt = Date.now()
+    _pushesInFlight++
     activeSessionAPI.put(payload).then(() => {
       _lastSyncedJson = json
     }).catch(() => {
       // offline/unreachable — local state (source of truth for this device)
       // is unaffected; the next scheduled sync will retry.
+    }).finally(() => {
+      _pushesInFlight--
     })
   }
   if (immediate) flush()
@@ -487,8 +497,12 @@ export const useWorkoutSession = create<WorkoutSessionStore>((set, get) => ({
 // (if any) is left untouched.
 export async function hydrateActiveSessionFromServer() {
   try {
+    const askedAt = Date.now()
     const result = await activeSessionAPI.get()
     if (!result?.data) {
+      // Our own push is queued, on the wire, or started while this GET was
+      // out — the answer predates it, so it says nothing about other devices.
+      if (_syncTimer || _pushesInFlight > 0 || _lastPushAt >= askedAt) return
       // Server has no session, but this tab still thinks one is running —
       // it was ended elsewhere (a paired watch/phone, or another tab).
       // Tear down local state and leave a breadcrumb so a listener can

@@ -54,7 +54,7 @@ export default function AddAIProgram() {
         exerciseAPI.list(),
       ])
       if (!programs || programs.length === 0) {
-        setError("Couldn't generate a program from that description — try adding more detail")
+        setError("Couldn't generate a routine from that description — try adding more detail")
         return
       }
       const map: Record<number, types.Exercise> = {}
@@ -63,9 +63,9 @@ export default function AddAIProgram() {
       setDrafts(programs.map(p => ({ formData: toFormData(p), status: 'pending', expanded: programs.length === 1 })))
     } catch (err: any) {
       if (err?.response?.status === 503) {
-        setError(err?.response?.data?.error || 'AI program builder is not configured on this server')
+        setError(err?.response?.data?.error || 'AI routine builder is not configured on this server')
       } else {
-        setError('Could not generate a program — try again or build one manually')
+        setError('Could not generate a routine — try again or build one manually')
       }
     } finally {
       setGenerating(false)
@@ -93,8 +93,8 @@ export default function AddAIProgram() {
             <ArrowLeft className="w-5 h-5 text-tx-muted" />
           </button>
           <div>
-            <h1 className="font-display font-bold text-2xl text-tx-primary">AI Program Builder</h1>
-            <p className="text-xs text-tx-muted">Describe your goals and let AI draft a program to review</p>
+            <h1 className="font-display font-bold text-2xl text-tx-primary">Build a Routine with AI</h1>
+            <p className="text-xs text-tx-muted">Describe your goals and let AI draft routines to review</p>
           </div>
         </div>
 
@@ -142,13 +142,13 @@ export default function AddAIProgram() {
               onChange={e => setNumberOfDays(Math.min(14, Math.max(1, Number(e.target.value) || 1)))}
               className="input mt-1 w-24"
             />
-            <p className="text-xs text-tx-muted mt-1">Each day becomes its own program you can review and save separately.</p>
+            <p className="text-xs text-tx-muted mt-1">Each day becomes its own routine you can review and save separately.</p>
           </div>
         </div>
 
         <button onClick={generate} disabled={!goals.trim() || generating} className="btn-primary btn-lg w-full flex items-center justify-center gap-2">
           <Sparkles className="w-4 h-4" />
-          {generating ? 'Generating your program…' : 'Generate Program'}
+          {generating ? 'Generating your routines…' : 'Generate Routines'}
         </button>
       </div>
     )
@@ -165,7 +165,7 @@ export default function AddAIProgram() {
           <ArrowLeft className="w-5 h-5 text-tx-muted" />
         </button>
         <div>
-          <h1 className="font-display font-bold text-2xl text-tx-primary">Review Generated Programs</h1>
+          <h1 className="font-display font-bold text-2xl text-tx-primary">Review Generated Routines</h1>
           <p className="text-xs text-tx-muted">{savedCount} saved • {pending} pending review</p>
         </div>
       </div>
@@ -181,7 +181,7 @@ export default function AddAIProgram() {
                   <CheckCircle2 className="w-4 h-4 text-success-500" />
                   <span className="font-medium text-tx-primary">{draft.createdName}</span>
                 </div>
-                <Link to={`/programs/${draft.createdId}/edit`} className="flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300 font-medium">
+                <Link to={`/routines/${draft.createdId}/edit`} className="flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300 font-medium">
                   Edit <ExternalLink className="w-3.5 h-3.5" />
                 </Link>
               </div>
@@ -220,7 +220,7 @@ export default function AddAIProgram() {
                 title={draft.formData.name}
                 initialData={draft.formData}
                 initialPickerExercises={pickerExercises}
-                saveLabel="Create Program"
+                saveLabel="Create Routine"
                 cancelLabel="Discard"
                 onSave={payload => saveDraft(idx, payload)}
                 onCancel={() => discard(idx)}
@@ -231,7 +231,7 @@ export default function AddAIProgram() {
       </div>
 
       {allResolved && (
-        <button onClick={() => navigate('/plan')} className="btn-primary btn-lg w-full">
+        <button onClick={() => navigate('/train')} className="btn-primary btn-lg w-full">
           Done
         </button>
       )}

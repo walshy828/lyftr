@@ -86,7 +86,7 @@ export default function WorkoutDetail() {
     setDeleting(true)
     try {
       await workoutAPI.delete(workout.id)
-      navigate('/workouts', { replace: true })
+      navigate('/train/history', { replace: true })
     } catch {
       setDeleting(false)
       setConfirming(false)
@@ -104,7 +104,7 @@ export default function WorkoutDetail() {
   if (error || !workout) {
     return (
       <div className="space-y-4">
-        <Link to="/workouts" className="flex items-center gap-2 text-sm text-tx-muted hover:text-tx-primary transition-colors">
+        <Link to="/train/history" className="flex items-center gap-2 text-sm text-tx-muted hover:text-tx-primary transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
         <div className="alert-error">
@@ -127,7 +127,7 @@ export default function WorkoutDetail() {
     <div className="space-y-5 animate-slide-up max-w-2xl">
       {/* Back nav */}
       <div className="flex items-center justify-between">
-        <Link to="/workouts" className="flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
+        <Link to="/train/history" className="flex items-center gap-1.5 text-sm text-tx-muted hover:text-tx-primary transition-colors">
           <ArrowLeft className="w-4 h-4" /> Workouts
         </Link>
         <div className="flex items-center gap-1">

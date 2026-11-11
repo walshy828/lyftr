@@ -29,7 +29,7 @@ export default function TodaysWorkoutCard({
           <CalendarDays className="w-4 h-4 text-brand-400" />
           <p className="text-xs font-semibold text-tx-muted uppercase tracking-wider">Today's plan</p>
         </div>
-        <Link to="/plan" className="inline-flex items-center gap-1 text-xs text-tx-muted hover:text-tx-secondary transition-colors">
+        <Link to="/train" className="inline-flex items-center gap-1 text-xs text-tx-muted hover:text-tx-secondary transition-colors">
           Plan <ArrowRight className="w-3 h-3" />
         </Link>
       </div>

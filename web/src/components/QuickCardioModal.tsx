@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Footprints, Zap, Bike, Waves, AlertCircle } from 'lucide-react'
-import { exerciseAPI, workoutAPI } from '../services/api'
+import { format, isSameDay } from 'date-fns'
+import { X, Footprints, Zap, Bike, Waves, AlertCircle, RefreshCw } from 'lucide-react'
+import { exerciseAPI, workoutAPI, cardioAPI } from '../services/api'
 import { useSettingsStore, weightShort } from '../stores/settings'
 import CardioEntry from './CardioEntry'
 import * as types from '../types'
@@ -47,9 +48,13 @@ interface QuickCardioModalProps {
   onLogged?: (workout: types.Workout) => void
 }
 
-// One-form cardio logger: pick walk/run/bike, enter time + distance + steps
-// (+ optional notes), and it creates a complete one-exercise workout in a
-// single POST — no multi-step "start workout, add exercise" flow.
+const nowLocal = () => format(new Date(), "yyyy-MM-dd'T'HH:mm")
+
+// One-form cardio logger: pick walk/run/bike/swim, when it happened (defaults
+// to now, can be backdated), time + distance + steps (+ optional notes), and it
+// creates a complete one-exercise workout in a single POST — no multi-step
+// "start workout, add exercise" flow. Sessions already synced from the watch
+// for that day are listed, so the user only adds what's missing.
 export default function QuickCardioModal({ onClose, onLogged }: QuickCardioModalProps) {
   const { settings } = useSettingsStore()
   const wUnit = weightShort(settings.weight_unit)
@@ -60,6 +65,8 @@ export default function QuickCardioModal({ onClose, onLogged }: QuickCardioModal
   const [distanceMeters, setDistanceMeters] = useState(0)
   const [steps, setSteps] = useState(0)
   const [notes, setNotes] = useState('')
+  const [when, setWhen] = useState(nowLocal)
+  const [synced, setSynced] = useState<types.CardioSession[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -67,7 +74,14 @@ export default function QuickCardioModal({ onClose, onLogged }: QuickCardioModal
     exerciseAPI.list({ category: 'cardio' })
       .then(setExercises)
       .catch(() => setError('Could not load cardio exercises'))
+    cardioAPI.list({ limit: 50 }).then(r => setSynced(r ?? [])).catch(() => setSynced([]))
   }, [])
+
+  const whenDate = useMemo(() => (when ? new Date(when) : new Date()), [when])
+  const syncedThatDay = useMemo(
+    () => synced.filter(c => isSameDay(new Date(c.started_at), whenDate)),
+    [synced, whenDate],
+  )
 
   const resolved = useMemo(() => pickExercise(exercises, kind), [exercises, kind])
 
@@ -82,7 +96,7 @@ export default function QuickCardioModal({ onClose, onLogged }: QuickCardioModal
         name: label,
         notes,
         duration: durationSec,
-        started_at: new Date().toISOString(),
+        started_at: whenDate.toISOString(),
         feeling: 0,
         exercises: [{
           exercise_id: resolved.id,
@@ -104,7 +118,7 @@ export default function QuickCardioModal({ onClose, onLogged }: QuickCardioModal
       <div className="bg-surface-base border border-surface-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <div className="mx-auto w-10 h-1 rounded-full bg-surface-muted mb-4 sm:hidden" />
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-display font-bold text-lg text-tx-primary">Quick cardio</h3>
+          <h3 className="font-display font-bold text-lg text-tx-primary">Log cardio</h3>
           <button onClick={onClose} aria-label="Close" className="p-1.5 hover:bg-surface-muted rounded-lg transition-colors">
             <X className="w-4 h-4 text-tx-muted" />
           </button>
@@ -130,6 +144,36 @@ export default function QuickCardioModal({ onClose, onLogged }: QuickCardioModal
 
         {resolved && (
           <p className="text-xs text-tx-muted mb-3 -mt-2">Logging as “{resolved.name}”</p>
+        )}
+
+        {/* When — defaults to now; backdate for yesterday's walk. */}
+        <div className="mb-4">
+          <label htmlFor="cardio-when" className="text-xs text-tx-muted font-medium uppercase tracking-wider block mb-1">When</label>
+          <input
+            id="cardio-when"
+            type="datetime-local"
+            value={when}
+            max={nowLocal()}
+            onChange={e => setWhen(e.target.value)}
+            className="input text-sm"
+          />
+        </div>
+
+        {syncedThatDay.length > 0 && (
+          <div className="mb-4 rounded-xl border border-surface-border bg-surface-muted/30 p-3">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-tx-muted uppercase tracking-wider mb-1.5">
+              <RefreshCw className="w-3 h-3" /> Already synced that day
+            </p>
+            <ul className="space-y-0.5">
+              {syncedThatDay.map(c => (
+                <li key={c.id} className="text-xs text-tx-secondary">
+                  {format(new Date(c.started_at), 'h:mm a')} · {c.title || c.activity_type.replace(/_/g, ' ').toLowerCase()} · {Math.round(c.duration_seconds / 60)} min
+                  {c.distance_meters ? ` · ${(c.distance_meters / 1609.34).toFixed(1)} mi` : ''}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-tx-muted mt-1.5">These already count toward your week — only log what's missing.</p>
+          </div>
         )}
 
         {/* Time / distance / steps */}

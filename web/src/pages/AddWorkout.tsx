@@ -13,6 +13,7 @@ import { isCardio, isTimed } from '../utils/workoutSets'
 import TimedToggle from '../components/exercise/TimedToggle'
 import * as types from '../types'
 import { formatExerciseName } from '../utils/exerciseUtils'
+import { todayStr, dayToIsoNoon } from '../utils/dateUtils'
 
 interface WorkoutSet {
   set_number: number
@@ -42,7 +43,7 @@ export default function AddWorkout() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [pickerExercises, setPickerExercises] = useState<Record<number, types.Exercise>>({})
-  const [formData, setFormData] = useState<WorkoutFormData>({ name: '', notes: '', duration: 0, date: new Date().toISOString().slice(0, 10), feeling: 0, exercises: [] })
+  const [formData, setFormData] = useState<WorkoutFormData>({ name: '', notes: '', duration: 0, date: todayStr(), feeling: 0, exercises: [] })
 
   useEffect(() => { if (error) window.scrollTo({ top: 0, behavior: 'smooth' }) }, [error])
 
@@ -123,14 +124,14 @@ export default function AddWorkout() {
       const payload = {
         ...formData,
         duration: formData.duration * 60,
-        started_at: new Date(formData.date).toISOString(),
+        started_at: formData.date === todayStr() ? new Date().toISOString() : dayToIsoNoon(formData.date),
         exercises: formData.exercises.map(ex => ({
           ...ex,
           sets: ex.sets.map(s => ({ ...s, weight: displayToLbs(s.weight, settings.weight_unit) })),
         })),
       }
       await workoutAPI.create(payload)
-      navigate('/workouts')
+      navigate('/train/history')
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to create workout')
     } finally {
@@ -176,7 +177,7 @@ export default function AddWorkout() {
             <CalendarDays className="w-4 h-4 text-brand-500" />
             <label className="label">Date</label>
           </div>
-          <input type="date" value={formData.date} onChange={e => setFormData(prev => ({ ...prev, date: e.target.value }))} className="input" max={new Date().toISOString().slice(0, 10)} />
+          <input type="date" value={formData.date} onChange={e => setFormData(prev => ({ ...prev, date: e.target.value }))} className="input" max={todayStr()} />
         </div>
 
         <div>
@@ -220,7 +221,7 @@ export default function AddWorkout() {
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setShowProgramPicker(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-surface-muted hover:bg-surface-muted/80 text-tx-secondary border border-surface-border rounded-lg transition-colors font-medium">
                 <BookOpen className="w-3.5 h-3.5" />
-                Load Program
+                Load Routine
               </button>
               <button type="button" onClick={() => setShowPicker(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors font-medium">
                 <Plus className="w-3.5 h-3.5" />

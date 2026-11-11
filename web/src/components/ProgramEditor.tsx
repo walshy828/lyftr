@@ -50,7 +50,7 @@ export default function ProgramEditor({
   subtitle,
   onSave,
   onCancel,
-  saveLabel = 'Save Program',
+  saveLabel = 'Save Routine',
   savingLabel = 'Saving…',
   cancelLabel = 'Cancel',
   variant = 'page',
@@ -154,7 +154,7 @@ export default function ProgramEditor({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.name.trim()) { setError('Program name required'); return }
+    if (!formData.name.trim()) { setError('Routine name required'); return }
     if (formData.exercises.length === 0) { setError('Add at least one exercise'); return }
     setLoading(true)
     try {
@@ -168,7 +168,7 @@ export default function ProgramEditor({
       }
       await onSave(payload)
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to save program')
+      setError(err.response?.data?.error || 'Failed to save routine')
     } finally {
       setLoading(false)
     }
@@ -208,7 +208,7 @@ export default function ProgramEditor({
         <div>
           <div className="flex items-center gap-2 mb-2">
             <BookOpen className="w-4 h-4 text-brand-500" />
-            <label className="label">Program Name</label>
+            <label className="label">Routine Name</label>
             <span className="text-xs text-tx-muted">(required)</span>
           </div>
           <input
@@ -238,7 +238,7 @@ export default function ProgramEditor({
           <textarea
             value={formData.notes}
             onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-            placeholder="Program description or goals…"
+            placeholder="Routine description or goals…"
             className="input mt-1 min-h-16 resize-none"
           />
         </div>

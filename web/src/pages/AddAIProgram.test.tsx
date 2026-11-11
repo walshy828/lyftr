@@ -26,7 +26,7 @@ describe('AddAIProgram', () => {
 
   it('disables generate until goals are entered', () => {
     render(<MemoryRouter><AddAIProgram /></MemoryRouter>)
-    expect((screen.getByRole('button', { name: /generate program/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /generate routines/i }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('shows the loading state while generating, then renders one review card per draft', async () => {
@@ -35,9 +35,9 @@ describe('AddAIProgram', () => {
 
     render(<MemoryRouter><AddAIProgram /></MemoryRouter>)
     fillGoals()
-    fireEvent.click(screen.getByRole('button', { name: /generate program/i }))
+    fireEvent.click(screen.getByRole('button', { name: /generate routines/i }))
 
-    expect(screen.getByText(/generating your program/i)).toBeTruthy()
+    expect(screen.getByText(/generating your routines/i)).toBeTruthy()
 
     resolveGenerate!({
       programs: [
@@ -59,7 +59,7 @@ describe('AddAIProgram', () => {
 
     render(<MemoryRouter><AddAIProgram /></MemoryRouter>)
     fillGoals()
-    fireEvent.click(screen.getByRole('button', { name: /generate program/i }))
+    fireEvent.click(screen.getByRole('button', { name: /generate routines/i }))
 
     await waitFor(() => expect(screen.getByText('Day 1')).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: /discard/i }))
@@ -78,14 +78,14 @@ describe('AddAIProgram', () => {
 
     render(<MemoryRouter><AddAIProgram /></MemoryRouter>)
     fillGoals()
-    fireEvent.click(screen.getByRole('button', { name: /generate program/i }))
+    fireEvent.click(screen.getByRole('button', { name: /generate routines/i }))
 
     await waitFor(() => expect(screen.getByText('Day 1')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /create program/i }))
+    fireEvent.click(screen.getByRole('button', { name: /create routine/i }))
 
     await waitFor(() => expect(programAPI.create).toHaveBeenCalled())
     const link = await screen.findByRole('link', { name: /edit/i })
-    expect(link.getAttribute('href')).toBe('/programs/42/edit')
+    expect(link.getAttribute('href')).toBe('/routines/42/edit')
   })
 
   it('shows a 503-specific message when the AI builder is not configured', async () => {
@@ -93,7 +93,7 @@ describe('AddAIProgram', () => {
 
     render(<MemoryRouter><AddAIProgram /></MemoryRouter>)
     fillGoals()
-    fireEvent.click(screen.getByRole('button', { name: /generate program/i }))
+    fireEvent.click(screen.getByRole('button', { name: /generate routines/i }))
 
     await waitFor(() => expect(screen.getByText(/not configured on this server/i)).toBeTruthy())
   })

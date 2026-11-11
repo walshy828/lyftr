@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense, useEffect } from 'react'
 import { useAuthStore } from './stores/auth'
 import { useSettingsStore } from './stores/settings'
@@ -37,6 +37,12 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Tokens = lazy(() => import('./pages/Tokens'))
 const Register = lazy(() => import('./pages/Register'))
 
+/** /programs/12/edit → /routines/12/edit, preserving the query string. */
+function LegacyRoutineRedirect() {
+  const { pathname, search } = useLocation()
+  return <Navigate to={pathname.replace(/^\/programs/, '/routines') + search} replace />
+}
+
 function App() {
   const { isAuthenticated } = useAuthStore()
   const { fetch: fetchSettings, reset: resetSettings } = useSettingsStore()
@@ -63,28 +69,32 @@ function App() {
         {isAuthenticated ? (
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/workouts" element={<Workouts />} />
+            {/* Train: hub, schedule and history. Routines are the reusable
+                templates (the API still calls them "programs"). */}
+            <Route path="/train" element={<Train />} />
+            <Route path="/train/schedule" element={<Plan />} />
+            <Route path="/train/history" element={<Workouts />} />
+            <Route path="/routines" element={<Navigate to="/train#routines" replace />} />
+            <Route path="/routines/new" element={<AddProgram />} />
+            <Route path="/routines/ai-new" element={<AddAIProgram />} />
+            <Route path="/routines/:id" element={<ProgramDetail />} />
+            <Route path="/routines/:id/edit" element={<EditProgram />} />
             <Route path="/workouts/new" element={<AddWorkout />} />
             <Route path="/workouts/:id" element={<WorkoutDetail />} />
             <Route path="/workouts/:id/edit" element={<EditWorkout />} />
-            {/* Programs list folded into /plan; keep the bare path resolving
-                for anyone with an old bookmark or link. */}
-            <Route path="/programs" element={<Navigate to="/plan" replace />} />
-            <Route path="/programs/new" element={<AddProgram />} />
-            <Route path="/programs/ai-new" element={<AddAIProgram />} />
-            <Route path="/programs/:id" element={<ProgramDetail />} />
-            <Route path="/programs/:id/edit" element={<EditProgram />} />
+            {/* Starting goes through the Train sheet; this route only handles
+                the ?program= deep link (Today card, routine page). */}
             <Route path="/workout/start" element={<StartWorkout />} />
             <Route path="/workout/active" element={<ActiveWorkout />} />
             <Route path="/workout/active/exercise/:exerciseId" element={<ExerciseDetail />} />
-            {/* Before the :exerciseId route is irrelevant here (react-router ranks
-                static segments higher), but keep them adjacent so the pair is obvious. */}
             <Route path="/exercises" element={<Exercises />} />
-            <Route path="/plan" element={<Train />} />
-            {/* Weekly pattern + routines + month calendar: the "build" side of Train. */}
-            <Route path="/plan/schedule" element={<Plan />} />
-            {/* Schedule renamed to Plan; keep old links working. */}
-            <Route path="/schedule" element={<Navigate to="/plan" replace />} />
+            {/* Old paths from before the Train rename; keep bookmarks working. */}
+            <Route path="/plan" element={<Navigate to="/train" replace />} />
+            <Route path="/plan/schedule" element={<Navigate to="/train/schedule" replace />} />
+            <Route path="/schedule" element={<Navigate to="/train/schedule" replace />} />
+            <Route path="/workouts" element={<Navigate to="/train/history" replace />} />
+            <Route path="/programs" element={<Navigate to="/train#routines" replace />} />
+            <Route path="/programs/*" element={<LegacyRoutineRedirect />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/stats/weekly" element={<WeeklySummary />} />
             <Route path="/exercises/:exerciseId" element={<ExerciseDetail />} />
